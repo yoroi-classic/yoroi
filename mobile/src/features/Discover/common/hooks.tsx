@@ -8,6 +8,7 @@ import {logger} from '~/kernel/logger/logger'
 
 import {useWalletNameOverride} from './WalletNameOverrideContext'
 import {walletConfig} from './wallet-config'
+import {serializeWebViewError} from './webview-error'
 
 export const useConnectWalletToWebView = (
   wallet: YoroiWallet,
@@ -136,33 +137,6 @@ export const useConnectWalletToWebView = (
 const getInjectableMessage = (message: unknown) => {
   const event = JSON.stringify({data: message})
   return `(() => window.dispatchEvent(new MessageEvent('message', ${event})))()`
-}
-
-const serializeWebViewError = (error: unknown): unknown => {
-  if (error == null) return null
-  if (Array.isArray(error)) return error.map(serializeWebViewErrorEntry)
-  if (hasWebViewErrorMetadata(error)) return serializeWebViewErrorEntry(error)
-  if (error instanceof Error) return error.message
-  return error
-}
-
-const serializeWebViewErrorEntry = (error: unknown): unknown => {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      info: error.message,
-      code: 'code' in error ? error.code : undefined,
-      index: 'index' in error ? error.index : undefined,
-    }
-  }
-  return error
-}
-
-const hasWebViewErrorMetadata = (error: unknown) => {
-  return (
-    error instanceof Error &&
-    ('info' in error || 'code' in error || 'index' in error)
-  )
 }
 
 const getInitScript = (
