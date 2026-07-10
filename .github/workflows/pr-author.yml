@@ -7,6 +7,10 @@ on:
 jobs:
   assign-author:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
       
