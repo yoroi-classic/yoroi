@@ -1,0 +1,27 @@
+name: dependency-review
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "package-lock.json"
+      - "mobile/package.json"
+      - "mobile/package-lock.json"
+      - "scripts/packages/**/package.json"
+      - "scripts/packages/**/package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: moderate
