@@ -141,6 +141,7 @@ const getInjectableMessage = (message: unknown) => {
 const serializeWebViewError = (error: unknown): unknown => {
   if (error == null) return null
   if (Array.isArray(error)) return error.map(serializeWebViewErrorEntry)
+  if (hasWebViewErrorMetadata(error)) return serializeWebViewErrorEntry(error)
   if (error instanceof Error) return error.message
   return error
 }
@@ -155,6 +156,13 @@ const serializeWebViewErrorEntry = (error: unknown): unknown => {
     }
   }
   return error
+}
+
+const hasWebViewErrorMetadata = (error: unknown) => {
+  return (
+    error instanceof Error &&
+    ('info' in error || 'code' in error || 'index' in error)
+  )
 }
 
 const getInitScript = (

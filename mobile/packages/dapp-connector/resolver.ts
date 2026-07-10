@@ -325,7 +325,7 @@ export const resolver: Resolver = {
           try {
             results.push(await context.wallet.cip103.submitTx(tx))
           } catch (error) {
-            results.push(error)
+            results.push(getCip103SubmitFailure(error))
           }
         }
 
@@ -394,6 +394,11 @@ const getCip103SubmitTxs = (params: unknown): string[] => {
     throw new Error('Invalid params')
   }
   return txs
+}
+
+const getCip103SubmitFailure = (error: unknown) => {
+  if (typeof error !== 'string') return error
+  return {info: error, message: error}
 }
 
 const withCip103FailureIndex = (error: unknown, index: number) => {

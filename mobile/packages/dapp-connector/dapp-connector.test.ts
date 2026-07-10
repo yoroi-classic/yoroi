@@ -737,6 +737,34 @@ describe('DappConnector', () => {
       expect(submitTx.mock.calls).toEqual([['tx-0'], ['tx-1'], ['tx-2']])
     })
 
+    it('should reject cip103.submitTxs when a submitter rejects with a string', async () => {
+      const submitTx = jest.fn((cbor: string) => {
+        if (cbor === 'tx-1') return Promise.reject('submit failed')
+        return Promise.resolve(`hash-${cbor}`)
+      })
+      const dappConnector = await initDappConnectorWithConnection({
+        ...mockWallet,
+        cip103: {
+          ...mockWallet.cip103!,
+          submitTx,
+        },
+      })
+      const sendMessage = jest.fn()
+      await dappConnector.handleEvent(
+        createEvent('api.cip103.submitTxs', {
+          args: [['tx-0', 'tx-1', 'tx-2']],
+        }),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith('1', null, [
+        'hash-tx-0',
+        {info: 'submit failed', message: 'submit failed'},
+        'hash-tx-2',
+      ])
+      expect(submitTx.mock.calls).toEqual([['tx-0'], ['tx-1'], ['tx-2']])
+    })
+
     it('should throw in submitTx with when incorrect arguments are presented', async () => {
       const dappConnector = await initDappConnectorWithConnection()
       const sendMessage = jest.fn()
