@@ -19,7 +19,7 @@ export const useConnectWalletToWebView = (
   const [isWebViewReady, setIsWebViewReady] = React.useState(false)
 
   const sendMessageToWebView =
-    (event: string) => (id: string, result: unknown, error?: Error) => {
+    (event: string) => (id: string, result: unknown, error?: unknown) => {
       if (error) {
         logger.debug('useConnectWalletToWebView: sending error to webview', {
           error,
@@ -33,7 +33,11 @@ export const useConnectWalletToWebView = (
       }
 
       webViewRef.current?.injectJavaScript(
-        getInjectableMessage({id, result, error: error?.message ?? null}),
+        getInjectableMessage({
+          id,
+          result,
+          error: serializeWebViewError(error),
+        }),
       )
     }
 
@@ -132,6 +136,25 @@ export const useConnectWalletToWebView = (
 const getInjectableMessage = (message: unknown) => {
   const event = JSON.stringify({data: message})
   return `(() => window.dispatchEvent(new MessageEvent('message', ${event})))()`
+}
+
+const serializeWebViewError = (error: unknown): unknown => {
+  if (error == null) return null
+  if (Array.isArray(error)) return error.map(serializeWebViewErrorEntry)
+  if (error instanceof Error) return error.message
+  return error
+}
+
+const serializeWebViewErrorEntry = (error: unknown): unknown => {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      info: error.message,
+      code: 'code' in error ? error.code : undefined,
+      index: 'index' in error ? error.index : undefined,
+    }
+  }
+  return error
 }
 
 const getInitScript = (

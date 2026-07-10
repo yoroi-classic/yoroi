@@ -25,7 +25,7 @@ export type DappConnectorManager = {
   handleEvent(
     eventData: string,
     trustedUrl: string,
-    sendMessage: (id: string, result: unknown, error?: Error) => void,
+    sendMessage: (id: string, result: unknown, error?: unknown) => void,
   ): Promise<void>
   readonly network: Chain.SupportedNetworks
   readonly walletId: string
@@ -87,13 +87,16 @@ export const dappConnectorMaker = (
       walletName: string
       sessionId: string
     }) {
-      return connectWallet({...props, supportedExtensions})
+      return connectWallet({
+        ...props,
+        supportedExtensions: getSupportedExtensions(wallet),
+      })
     },
 
     async handleEvent(
       eventData: string,
       trustedUrl: string,
-      sendMessage: (id: string, result: unknown, error?: Error) => void,
+      sendMessage: (id: string, result: unknown, error?: unknown) => void,
     ) {
       return await resolverHandleEvent(
         eventData,
@@ -101,7 +104,7 @@ export const dappConnectorMaker = (
         wallet,
         sendMessage,
         storage,
-        supportedExtensions,
+        getSupportedExtensions(wallet),
       )
     },
   }
@@ -112,6 +115,14 @@ type SupportedExtension = {
 }
 
 const supportedExtensions: ReadonlyArray<SupportedExtension> = freeze(
-  [{cip: 30}, {cip: 95}],
+  [{cip: 30}, {cip: 95}, {cip: 103}],
   true,
 )
+
+const getSupportedExtensions = (
+  wallet: ResolverWallet,
+): ReadonlyArray<SupportedExtension> =>
+  supportedExtensions.filter(({cip}) => {
+    if (cip === 103) return wallet.cip103 !== undefined
+    return true
+  })

@@ -29,6 +29,21 @@ describe('DappConnector', () => {
       })
       expect(initScript).toMatch(/example\.png/)
       expect(initScript).toMatch(/Object\.freeze/)
+      expect(initScript).toMatch(/"cip":103/)
+    })
+
+    it('should not advertise CIP-0103 in the init script when the wallet does not support it', () => {
+      const dappConnector = getDappConnector({
+        ...mockWallet,
+        cip103: undefined,
+      })
+      const initScript = dappConnector.getWalletConnectorScript({
+        iconUrl: 'example.png',
+        apiVersion: '1.0.0',
+        sessionId: '123',
+        walletName: 'Yoroi Wallet',
+      })
+      expect(initScript).not.toMatch(/"cip":103/)
     })
   })
 
@@ -498,7 +513,7 @@ describe('DappConnector', () => {
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
         walletId,
-        dappOrigin: 'https://yoroi-wallet.com',
+        dappOrigin: new URL(trustedUrl).origin,
       })
       await dappConnector.handleEvent(
         createEvent('api.getUsedAddresses'),
@@ -605,6 +620,121 @@ describe('DappConnector', () => {
         sendMessage,
       )
       expect(sendMessage).toHaveBeenCalledWith('1', 'tx-id')
+    })
+
+    it('should resolve cip103.signTxs with witnesses in input order', async () => {
+      const signTx = jest.fn((cbor: string, partialSign: boolean) =>
+        Promise.resolve(`witness-${cbor}-${partialSign}`),
+      )
+      const dappConnector = await initDappConnectorWithConnection({
+        ...mockWallet,
+        cip103: {
+          ...mockWallet.cip103!,
+          signTx,
+        },
+      })
+      const sendMessage = jest.fn()
+      await dappConnector.handleEvent(
+        createEvent('api.cip103.signTxs', {
+          args: [[{cbor: 'tx-0'}, {cbor: 'tx-1', partialSign: true}]],
+        }),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith('1', [
+        'witness-tx-0-false',
+        'witness-tx-1-true',
+      ])
+      expect(signTx.mock.calls).toEqual([
+        ['tx-0', false],
+        ['tx-1', true],
+      ])
+    })
+
+    it('should reject cip103.signTxs with the failing transaction index', async () => {
+      const signError = new Error('invalid tx')
+      const signTx = jest.fn((cbor: string, _partialSign: boolean) => {
+        if (cbor === 'tx-1') return Promise.reject(signError)
+        return Promise.resolve(`witness-${cbor}`)
+      })
+      const dappConnector = await initDappConnectorWithConnection({
+        ...mockWallet,
+        cip103: {
+          ...mockWallet.cip103!,
+          signTx,
+        },
+      })
+      const sendMessage = jest.fn()
+      await dappConnector.handleEvent(
+        createEvent('api.cip103.signTxs', {
+          args: [[{cbor: 'tx-0'}, {cbor: 'tx-1'}, {cbor: 'tx-2'}]],
+        }),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith(
+        '1',
+        null,
+        expect.objectContaining({
+          index: 1,
+          info: 'invalid tx (transaction index 1)',
+          message: 'invalid tx (transaction index 1)',
+        }),
+      )
+      expect(signTx.mock.calls).toEqual([
+        ['tx-0', false],
+        ['tx-1', false],
+      ])
+    })
+
+    it('should resolve cip103.submitTxs with transaction ids in input order', async () => {
+      const submitTx = jest.fn((cbor: string) =>
+        Promise.resolve(`hash-${cbor}`),
+      )
+      const dappConnector = await initDappConnectorWithConnection({
+        ...mockWallet,
+        cip103: {
+          ...mockWallet.cip103!,
+          submitTx,
+        },
+      })
+      const sendMessage = jest.fn()
+      await dappConnector.handleEvent(
+        createEvent('api.cip103.submitTxs', {args: [['tx-0', 'tx-1']]}),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith('1', ['hash-tx-0', 'hash-tx-1'])
+      expect(submitTx.mock.calls).toEqual([['tx-0'], ['tx-1']])
+    })
+
+    it('should reject cip103.submitTxs with mixed ordered submit results', async () => {
+      const submitError = new Error('submit failed')
+      const submitTx = jest.fn((cbor: string) => {
+        if (cbor === 'tx-1') return Promise.reject(submitError)
+        return Promise.resolve(`hash-${cbor}`)
+      })
+      const dappConnector = await initDappConnectorWithConnection({
+        ...mockWallet,
+        cip103: {
+          ...mockWallet.cip103!,
+          submitTx,
+        },
+      })
+      const sendMessage = jest.fn()
+      await dappConnector.handleEvent(
+        createEvent('api.cip103.submitTxs', {
+          args: [['tx-0', 'tx-1', 'tx-2']],
+        }),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith('1', null, [
+        'hash-tx-0',
+        submitError,
+        'hash-tx-2',
+      ])
+      expect(submitTx.mock.calls).toEqual([['tx-0'], ['tx-1'], ['tx-2']])
     })
 
     it('should throw in submitTx with when incorrect arguments are presented', async () => {
@@ -815,7 +945,11 @@ describe('DappConnector', () => {
         trustedUrl,
         sendMessage,
       )
-      expect(sendMessage).toHaveBeenCalledWith('1', [{cip: 30}, {cip: 95}])
+      expect(sendMessage).toHaveBeenCalledWith('1', [
+        {cip: 30},
+        {cip: 95},
+        {cip: 103},
+      ])
     })
 
     it('should filter CIP95 from extensions when wallet does not support it', async () => {
@@ -834,7 +968,26 @@ describe('DappConnector', () => {
         trustedUrl,
         sendMessage,
       )
-      expect(sendMessage).toHaveBeenCalledWith('1', [{cip: 30}])
+      expect(sendMessage).toHaveBeenCalledWith('1', [{cip: 30}, {cip: 103}])
+    })
+
+    it('should filter CIP103 from extensions when wallet does not support it', async () => {
+      const walletWithoutCIP103 = {
+        ...mockWallet,
+        cip103: undefined,
+      }
+      const dappConnector = getDappConnector(walletWithoutCIP103)
+      const sendMessage = jest.fn()
+      await dappConnector.addConnection({
+        walletId,
+        dappOrigin: 'https://yoroi-wallet.com',
+      })
+      await dappConnector.handleEvent(
+        createEvent('api.getExtensions'),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith('1', [{cip: 30}, {cip: 95}])
     })
 
     it('should resolve getUtxos with mocked data', async () => {
@@ -1121,6 +1274,11 @@ const mockWallet: ResolverWallet = {
     getRegisteredPubStakeKeys: () =>
       Promise.reject(new Error('Not implemented')),
     signData: () => Promise.reject(new Error('Not implemented')),
+  },
+  cip103: {
+    signTx: (cbor, partialSign) =>
+      Promise.resolve(`mock-witness-${cbor}-${partialSign}`),
+    submitTx: (cbor) => Promise.resolve(`mock-hash-${cbor}`),
   },
 }
 const trustedUrl = 'https://yoroi-wallet.com/'
