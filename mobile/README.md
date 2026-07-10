@@ -594,7 +594,7 @@ npm run test:mobile-deps-smoke
 
 The smoke command runs a curated Jest subset with coverage disabled. It covers mnemonic/root/xpub wallet creation, wallet sync transaction notification handling, mocked Cardano backend response parsing, CIP-30 submit/sign methods, transaction signing helpers, and dApp connector connection/event handling.
 
-The script first checks that selected smoke fixture files do not embed active `yoroiwallet.com` or EMURGO-hosted URLs. Keep fixtures on `localhost`, `example.com`, or injected mocks. Future CI can run this after `npm ci` for Dependabot PRs that touch mobile package manifests or mobile package sources.
+The script first checks that selected smoke test and fixture input files do not embed URL hosts containing `yoroiwallet` or `emurgo`. Keep fixtures on `localhost`, `example.com`, or injected mocks. Future CI can run this after `npm ci` for Dependabot PRs that touch mobile package manifests or mobile package sources.
 
 ## License
 

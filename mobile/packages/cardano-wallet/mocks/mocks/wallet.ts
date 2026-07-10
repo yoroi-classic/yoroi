@@ -887,7 +887,7 @@ const poolInfoAndHistory: StakePoolInfoAndHistory = {
     name: 'Emurgo #1' as AssetName,
     description:
       'EMURGO is a multinational blockchain technology company providing solutions for developers, startups, enterprises, and governments.',
-    homepage: 'https://emurgo.io',
+    homepage: 'https://example.com',
   },
   history: [
     {

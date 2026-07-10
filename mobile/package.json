@@ -31,7 +31,7 @@
     "tsc": "tsc --noEmit",
     "tsc:fix": "tsc --noEmit --fix",
     "test": "jest --config jest.config.js",
-    "test:mobile-deps-smoke": "node ./scripts/mobile-dependency-smoke.js",
+    "test:mobile-deps-smoke": "tsc --pretty false --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node --rootDir scripts --outDir node_modules/.cache/mobile-dependency-smoke scripts/mobile-dependency-smoke.ts && node node_modules/.cache/mobile-dependency-smoke/mobile-dependency-smoke.js",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -170,6 +170,7 @@
     "@trivago/prettier-plugin-sort-imports": "5.2.2",
     "@types/jest": "29.5.12",
     "@types/lodash": "4.17.20",
+    "@types/node": "^22.19.3",
     "@types/react": "19.0.10",
     "@types/react-native-get-random-values": "1.8.2",
     "@types/react-test-renderer": "19.0.0",

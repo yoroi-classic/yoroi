@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+import {spawnSync} from 'node:child_process'
+import fs from 'node:fs'
+import {createRequire} from 'node:module'
+import path from 'node:path'
 
-const fs = require('fs')
-const path = require('path')
-const {spawnSync} = require('child_process')
-
-const mobileRoot = path.resolve(__dirname, '..')
+const mobileRoot = process.cwd()
+const scriptRequire = createRequire(__filename)
 
 const smokeTests = [
   'packages/wallet-manager/creation/wallet-creation.test.ts',
@@ -17,26 +18,40 @@ const smokeTests = [
   'packages/dapp-connector/dapp-connector.test.ts',
 ]
 
-const hostedFixtureUrlPattern =
-  /https?:\/\/[^'"`\s)]+(?:yoroiwallet|emurgo)[^'"`\s)]*/gi
+const additionalSmokeInputs = ['packages/cardano-wallet/mocks/mocks/wallet.ts']
+
+const urlPattern = /https?:\/\/[^'"`\s)]+/gi
+const forbiddenHostPattern = /(?:yoroiwallet|emurgo)/i
+
+function hostedFixtureUrls(source: string) {
+  return [...source.matchAll(urlPattern)]
+    .map(([url]) => url)
+    .filter((url) => {
+      try {
+        return forbiddenHostPattern.test(new URL(url).hostname)
+      } catch {
+        return false
+      }
+    })
+}
 
 function validateSmokeInputs() {
-  const failures = []
+  const failures: Array<string> = []
 
-  for (const testPath of smokeTests) {
-    const absolutePath = path.join(mobileRoot, testPath)
+  for (const inputPath of [...smokeTests, ...additionalSmokeInputs]) {
+    const absolutePath = path.join(mobileRoot, inputPath)
 
     if (!fs.existsSync(absolutePath)) {
-      failures.push(`missing smoke test: ${testPath}`)
+      failures.push(`missing smoke input: ${inputPath}`)
       continue
     }
 
-    const testSource = fs.readFileSync(absolutePath, 'utf8')
-    const hostedUrls = testSource.match(hostedFixtureUrlPattern) ?? []
+    const inputSource = fs.readFileSync(absolutePath, 'utf8')
+    const hostedUrls = hostedFixtureUrls(inputSource)
 
     if (hostedUrls.length > 0) {
       failures.push(
-        `${testPath} references hosted smoke fixture URL(s): ${[
+        `${inputPath} references owned-host smoke fixture URL(s): ${[
           ...new Set(hostedUrls),
         ].join(', ')}`,
       )
@@ -50,8 +65,17 @@ function validateSmokeInputs() {
   }
 }
 
+function resolveJestBin() {
+  try {
+    return scriptRequire.resolve('jest/bin/jest')
+  } catch {
+    console.error('jest not found - did you run `npm ci` in mobile/?')
+    process.exit(1)
+  }
+}
+
 function runJestSmokeTests() {
-  const jestBin = require.resolve('jest/bin/jest')
+  const jestBin = resolveJestBin()
   const args = [
     jestBin,
     '--config',
