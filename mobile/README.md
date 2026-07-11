@@ -584,6 +584,18 @@ npm test -- --watch
 npm test -- --coverage
 ```
 
+### Dependency Upgrade Smoke Check
+
+For cheap confidence on mobile dependency updates, run:
+
+```bash
+npm run test:mobile-deps-smoke
+```
+
+The smoke command runs a curated Jest subset with coverage disabled. It covers mnemonic/root/xpub wallet creation, wallet sync transaction notification handling, mocked Cardano backend response parsing, CIP-30 submit/sign methods, transaction signing helpers, and dApp connector connection/event handling.
+
+The script first checks that selected smoke test and fixture input files do not embed URL hosts containing `yoroiwallet` or `emurgo`. Keep fixtures on `localhost`, `example.com`, or injected mocks. Future CI can run this after `npm ci` for Dependabot PRs that touch mobile package manifests or mobile package sources.
+
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
