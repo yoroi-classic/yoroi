@@ -3,19 +3,19 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: 'Platform to build for'
+        description: "Platform to build for"
         required: true
         type: choice
         options:
           - all
           - ios
           - android
-        default: 'all'
+        default: "all"
       branch:
-        description: 'Branch to build from'
+        description: "Branch to build from"
         required: false
         type: string
-        default: 'develop'
+        default: "develop"
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -36,7 +36,7 @@ jobs:
             exit 1
           fi
           echo "✅ Workflow triggered from authorized branch: ${{ github.ref }}"
-      
+
       - name: 🏗 Setup repo
         uses: actions/checkout@v4
         with:
@@ -45,7 +45,7 @@ jobs:
       - name: 🏗 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22.12.0"
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
@@ -65,4 +65,3 @@ jobs:
       - name: 🚀 Create development build
         working-directory: mobile
         run: eas build --profile dev-standalone --platform ${{ inputs.platform }} --no-wait --non-interactive
-
