@@ -8,6 +8,8 @@ import {mockedData} from './mocks'
 import {ResolverWallet} from './resolver'
 import {storageMock} from './storage.mocks'
 
+const maxCip103Txs = 20
+
 const getDappConnector = (wallet = mockWallet) => {
   const storage = connectionStorageMaker({storage: storageMock})
   return dappConnectorMaker(storage, wallet)
@@ -687,6 +689,39 @@ describe('DappConnector', () => {
       ])
     })
 
+    it('should reject cip103.signTxs batches above the transaction limit', async () => {
+      const signTx = jest.fn((cbor: string, partialSign: boolean) =>
+        Promise.resolve(`witness-${cbor}-${partialSign}`),
+      )
+      const dappConnector = await initDappConnectorWithConnection({
+        ...mockWallet,
+        cip103: {
+          ...mockWallet.cip103!,
+          signTx,
+        },
+      })
+      const sendMessage = jest.fn()
+      await dappConnector.handleEvent(
+        createEvent('api.cip103.signTxs', {
+          args: [
+            Array.from({length: maxCip103Txs + 1}, (_, index) => ({
+              cbor: `tx-${index}`,
+            })),
+          ],
+        }),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith(
+        '1',
+        null,
+        new Error(
+          `CIP103 supports at most ${maxCip103Txs} transactions per request`,
+        ),
+      )
+      expect(signTx).not.toHaveBeenCalled()
+    })
+
     it('should resolve cip103.submitTxs with transaction ids in input order', async () => {
       const submitTx = jest.fn((cbor: string) =>
         Promise.resolve(`hash-${cbor}`),
@@ -735,6 +770,37 @@ describe('DappConnector', () => {
         'hash-tx-2',
       ])
       expect(submitTx.mock.calls).toEqual([['tx-0'], ['tx-1'], ['tx-2']])
+    })
+
+    it('should reject cip103.submitTxs batches above the transaction limit', async () => {
+      const submitTx = jest.fn((cbor: string) =>
+        Promise.resolve(`hash-${cbor}`),
+      )
+      const dappConnector = await initDappConnectorWithConnection({
+        ...mockWallet,
+        cip103: {
+          ...mockWallet.cip103!,
+          submitTx,
+        },
+      })
+      const sendMessage = jest.fn()
+      await dappConnector.handleEvent(
+        createEvent('api.cip103.submitTxs', {
+          args: [
+            Array.from({length: maxCip103Txs + 1}, (_, index) => `tx-${index}`),
+          ],
+        }),
+        trustedUrl,
+        sendMessage,
+      )
+      expect(sendMessage).toHaveBeenCalledWith(
+        '1',
+        null,
+        new Error(
+          `CIP103 supports at most ${maxCip103Txs} transactions per request`,
+        ),
+      )
+      expect(submitTx).not.toHaveBeenCalled()
     })
 
     it('should reject cip103.submitTxs when a submitter rejects with a string', async () => {

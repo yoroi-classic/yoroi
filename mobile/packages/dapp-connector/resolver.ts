@@ -330,6 +330,7 @@ export const resolver: Resolver = {
         }
 
         if (results.some((result) => typeof result !== 'string')) {
+          // CIP-0103 throws the mixed result array; successful hashes in it may already be on-chain.
           throw results
         }
         return results as string[]
@@ -342,6 +343,7 @@ const paginationSchema = z.object({page: z.number(), limit: z.number()})
 const getBalanceSchema = z.object({args: z.array(z.string().optional())})
 const isGetBalanceParams = createTypeGuardFromSchema(getBalanceSchema)
 const isPaginationParams = createTypeGuardFromSchema(paginationSchema)
+const MAX_CIP103_TXS = 20
 
 type Cip103SignRequest = {
   cbor: string
@@ -361,6 +363,7 @@ const getArgs = (params: unknown): unknown[] => {
 const getCip103SignTxs = (params: unknown): Cip103SignRequest[] => {
   const [txs] = getArgs(params)
   if (!Array.isArray(txs)) throw new Error('Invalid params')
+  assertCip103BatchSize(txs)
 
   return txs.map((tx, index) => {
     if (!isRecord(tx)) {
@@ -393,7 +396,16 @@ const getCip103SubmitTxs = (params: unknown): string[] => {
   if (!Array.isArray(txs) || txs.some((tx) => typeof tx !== 'string')) {
     throw new Error('Invalid params')
   }
+  assertCip103BatchSize(txs)
   return txs
+}
+
+const assertCip103BatchSize = (txs: unknown[]) => {
+  if (txs.length > MAX_CIP103_TXS) {
+    throw new Error(
+      `CIP103 supports at most ${MAX_CIP103_TXS} transactions per request`,
+    )
+  }
 }
 
 const getCip103SubmitFailure = (error: unknown) => {
