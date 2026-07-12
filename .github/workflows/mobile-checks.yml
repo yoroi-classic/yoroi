@@ -35,6 +35,10 @@ jobs:
         run: npm run test
         working-directory: mobile
         shell: bash
+      - name: Dependency smoke tests
+        run: npm run test:mobile-deps-smoke
+        working-directory: mobile
+        shell: bash
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
