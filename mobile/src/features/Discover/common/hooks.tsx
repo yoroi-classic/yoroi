@@ -8,6 +8,7 @@ import {logger} from '~/kernel/logger/logger'
 
 import {useWalletNameOverride} from './WalletNameOverrideContext'
 import {walletConfig} from './wallet-config'
+import {serializeWebViewError} from './webview-error'
 
 export const useConnectWalletToWebView = (
   wallet: YoroiWallet,
@@ -19,7 +20,7 @@ export const useConnectWalletToWebView = (
   const [isWebViewReady, setIsWebViewReady] = React.useState(false)
 
   const sendMessageToWebView =
-    (event: string) => (id: string, result: unknown, error?: Error) => {
+    (event: string) => (id: string, result: unknown, error?: unknown) => {
       if (error) {
         logger.debug('useConnectWalletToWebView: sending error to webview', {
           error,
@@ -33,7 +34,11 @@ export const useConnectWalletToWebView = (
       }
 
       webViewRef.current?.injectJavaScript(
-        getInjectableMessage({id, result, error: error?.message ?? null}),
+        getInjectableMessage({
+          id,
+          result,
+          error: serializeWebViewError(error),
+        }),
       )
     }
 

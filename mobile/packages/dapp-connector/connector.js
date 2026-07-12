@@ -21,6 +21,10 @@
  * @Property {(...args: any[]) => Promise} cip95.getPubDRepKey Function to get public delegation key.
  * @Property {(...args: any[]) => Promise} cip95.getRegisteredPubStakeKeys Function to get registered public stake keys.
  * @Property {(...args: any[]) => Promise} cip95.getUnregisteredPubStakeKeys Function to get unregistered public stake keys.
+ *
+ * @Property {Object} cip103
+ * @Property {(...args: any[]) => Promise} cip103.signTxs Function to sign transactions.
+ * @Property {(...args: any[]) => Promise} cip103.submitTxs Function to submit transactions.
  */
 
 /**
@@ -152,6 +156,7 @@ const initWallet = ({
     'api.signTx',
     'api.signData',
     'api.cip95.signData',
+    'api.cip103.signTxs',
   ]
 
   window.addEventListener('message', (event) => {
@@ -194,7 +199,7 @@ const initWallet = ({
     if (!promise) return
     promisesMap.delete(id)
     if (error) {
-      promise.reject(normalizeError(error))
+      promise.reject(normalizeBridgeError(error))
     } else {
       promise.resolve(result)
     }
@@ -214,6 +219,7 @@ const initWallet = ({
 
     const extensions = await callExternalMethod('api.getExtensions')
     const supportsCIP95 = extensions.some((extension) => extension.cip === 95)
+    const supportsCIP103 = extensions.some((extension) => extension.cip === 103)
 
     return {
       getExtensions: (...args) => callExternalMethod('api.getExtensions', args),
@@ -243,6 +249,14 @@ const initWallet = ({
               callExternalMethod('api.cip95.getRegisteredPubStakeKeys', args),
             getUnregisteredPubStakeKeys: (...args) =>
               callExternalMethod('api.cip95.getUnregisteredPubStakeKeys', args),
+          }
+        : undefined,
+      cip103: supportsCIP103
+        ? {
+            signTxs: (...args) =>
+              callExternalMethod('api.cip103.signTxs', args),
+            submitTxs: (...args) =>
+              callExternalMethod('api.cip103.submitTxs', args),
           }
         : undefined,
     }
@@ -298,14 +312,47 @@ const initWallet = ({
    * @returns {CIP30Error}
    */
   const normalizeError = (error) => {
-    const message = typeof error === 'string' ? error : error.message
+    const message =
+      typeof error === 'string'
+        ? error
+        : error != null &&
+            typeof error === 'object' &&
+            typeof error.info === 'string'
+          ? error.info
+          : error != null &&
+              typeof error === 'object' &&
+              typeof error.message === 'string'
+            ? error.message
+            : String(error)
 
     if (message.toLowerCase().includes('user rejected')) {
       logMessage('User Rejected')
       return getUserRejectedError()
     }
     logMessage('Error:' + message)
-    return new CIP30Error(message, -1)
+    const normalized = new CIP30Error(
+      message,
+      error != null &&
+        typeof error === 'object' &&
+        typeof error.code === 'number'
+        ? error.code
+        : -1,
+    )
+    if (
+      error != null &&
+      typeof error === 'object' &&
+      typeof error.index === 'number'
+    ) {
+      normalized.index = error.index
+    }
+    return normalized
+  }
+
+  const normalizeBridgeError = (error) => {
+    if (!Array.isArray(error)) return normalizeError(error)
+    return error.map((entry) =>
+      typeof entry === 'string' ? entry : normalizeError(entry),
+    )
   }
 
   const walletObj = Object.freeze({

@@ -42,6 +42,10 @@ type Resolver = {
       getUnregisteredPubStakeKeys: ResolvableMethod<string[]>
       signData: ResolvableMethod<{signature: string; key: string}>
     }
+    cip103: {
+      signTxs: ResolvableMethod<string[]>
+      submitTxs: ResolvableMethod<string[]>
+    }
   }
 }
 
@@ -185,6 +189,7 @@ export const resolver: Resolver = {
       await assertWalletAcceptedConnection(context)
       return context.supportedExtensions.filter(({cip}) => {
         if (cip === 95) return supportsCIP95(context)
+        if (cip === 103) return supportsCIP103(context)
         return true
       })
     },
@@ -290,6 +295,47 @@ export const resolver: Resolver = {
         return context.wallet.cip95.signData(address, payload)
       },
     },
+    cip103: {
+      signTxs: async (params: unknown, context: Context) => {
+        assertOriginsMatch(context)
+        await assertWalletAcceptedConnection(context)
+        if (!supportsCIP103(context)) throw new Error('CIP103 is not supported')
+
+        const txs = getCip103SignTxs(params)
+        const witnesses: string[] = []
+        for (const [index, tx] of txs.entries()) {
+          try {
+            witnesses.push(
+              await context.wallet.cip103.signTx(tx.cbor, tx.partialSign),
+            )
+          } catch (error) {
+            throw withCip103FailureIndex(error, index)
+          }
+        }
+        return witnesses
+      },
+      submitTxs: async (params: unknown, context: Context) => {
+        assertOriginsMatch(context)
+        await assertWalletAcceptedConnection(context)
+        if (!supportsCIP103(context)) throw new Error('CIP103 is not supported')
+
+        const txs = getCip103SubmitTxs(params)
+        const results: unknown[] = []
+        for (const tx of txs) {
+          try {
+            results.push(await context.wallet.cip103.submitTx(tx))
+          } catch (error) {
+            results.push(getCip103SubmitFailure(error))
+          }
+        }
+
+        if (results.some((result) => typeof result !== 'string')) {
+          // CIP-0103 throws the mixed result array; successful hashes in it may already be on-chain.
+          throw results
+        }
+        return results as string[]
+      },
+    },
   },
 } as const
 
@@ -297,6 +343,101 @@ const paginationSchema = z.object({page: z.number(), limit: z.number()})
 const getBalanceSchema = z.object({args: z.array(z.string().optional())})
 const isGetBalanceParams = createTypeGuardFromSchema(getBalanceSchema)
 const isPaginationParams = createTypeGuardFromSchema(paginationSchema)
+const MAX_CIP103_TXS = 20
+
+type Cip103SignRequest = {
+  cbor: string
+  partialSign: boolean
+}
+
+const getArgs = (params: unknown): unknown[] => {
+  if (
+    !isRecord(params) ||
+    !isKeyOf('args', params) ||
+    !Array.isArray(params.args)
+  )
+    throw new Error('Invalid params')
+  return params.args
+}
+
+const getCip103SignTxs = (params: unknown): Cip103SignRequest[] => {
+  const [txs] = getArgs(params)
+  if (!Array.isArray(txs)) throw new Error('Invalid params')
+  assertCip103BatchSize(txs)
+
+  return txs.map((tx, index) => {
+    if (!isRecord(tx)) {
+      throw withCip103FailureIndex(
+        new Error('Invalid transaction request'),
+        index,
+      )
+    }
+
+    const cbor =
+      isKeyOf('cbor', tx) && typeof tx.cbor === 'string' ? tx.cbor : undefined
+    if (cbor === undefined) {
+      throw withCip103FailureIndex(
+        new Error('Invalid transaction request: cbor is required'),
+        index,
+      )
+    }
+
+    const partialSign =
+      isKeyOf('partialSign', tx) && typeof tx.partialSign === 'boolean'
+        ? tx.partialSign
+        : false
+
+    return {cbor, partialSign}
+  })
+}
+
+const getCip103SubmitTxs = (params: unknown): string[] => {
+  const [txs] = getArgs(params)
+  if (!Array.isArray(txs) || txs.some((tx) => typeof tx !== 'string')) {
+    throw new Error('Invalid params')
+  }
+  assertCip103BatchSize(txs)
+  return txs
+}
+
+const assertCip103BatchSize = (txs: unknown[]) => {
+  if (txs.length > MAX_CIP103_TXS) {
+    throw new Error(
+      `CIP103 supports at most ${MAX_CIP103_TXS} transactions per request`,
+    )
+  }
+}
+
+const getCip103SubmitFailure = (error: unknown) => {
+  if (typeof error !== 'string') return error
+  return {info: error, message: error}
+}
+
+const withCip103FailureIndex = (error: unknown, index: number) => {
+  const errorInfo = getErrorStringField(error, 'info')
+  const errorMessage = getErrorStringField(error, 'message')
+  const message = `${
+    errorInfo ?? errorMessage ?? 'Transaction failed'
+  } (transaction index ${index})`
+
+  if (error instanceof Error) {
+    const indexedError = new Error(message)
+    Object.assign(indexedError, error, {index, info: message})
+    return indexedError
+  }
+
+  if (error != null && typeof error === 'object') {
+    return {...error, index, info: message, message}
+  }
+
+  return {index, info: message, message, error}
+}
+
+const getErrorStringField = (error: unknown, field: string) => {
+  if (!isRecord(error)) return undefined
+  const value = error[field]
+  return typeof value === 'string' ? value : undefined
+}
 
 const assertOriginsMatch = (context: Context) => {
   if (context.browserOrigin !== context.trustedOrigin) {
@@ -320,6 +461,14 @@ const supportsCIP95 = (
   wallet: ResolverWallet & {cip95: CIP95ResolverWallet}
 } => {
   return context.wallet.cip95 !== undefined
+}
+
+const supportsCIP103 = (
+  context: Context,
+): context is Context & {
+  wallet: ResolverWallet & {cip103: CIP103ResolverWallet}
+} => {
+  return context.wallet.cip103 !== undefined
 }
 
 const hasWalletAcceptedConnection = async (context: Context) => {
@@ -384,13 +533,15 @@ const methods = {
     resolver.api.cip95.getRegisteredPubStakeKeys,
   'api.cip95.getUnregisteredPubStakeKeys':
     resolver.api.cip95.getUnregisteredPubStakeKeys,
+  'api.cip103.signTxs': resolver.api.cip103.signTxs,
+  'api.cip103.submitTxs': resolver.api.cip103.submitTxs,
 }
 
 export const resolverHandleEvent = async (
   eventData: unknown,
   trustedUrl: string,
   wallet: ResolverWallet,
-  sendMessage: (id: string, result: unknown, error?: Error) => void,
+  sendMessage: (id: string, result: unknown, error?: unknown) => void,
   storage: Storage,
   supportedExtensions: ReadonlyArray<{cip: number}>,
 ) => {
@@ -450,6 +601,7 @@ export type ResolverWallet = {
   ) => Promise<{signature: string; key: string}>
   sendReorganisationTx: (value?: string) => Promise<void>
   cip95?: CIP95ResolverWallet
+  cip103?: CIP103ResolverWallet
 }
 
 type CIP95ResolverWallet = {
@@ -460,6 +612,11 @@ type CIP95ResolverWallet = {
     address: string,
     payload: string,
   ) => Promise<{signature: string; key: string}>
+}
+
+type CIP103ResolverWallet = {
+  signTx: (txHex: string, partialSign: boolean) => Promise<string>
+  submitTx: (cbor: string) => Promise<string>
 }
 
 type Pagination = {
