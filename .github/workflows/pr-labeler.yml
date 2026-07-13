@@ -10,7 +10,7 @@ jobs:
   pr-labeler:
     permissions:
       contents: read
-      pull-requests: write
+      issues: write
     runs-on: ubuntu-24.04
     steps:
       - uses: TimonVS/pr-labeler-action@f9c084306ce8b3f488a8f3ee1ccedc6da131d1af # v5
