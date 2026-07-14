@@ -75,7 +75,7 @@ echo "Rust installed and iOS and Android targets added"
 # If this is an Android build, ensure the requested Android NDK is installed early
 if [[ "${EAS_BUILD_PLATFORM:-}" == "android" ]]; then
   # Default to the version Expo root project uses (seen in build logs)
-  NDK_VERSION="${ANDROID_NDK_VERSION:-27.1.12297006}"
+  NDK_VERSION="${ANDROID_NDK_VERSION:-27.0.12077973}"
 
   SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-${HOME}/Android/Sdk}}"
   SDKMANAGER="${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
@@ -131,5 +131,4 @@ if [[ "${EAS_BUILD_PLATFORM:-}" == "android" ]]; then
     fi
   fi
 fi
-
 
