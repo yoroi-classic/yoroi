@@ -1,23 +1,26 @@
 name: mobile-checks
 
-on: 
+on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
     types: [opened, synchronize, reopened, ready_for_review]
 
+permissions:
+  contents: read
+
 jobs:
   check:
-    if: github.event.pull_request.draft != true
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22.12.0"
           cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
+          cache-dependency-path: mobile/package-lock.json
 
       - name: Install pkgs
         run: npm ci
@@ -40,10 +43,10 @@ jobs:
         working-directory: mobile
         shell: bash
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@af09b5e394c93991b95a5e7646aeb90c1917f78f # v5.5.1
         with:
           files: |
             mobile/coverage/lcov.info
-          fail_ci_if_error: false 
+          fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
