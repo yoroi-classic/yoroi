@@ -5,6 +5,7 @@
   "packageManager": "npm@10.9.0",
   "scripts": {
     "postinstall": "patch-package",
+    "check:toolchain": "node scripts/check-toolchain.js",
     "eas-build-pre-install": "bash ./scripts/eas-pre-install.sh",
     "eas-build-post-install": "bash ./scripts/eas-post-install.sh",
     "start": "expo start -c",
