@@ -1,0 +1,26 @@
+name: workflow-lint
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/**"
+      - ".github/dependabot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Lint workflows
+        uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
