@@ -5,6 +5,8 @@
  * but log warnings if the format seems invalid. This ensures existing code
  * continues to work while providing type safety.
  */
+import {getLogger} from '@yoroi/logger'
+
 import type {
   Address,
   AddressBase58,
@@ -47,8 +49,6 @@ import type {
   UtxoId,
 } from './index'
 
-const warn = (message: string) => console.warn(message)
-
 // Helper to check if string is hex
 const isHex = (str: string): boolean => /^[0-9a-fA-F]+$/.test(str)
 
@@ -65,42 +65,42 @@ const isBase58Like = (str: string): boolean => {
 // Address validation
 export const asAddress = (input: string): Address => {
   if (!input || typeof input !== 'string' || input.length === 0) {
-    warn(`[BrandedType] Invalid address: empty or non-string`)
+    getLogger().warn(`[BrandedType] Invalid address: empty or non-string`)
   }
   return input as Address
 }
 
 export const asAddressBech32 = (input: string): AddressBech32 => {
   if (!isBech32Like(input)) {
-    warn(`[BrandedType] Invalid bech32 address format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid bech32 address format: ${input}`)
   }
   return input as AddressBech32
 }
 
 export const asAddressHex = (input: string): AddressHex => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid hex address format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid hex address format: ${input}`)
   }
   return input as AddressHex
 }
 
 export const asAddressBase58 = (input: string): AddressBase58 => {
   if (!isBase58Like(input)) {
-    warn(`[BrandedType] Invalid base58 address format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid base58 address format: ${input}`)
   }
   return input as AddressBase58
 }
 
 export const asPaymentAddress = (input: string): PaymentAddress => {
   if (!input || typeof input !== 'string') {
-    warn(`[BrandedType] Invalid payment address: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid payment address: ${input}`)
   }
   return input as PaymentAddress
 }
 
 export const asStakingAddress = (input: string): StakingAddress => {
   if (!input || typeof input !== 'string') {
-    warn(`[BrandedType] Invalid staking address: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid staking address: ${input}`)
   }
   return input as StakingAddress
 }
@@ -134,7 +134,7 @@ export const stakingToAddress = (addr: StakingAddress): Address =>
 // Token validation
 export const asTokenId = (input: string): TokenId => {
   if (!input || typeof input !== 'string') {
-    warn(`[BrandedType] Invalid token ID: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid token ID: ${input}`)
   }
   return input as TokenId
 }
@@ -146,7 +146,7 @@ export const asPolicyId = (input: string): PolicyId => {
   // Empty string is valid for primary token (ADA/lovelace)
   // Otherwise, must be exactly 56 hex chars (28 bytes)
   if (input !== '' && (!isHex(input) || input.length !== 56)) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid policy ID format (expected empty string or 56 hex chars): ${input}`,
     )
   }
@@ -157,7 +157,7 @@ export const asAssetName = (input: string): AssetName => {
   // Empty string is valid for primary token (ADA/lovelace)
   // Otherwise, must be valid hex
   if (input !== '' && !isHex(input)) {
-    warn(`[BrandedType] Invalid asset name hex format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid asset name hex format: ${input}`)
   }
   return input as AssetName
 }
@@ -166,7 +166,7 @@ export const asTokenFingerprint = (input: string): TokenFingerprint => {
   // Token fingerprint is typically a bech32-encoded string (asset1...)
   // Basic validation - just check it's a non-empty string
   if (!input || typeof input !== 'string' || input.length === 0) {
-    warn(`[BrandedType] Invalid token fingerprint: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid token fingerprint: ${input}`)
   }
   return input as TokenFingerprint
 }
@@ -194,7 +194,7 @@ export const asAmountFormatted = (input: string): AmountFormatted => {
 
 export const asBalanceQuantity = (input: string): BalanceQuantity => {
   if (!input || typeof input !== 'string') {
-    warn(`[BrandedType] Invalid balance quantity: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid balance quantity: ${input}`)
   }
   return input as BalanceQuantity
 }
@@ -202,7 +202,7 @@ export const asBalanceQuantity = (input: string): BalanceQuantity => {
 // Transaction validation
 export const asTransactionHash = (input: string): TransactionHash => {
   if (!isHex(input) || input.length !== 64) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid transaction hash format (expected 64 hex chars): ${input}`,
     )
   }
@@ -227,21 +227,21 @@ export const asUtxoIdFromParts = (
 
 export const asBlockHash = (input: string): BlockHash => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid block hash format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid block hash format: ${input}`)
   }
   return input as BlockHash
 }
 
 export const asSlotNumber = (input: number): SlotNumber => {
   if (typeof input !== 'number' || input < 0 || !Number.isInteger(input)) {
-    warn(`[BrandedType] Invalid slot number: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid slot number: ${input}`)
   }
   return input as SlotNumber
 }
 
 export const asEpochNumber = (input: number): EpochNumber => {
   if (typeof input !== 'number' || input < 0 || !Number.isInteger(input)) {
-    warn(`[BrandedType] Invalid epoch number: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid epoch number: ${input}`)
   }
   return input as EpochNumber
 }
@@ -251,7 +251,7 @@ export const asPublicKeyHex = (input: string): PublicKeyHex => {
   // Accept both regular Ed25519 public keys (64 hex chars = 32 bytes)
   // and extended BIP32-Ed25519 public keys (128 hex chars = 64 bytes)
   if (!isHex(input) || (input.length !== 64 && input.length !== 128)) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid public key hex format (expected 64 or 128 hex chars): ${input}`,
     )
   }
@@ -260,14 +260,14 @@ export const asPublicKeyHex = (input: string): PublicKeyHex => {
 
 export const asPrivateKeyHex = (input: string): PrivateKeyHex => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid private key hex format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid private key hex format: ${input}`)
   }
   return input as PrivateKeyHex
 }
 
 export const asKeyHash = (input: string): KeyHash => {
   if (!isHex(input) || input.length !== 56) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid key hash format (expected 56 hex chars): ${input}`,
     )
   }
@@ -276,7 +276,7 @@ export const asKeyHash = (input: string): KeyHash => {
 
 export const asSignatureHex = (input: string): SignatureHex => {
   if (!isHex(input) || input.length !== 128) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid signature hex format (expected 128 hex chars): ${input}`,
     )
   }
@@ -286,14 +286,14 @@ export const asSignatureHex = (input: string): SignatureHex => {
 // Hash validation
 export const asBlake2bHash = (input: string): Blake2bHash => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid Blake2b hash format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid Blake2b hash format: ${input}`)
   }
   return input as Blake2bHash
 }
 
 export const asSha256Hash = (input: string): Sha256Hash => {
   if (!isHex(input) || input.length !== 64) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid SHA-256 hash format (expected 64 hex chars): ${input}`,
     )
   }
@@ -302,14 +302,14 @@ export const asSha256Hash = (input: string): Sha256Hash => {
 
 export const asDatumHash = (input: string): DatumHash => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid datum hash format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid datum hash format: ${input}`)
   }
   return input as DatumHash
 }
 
 export const asScriptHash = (input: string): ScriptHash => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid script hash format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid script hash format: ${input}`)
   }
   return input as ScriptHash
 }
@@ -317,28 +317,28 @@ export const asScriptHash = (input: string): ScriptHash => {
 // CBOR validation
 export const asCborHex = (input: string): CborHex => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid CBOR hex format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid CBOR hex format: ${input}`)
   }
   return input as CborHex
 }
 
 export const asMetadataCbor = (input: string): MetadataCbor => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid metadata CBOR format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid metadata CBOR format: ${input}`)
   }
   return input as MetadataCbor
 }
 
 export const asScriptCbor = (input: string): ScriptCbor => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid script CBOR format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid script CBOR format: ${input}`)
   }
   return input as ScriptCbor
 }
 
 export const asDatumCbor = (input: string): DatumCbor => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid datum CBOR format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid datum CBOR format: ${input}`)
   }
   return input as DatumCbor
 }
@@ -361,7 +361,7 @@ const isBase64 = (str: string): boolean => {
  */
 export const asTransactionCborHex = (input: string): TransactionCborHex => {
   if (!isHex(input)) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid transaction CBOR hex format: ${input.substring(0, 100)}...`,
     )
   }
@@ -375,7 +375,7 @@ export const asTransactionCborBase64 = (
   input: string,
 ): TransactionCborBase64 => {
   if (!isBase64(input)) {
-    warn(
+    getLogger().warn(
       `[BrandedType] Invalid transaction CBOR base64 format: ${input.substring(0, 100)}...`,
     )
   }
@@ -393,14 +393,14 @@ export const asTransactionCbor = (input: string): TransactionCbor => {
 // Governance validation
 export const asDRepId = (input: string): DRepId => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid DRep ID format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid DRep ID format: ${input}`)
   }
   return input as DRepId
 }
 
 export const asGovernanceActionId = (input: string): GovernanceActionId => {
   if (!input || typeof input !== 'string') {
-    warn(`[BrandedType] Invalid governance action ID: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid governance action ID: ${input}`)
   }
   return input as GovernanceActionId
 }
@@ -410,14 +410,14 @@ export const asAnchorUrl = (input: string): AnchorUrl => {
     // eslint-disable-next-line no-new
     new URL(input)
   } catch {
-    warn(`[BrandedType] Invalid anchor URL format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid anchor URL format: ${input}`)
   }
   return input as AnchorUrl
 }
 
 export const asAnchorHash = (input: string): AnchorHash => {
   if (!isHex(input)) {
-    warn(`[BrandedType] Invalid anchor hash format: ${input}`)
+    getLogger().warn(`[BrandedType] Invalid anchor hash format: ${input}`)
   }
   return input as AnchorHash
 }

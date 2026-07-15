@@ -5,12 +5,22 @@ on:
     branches: [main, develop]
     paths:
       - ".github/workflows/types-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/types/**"
       - "scripts/packages/types/**"
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/workflows/types-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/types/**"
       - "scripts/packages/types/**"
 
 permissions:
@@ -44,6 +54,6 @@ jobs:
         shell: bash
 
       - name: Pack types
-        run: npm pack --dry-run
+        run: npm pack --dry-run --ignore-scripts
         working-directory: scripts/packages/types
         shell: bash
