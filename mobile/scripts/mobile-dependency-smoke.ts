@@ -20,6 +20,17 @@ const smokeTests = [
 
 const additionalSmokeInputs = ['packages/cardano-wallet/mocks/mocks/wallet.ts']
 
+const pinnedDependencySmokeInputs = [
+  '@cardano-foundation/ledgerjs-hw-app-cardano',
+  '@emurgo/cross-csl-core',
+  '@emurgo/cross-csl-mobile',
+  '@emurgo/cross-csl-nodejs',
+  '@ledgerhq/hw-transport-web-ble',
+  '@ledgerhq/hw-transport-webhid',
+  '@ledgerhq/react-native-hid',
+  '@ledgerhq/react-native-hw-transport-ble',
+]
+
 const urlPattern = /https?:\/\/[^'"`\s)]+/gi
 const forbiddenHostPattern = /(?:yoroiwallet|emurgo)/i
 
@@ -60,6 +71,71 @@ function validateSmokeInputs() {
 
   if (failures.length > 0) {
     console.error('Mobile dependency smoke preflight failed:')
+    for (const failure of failures) console.error(`- ${failure}`)
+    process.exit(1)
+  }
+}
+
+function readJsonFile(filePath: string) {
+  return JSON.parse(fs.readFileSync(path.join(mobileRoot, filePath), 'utf8'))
+}
+
+function getPackageVersion(
+  packageJson: Record<string, unknown>,
+  dependencyName: string,
+) {
+  const dependencyGroups = [
+    packageJson.dependencies,
+    packageJson.devDependencies,
+  ] as Array<Record<string, string> | undefined>
+
+  for (const dependencies of dependencyGroups) {
+    const version = dependencies?.[dependencyName]
+    if (version) return version
+  }
+
+  return undefined
+}
+
+function validatePinnedDependencyLock() {
+  const packageJson = readJsonFile('package.json')
+  const packageLock = readJsonFile('package-lock.json')
+  const rootLockPackage = packageLock.packages?.[''] ?? {}
+  const rootLockDependencyGroups = [
+    rootLockPackage.dependencies,
+    rootLockPackage.devDependencies,
+  ] as Array<Record<string, string> | undefined>
+  const failures: Array<string> = []
+
+  for (const dependencyName of pinnedDependencySmokeInputs) {
+    const packageJsonVersion = getPackageVersion(packageJson, dependencyName)
+
+    if (!packageJsonVersion) {
+      failures.push(`${dependencyName} is missing from package.json`)
+      continue
+    }
+
+    const lockRootVersion = rootLockDependencyGroups
+      .map((dependencies) => dependencies?.[dependencyName])
+      .find(Boolean)
+    const resolvedVersion =
+      packageLock.packages?.[`node_modules/${dependencyName}`]?.version
+
+    if (lockRootVersion !== packageJsonVersion) {
+      failures.push(
+        `${dependencyName} package-lock root version ${lockRootVersion ?? '<missing>'} does not match package.json ${packageJsonVersion}`,
+      )
+    }
+
+    if (resolvedVersion !== packageJsonVersion) {
+      failures.push(
+        `${dependencyName} package-lock resolved version ${resolvedVersion ?? '<missing>'} does not match package.json ${packageJsonVersion}`,
+      )
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error('Mobile dependency lock preflight failed:')
     for (const failure of failures) console.error(`- ${failure}`)
     process.exit(1)
   }
@@ -108,4 +184,5 @@ function runJestSmokeTests() {
 }
 
 validateSmokeInputs()
+validatePinnedDependencyLock()
 runJestSmokeTests()
