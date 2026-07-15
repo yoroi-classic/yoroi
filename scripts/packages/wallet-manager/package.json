@@ -11,7 +11,7 @@
     "react-native",
     "typescript"
   ],
-  "homepage": "https://github.com/yoroi-classic/yoroi/tree/develop/mobile/packages/wallet-manager",
+  "homepage": "https://github.com/yoroi-classic/yoroi/tree/develop/scripts/packages/wallet-manager",
   "bugs": {
     "url": "https://github.com/yoroi-classic/yoroi/issues"
   },
@@ -21,7 +21,7 @@
     "directory": "scripts/packages/wallet-manager"
   },
   "license": "Apache-2.0",
-  "author": "Yoroi Classic Contributors",
+  "author": "Yoroi Classic contributors (https://github.com/yoroi-classic)",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
   "source": "index",
@@ -47,10 +47,6 @@
     "flow": ". ./scripts/flowgen.sh",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "prepack": "npm run build:release",
-    "prepublish:beta": "npm run build:release",
-    "publish:beta": "npm publish --scope yoroi --tag beta --access beta",
-    "prepublish:prod": "npm run build:release",
-    "publish:prod": "npm publish --scope yoroi --access public",
     "release": "release-it",
     "test": "jest --maxWorkers=1 --passWithNoTests",
     "test:watch": "jest --watch --debug --maxWorkers=1",
@@ -79,7 +75,6 @@
     "@yoroi/types": "file:../types",
     "@yoroi/cardano-wallet": "file:../cardano-wallet",
     "@yoroi/common": "file:../common",
-    "@yoroi/cardano-wallet": "file:../cardano-wallet",
     "@yoroi/logger": "file:../logger",
     "@yoroi/blockchains": "file:../blockchains",
     "@yoroi/identicon": "file:../identicon",
