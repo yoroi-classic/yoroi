@@ -1,0 +1,56 @@
+name: wallet-manager-checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/wallet-manager-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/wallet-manager/**"
+      - "scripts/packages/wallet-manager/**"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/wallet-manager-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/wallet-manager/**"
+      - "scripts/packages/wallet-manager/**"
+
+permissions:
+  contents: read
+
+jobs:
+  wallet-manager:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: "npm"
+          cache-dependency-path: |
+            mobile/package-lock.json
+            scripts/packages/wallet-manager/package-lock.json
+
+      - name: Validate wallet-manager package lock
+        run: npm ci --legacy-peer-deps
+        working-directory: scripts/packages/wallet-manager
+        shell: bash
+
+      - name: Install mobile dependencies
+        run: npm ci
+        working-directory: mobile
+        shell: bash
+
+      - name: Test wallet-manager
+        run: npx jest --config jest.config.js packages/wallet-manager --runInBand --coverage=false
+        working-directory: mobile
+        shell: bash

@@ -11,17 +11,17 @@
     "react-native",
     "typescript"
   ],
-  "homepage": "https://github.com/Emurgo/yoroi/tree/develop/packages/wallet-manager/README.md",
+  "homepage": "https://github.com/yoroi-classic/yoroi/tree/develop/mobile/packages/wallet-manager",
   "bugs": {
-    "url": "https://github.com/Emurgo/yoroi/issues"
+    "url": "https://github.com/yoroi-classic/yoroi/issues"
   },
   "repository": {
-    "type": "github",
-    "url": "https://github.com/Emurgo/yoroi.git",
-    "directory": "packages/wallet-manager"
+    "type": "git",
+    "url": "https://github.com/yoroi-classic/yoroi.git",
+    "directory": "scripts/packages/wallet-manager"
   },
   "license": "Apache-2.0",
-  "author": "EMURGO Fintech <support@emurgo.com> (https://github.com/Emurgo/yoroi)",
+  "author": "Yoroi Classic Contributors",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
   "source": "index",
