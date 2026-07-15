@@ -16,8 +16,10 @@ Mobile still has active Yoroi/Emurgo-hosted defaults in several places:
   `https://yoroi-backend-zero-preview.emurgornd.com`.
 - `mobile/packages/staking/governance/config.ts` points DRep and stake-key state reads directly at
   `zero.yoroiwallet.com` and `emurgornd.com`.
-- `mobile/src/common/hooks/useRemoteConfig.ts` and `mobile/src/features/Discover/common/helpers.ts`
-  fetch Emurgo's `yoroi-config` repository from `raw.githubusercontent.com`.
+- `mobile/src/common/hooks/useRemoteConfig.ts` fetches Emurgo's `yoroi-config` repository from
+  `raw.githubusercontent.com`.
+- `mobile/src/features/Discover/common/helpers.ts` constructs DApp logo URLs under Emurgo's
+  `yoroi-config` repository; the later image request performs the fetch.
 - `mobile/src/features/Portfolio/common/hooks/usePortfolioImage.ts` and
   `mobile/packages/portfolio/adapters/dullahan-api/api-maker.ts` use
   `*.processed-media.yoroiwallet.com` for token/NFT media and invalidation.
