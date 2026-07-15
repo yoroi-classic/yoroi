@@ -42,7 +42,7 @@
   ],
   "dependencies": {
     "@emurgo/cross-csl-core": "8.0.0-alpha.1",
-    "axios": "1.10.0",
+    "axios": "1.18.1",
     "bignumber.js": "9.3.0",
     "react-intl": "7.1.11",
     "rxjs": "7.8.2"
