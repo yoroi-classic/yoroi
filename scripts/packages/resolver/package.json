@@ -16,17 +16,17 @@
     "unstoppable-domains",
     "domain"
   ],
-  "homepage": "https://github.com/Emurgo/yoroi/tree/develop/packages/resolver/README.md",
+  "homepage": "https://github.com/yoroi-classic/yoroi/tree/develop/scripts/packages/resolver",
   "bugs": {
-    "url": "https://github.com/Emurgo/yoroi/issues"
+    "url": "https://github.com/yoroi-classic/yoroi/issues"
   },
   "repository": {
-    "type": "github",
-    "url": "https://github.com/Emurgo/yoroi.git",
-    "directory": "packages/resolver"
+    "type": "git",
+    "url": "https://github.com/yoroi-classic/yoroi.git",
+    "directory": "scripts/packages/resolver"
   },
   "license": "Apache-2.0",
-  "author": "EMURGO Fintech <support@emurgo.com> (https://github.com/Emurgo/yoroi)",
+  "author": "Yoroi Classic contributors (https://github.com/yoroi-classic)",
   "contributors": [
     {
       "name": "Juliano Lazzarotto",
@@ -66,10 +66,6 @@
     "flow": ". ./scripts/flowgen.sh",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "prepack": "npm run build:release",
-    "prepublish:beta": "npm run build:release",
-    "publish:beta": "npm publish --scope yoroi --tag beta --access beta",
-    "prepublish:prod": "npm run build:release",
-    "publish:prod": "npm publish --scope yoroi --access public",
     "release": "release-it",
     "test": "jest --maxWorkers=1 --passWithNoTests",
     "test:watch": "jest --watch --maxWorkers=1",
