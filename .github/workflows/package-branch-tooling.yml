@@ -1,0 +1,37 @@
+name: package-branch-tooling
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/package-branch-tooling.yml"
+      - "scripts/prepare-package-branch.js"
+      - "scripts/prepare-package-branch.test.js"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/package-branch-tooling.yml"
+      - "scripts/prepare-package-branch.js"
+      - "scripts/prepare-package-branch.test.js"
+
+permissions:
+  contents: read
+
+jobs:
+  package-branch-tooling:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+
+      - name: Test package branch tooling
+        run: node --test scripts/prepare-package-branch.test.js
+        shell: bash
+
+      - name: Verify help output
+        run: node scripts/prepare-package-branch.js --help
+        shell: bash
