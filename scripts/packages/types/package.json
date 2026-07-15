@@ -40,6 +40,13 @@
     "!**/__mocks__",
     "!**/.*"
   ],
+  "dependencies": {
+    "@emurgo/cross-csl-core": "8.0.0-alpha.1",
+    "axios": "1.10.0",
+    "bignumber.js": "9.3.0",
+    "react-intl": "7.1.11",
+    "rxjs": "7.8.2"
+  },
   "scripts": {
     "build": "npm run tsc && npm run lint && npm run test --ci --silent && npm run clean && bob build",
     "build:dev": "npm run tsc && npm run clean && bob build",
@@ -88,27 +95,10 @@
     "react-native-builder-bob": "0.40.11",
     "react-test-renderer": "19.0.0",
     "release-it": "19.0.2",
-    "typescript": "5.8.3",
-    "@yoroi/logger": "file:../logger",
-    "@yoroi/cardano-wallet": "file:../cardano-wallet",
-    "@yoroi/staking": "file:../staking",
-    "@yoroi/tx": "file:../tx"
-  },
-  "peerDependencies": {
-    "axios": "1.10.0",
-    "bignumber.js": "9.3.0",
-    "immer": "10.1.1",
-    "rxjs": "7.8.2",
-    "zod": "3.25.17",
-    "@react-native-async-storage/async-storage": "2.1.2",
-    "@tanstack/react-query": "5.81.5",
-    "react-native-mmkv": "3.2.0"
+    "typescript": "5.8.3"
   },
   "packageManager": "npm@10.9.0",
   "engines": {
     "node": ">= 22.12.0"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
   }
 }
