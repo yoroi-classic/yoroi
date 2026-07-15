@@ -34,6 +34,10 @@ The script runs:
 - `npm pack --ignore-scripts`
 - extraction of the packed package into the output directory
 
+If the output directory already exists and is not empty, the script fails without
+changing it. Pass `--force` only when you intentionally want to replace an
+existing generated branch directory.
+
 The generated `package.json` strips npm git-dependency build triggers such as
 `build`, `prepare`, and `prepack`, plus npmjs publish aliases. That keeps
 consumers from rebuilding the package every time they install the Git branch.
@@ -44,7 +48,8 @@ For local script validation with a package that is already built, use:
 node scripts/prepare-package-branch.js logger \
   --out-dir /tmp/yoroi-logger-branch \
   --skip-install \
-  --skip-build
+  --skip-build \
+  --force
 ```
 
 ## Publish the Branch

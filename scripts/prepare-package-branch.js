@@ -28,6 +28,7 @@ Options:
   --skip-install        Do not run npm ci --legacy-peer-deps in the package root
   --skip-build          Do not run npm run build:release in the package root
   --keep-tarball        Keep the intermediate npm pack tarball
+  --force               Replace a non-empty output directory
   -h, --help            Show this help
 `;
 }
@@ -41,6 +42,7 @@ function parseArgs(argv) {
     skipInstall: false,
     skipBuild: false,
     keepTarball: false,
+    force: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -59,6 +61,8 @@ function parseArgs(argv) {
       args.skipBuild = true;
     } else if (arg === "--keep-tarball") {
       args.keepTarball = true;
+    } else if (arg === "--force") {
+      args.force = true;
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown option: ${arg}`);
     } else if (!args.packageName) {
@@ -101,7 +105,38 @@ function packagePathFromArgs(args, repoRoot) {
   return path.join(repoRoot, "scripts", "packages", args.packageName);
 }
 
-function cleanOutputDirectory(outDir) {
+function assertOutputDirectoryReady(outDir, { force = false } = {}) {
+  if (!fs.existsSync(outDir)) {
+    return;
+  }
+
+  const stat = fs.lstatSync(outDir);
+  if (!stat.isDirectory()) {
+    throw new Error(`Output path exists and is not a directory: ${outDir}`);
+  }
+
+  const entries = fs.readdirSync(outDir);
+  if (entries.length === 0) return;
+
+  if (!force) {
+    throw new Error(
+      `Output directory exists and is not empty: ${outDir}. Re-run with --force to replace it.`,
+    );
+  }
+}
+
+function prepareOutputDirectory(outDir, { force = false } = {}) {
+  assertOutputDirectoryReady(outDir, { force });
+
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+    return;
+  }
+
+  const entries = fs.readdirSync(outDir);
+  if (entries.length === 0) return;
+
+  console.warn(`Replacing non-empty output directory: ${outDir}`);
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
 }
@@ -176,6 +211,7 @@ function preparePackageBranch(argv, env = process.env) {
   const outDir = path.resolve(repoRoot, args.outDir);
   const branch = args.branch || defaultBranchName(packageJson);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "yoroi-package-branch-"));
+  assertOutputDirectoryReady(outDir, { force: args.force });
 
   try {
     if (!args.skipInstall) {
@@ -195,7 +231,7 @@ function preparePackageBranch(argv, env = process.env) {
       throw new Error(`Expected one npm pack tarball, found ${tarballs.length}`);
     }
 
-    cleanOutputDirectory(outDir);
+    prepareOutputDirectory(outDir, { force: args.force });
     const tarball = path.join(tempDir, tarballs[0]);
     run("tar", ["-xzf", tarball, "--strip-components=1", "-C", outDir], { env });
 
@@ -230,7 +266,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertOutputDirectoryReady,
   defaultBranchName,
+  prepareOutputDirectory,
   preparePackageBranch,
   sanitizePackageJson,
 };

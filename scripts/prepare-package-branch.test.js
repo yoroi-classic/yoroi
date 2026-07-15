@@ -14,6 +14,32 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function createFixturePackage(tempRoot) {
+  const packageRoot = path.join(tempRoot, "fixture");
+
+  fs.mkdirSync(path.join(packageRoot, "lib"), { recursive: true });
+  fs.writeFileSync(path.join(packageRoot, "README.md"), "# Fixture\n");
+  fs.writeFileSync(path.join(packageRoot, "lib", "index.js"), "module.exports = {}\n");
+  fs.writeFileSync(path.join(packageRoot, "lib", "index.mjs"), "export default {}\n");
+  fs.writeFileSync(path.join(packageRoot, "lib", "index.d.ts"), "export default {}\n");
+  writeJson(path.join(packageRoot, "package.json"), {
+    name: "@yoroi/fixture",
+    version: "0.0.0",
+    main: "lib/index.js",
+    module: "lib/index.mjs",
+    types: "lib/index.d.ts",
+    files: ["lib", "README.md"],
+    scripts: {
+      build: "echo build",
+      prepack: "echo prepack",
+      "publish:prod": "npm publish",
+      test: "node --test",
+    },
+  });
+
+  return packageRoot;
+}
+
 test("defaultBranchName builds a stable package branch name", () => {
   assert.strictEqual(defaultBranchName({ name: "@yoroi/common" }), "pkg/yoroi-common");
 });
@@ -39,28 +65,8 @@ test("sanitizePackageJson strips git dependency build and publish scripts", () =
 
 test("preparePackageBranch packs a prebuilt package and validates entrypoints", () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "yoroi-package-branch-test-"));
-  const packageRoot = path.join(tempRoot, "fixture");
+  const packageRoot = createFixturePackage(tempRoot);
   const outDir = path.join(tempRoot, "out");
-
-  fs.mkdirSync(path.join(packageRoot, "lib"), { recursive: true });
-  fs.writeFileSync(path.join(packageRoot, "README.md"), "# Fixture\n");
-  fs.writeFileSync(path.join(packageRoot, "lib", "index.js"), "module.exports = {}\n");
-  fs.writeFileSync(path.join(packageRoot, "lib", "index.mjs"), "export default {}\n");
-  fs.writeFileSync(path.join(packageRoot, "lib", "index.d.ts"), "export default {}\n");
-  writeJson(path.join(packageRoot, "package.json"), {
-    name: "@yoroi/fixture",
-    version: "0.0.0",
-    main: "lib/index.js",
-    module: "lib/index.mjs",
-    types: "lib/index.d.ts",
-    files: ["lib", "README.md"],
-    scripts: {
-      build: "echo build",
-      prepack: "echo prepack",
-      "publish:prod": "npm publish",
-      test: "node --test",
-    },
-  });
 
   try {
     preparePackageBranch([
@@ -85,6 +91,62 @@ test("preparePackageBranch packs a prebuilt package and validates entrypoints", 
     assert.ok(fs.existsSync(path.join(outDir, "lib", "index.js")));
     assert.ok(fs.existsSync(path.join(outDir, "lib", "index.mjs")));
     assert.ok(fs.existsSync(path.join(outDir, "lib", "index.d.ts")));
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("preparePackageBranch refuses to replace a non-empty output directory without force", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "yoroi-package-branch-test-"));
+  const packageRoot = createFixturePackage(tempRoot);
+  const outDir = path.join(tempRoot, "out");
+  const canary = path.join(outDir, "canary.txt");
+
+  fs.mkdirSync(outDir);
+  fs.writeFileSync(canary, "keep me\n");
+
+  try {
+    assert.throws(
+      () =>
+        preparePackageBranch([
+          "--package-dir",
+          packageRoot,
+          "--out-dir",
+          outDir,
+          "--skip-install",
+          "--skip-build",
+        ]),
+      /Output directory exists and is not empty/,
+    );
+    assert.strictEqual(fs.readFileSync(canary, "utf8"), "keep me\n");
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("preparePackageBranch replaces a non-empty output directory with force", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "yoroi-package-branch-test-"));
+  const packageRoot = createFixturePackage(tempRoot);
+  const outDir = path.join(tempRoot, "out");
+  const canary = path.join(outDir, "canary.txt");
+
+  fs.mkdirSync(outDir);
+  fs.writeFileSync(canary, "replace me\n");
+
+  try {
+    preparePackageBranch([
+      "--package-dir",
+      packageRoot,
+      "--out-dir",
+      outDir,
+      "--skip-install",
+      "--skip-build",
+      "--force",
+    ]);
+
+    assert.ok(!fs.existsSync(canary));
+    assert.ok(fs.existsSync(path.join(outDir, "package.json")));
+    assert.ok(fs.existsSync(path.join(outDir, "lib", "index.js")));
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
