@@ -1,6 +1,7 @@
 {
   "name": "@yoroi/common",
   "version": "7.0.0-beta",
+  "private": true,
   "description": "The Common package of Yoroi SDK",
   "keywords": [
     "yoroi",
@@ -47,6 +48,9 @@
     "!**/__mocks__",
     "!**/.*"
   ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "scripts": {
     "build": "npm run tsc && npm run lint && npm run test --ci --silent && npm run clean && bob build",
     "build:dev": "npm run tsc && npm run clean && bob build",
