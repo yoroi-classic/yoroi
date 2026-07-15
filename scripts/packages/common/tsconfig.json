@@ -7,9 +7,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react",
-    "lib": [
-      "esnext"
-    ],
+    "lib": ["esnext"],
     "module": "esnext",
     "moduleResolution": "node",
     "noFallthroughCasesInSwitch": true,
@@ -24,9 +22,32 @@
     "strict": true,
     "target": "esnext",
     "paths": {
+      "@babel/runtime/*": ["./node_modules/@babel/runtime/*"],
+      "@react-native-async-storage/async-storage": [
+        "./node_modules/@react-native-async-storage/async-storage"
+      ],
       "@tanstack/react-query": ["./node_modules/@tanstack/react-query"],
       "@tanstack/query-core": ["./node_modules/@tanstack/query-core"],
-      "src/*": ["./src/*"]
+      "@testing-library/react": ["./node_modules/@testing-library/react"],
+      "@testing-library/react-native": [
+        "./node_modules/@testing-library/react-native"
+      ],
+      "@yoroi/logger": ["../logger/src"],
+      "@yoroi/types": ["../types/src"],
+      "axios": ["./node_modules/axios"],
+      "bech32": ["./node_modules/bech32"],
+      "bignumber.js": ["./node_modules/bignumber.js"],
+      "immer": ["./node_modules/immer"],
+      "react": ["./node_modules/react"],
+      "react-dom": ["./node_modules/react-dom"],
+      "react-error-boundary": ["./node_modules/react-error-boundary"],
+      "react-intl": ["./node_modules/react-intl"],
+      "react-native": ["./node_modules/react-native"],
+      "react-native-mmkv": ["./node_modules/react-native-mmkv"],
+      "rxjs": ["./node_modules/rxjs"],
+      "rxjs/*": ["./node_modules/rxjs/*"],
+      "src/*": ["./src/*"],
+      "zod": ["./node_modules/zod"]
     }
-  },
+  }
 }
