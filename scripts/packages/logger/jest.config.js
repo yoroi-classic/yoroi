@@ -1,10 +1,6 @@
 module.exports = {
-  preset: 'react-native',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-native-async-storage/async-storage|@testing-library/react-native|@tanstack/react-query)/)',
-  ],
-  setupFiles: ['<rootDir>/jest.setup.js'],
+  roots: ['<rootDir>/../../../mobile/packages/logger'],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.[jt]sx?$',
   collectCoverage: true,
   collectCoverageFrom: [
@@ -28,6 +24,5 @@ module.exports = {
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
-  testEnvironment: 'jsdom',
+  testEnvironment: 'node',
 }
-

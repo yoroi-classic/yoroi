@@ -1,0 +1,51 @@
+name: logger-checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/logger-checks.yml"
+      - "mobile/packages/logger/**"
+      - "scripts/packages/logger/**"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/logger-checks.yml"
+      - "mobile/packages/logger/**"
+      - "scripts/packages/logger/**"
+
+permissions:
+  contents: read
+
+jobs:
+  logger:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: "npm"
+          cache-dependency-path: scripts/packages/logger/package-lock.json
+
+      - name: Install logger dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: scripts/packages/logger
+        shell: bash
+
+      - name: Test logger
+        run: npm test -- --ci --silent
+        working-directory: scripts/packages/logger
+        shell: bash
+
+      - name: Build logger package
+        run: npm run build:release
+        working-directory: scripts/packages/logger
+        shell: bash
+
+      - name: Pack logger package
+        run: npm pack --dry-run --ignore-scripts
+        working-directory: scripts/packages/logger
+        shell: bash
