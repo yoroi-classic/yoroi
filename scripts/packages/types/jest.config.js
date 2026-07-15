@@ -20,9 +20,6 @@ module.exports = {
     'node_modules',
     '<rootDir>/scripts/packages/types/node_modules',
   ],
-  moduleNameMapper: {
-    '^@yoroi/logger$': '<rootDir>/scripts/packages/logger/src',
-  },
   modulePathIgnorePatterns: [
     '<rootDir>/scripts/packages/types/example/node_modules',
     '<rootDir>/scripts/packages/types/lib/',

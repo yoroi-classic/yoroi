@@ -43,6 +43,7 @@
   ],
   "dependencies": {
     "@emurgo/cross-csl-core": "8.0.0-alpha.1",
+    "@yoroi/logger": "file:../logger",
     "axios": "1.18.1",
     "bignumber.js": "9.3.0",
     "react-intl": "7.1.11",
@@ -96,8 +97,7 @@
     "react-native-builder-bob": "0.40.11",
     "react-test-renderer": "19.0.0",
     "release-it": "19.0.2",
-    "typescript": "5.8.3",
-    "@yoroi/logger": "file:../logger"
+    "typescript": "5.8.3"
   },
   "packageManager": "npm@10.9.0",
   "engines": {

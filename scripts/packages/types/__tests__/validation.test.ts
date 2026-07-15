@@ -1,8 +1,12 @@
 const mockWarn = jest.fn()
 
-jest.mock('@yoroi/logger', () => ({
-  getLogger: () => ({warn: mockWarn}),
-}))
+jest.mock(
+  '@yoroi/logger',
+  () => ({
+    getLogger: () => ({warn: mockWarn}),
+  }),
+  {virtual: true},
+)
 
 import {
   addressToBase58,
