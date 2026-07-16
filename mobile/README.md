@@ -408,7 +408,45 @@ EXPO_PUBLIC_USE_TESTNET=true|false
 
 # API keys
 EXPO_PUBLIC_UNSTOPPABLE_API_KEY=your_api_key
+
+# Optional cardano-wallet-backend /v1 URL
+EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL=http://device-reachable-host:port
 ```
+
+### Local cardano-wallet-backend Smoke
+
+The backend URL is opt-in and has no production default. It must be reachable from the target
+Android runtime:
+
+- Android emulator to a host port-forward: use `http://10.0.2.2:<port>`.
+- Physical device: use a LAN or ingress address reachable by the device.
+- Do not use `localhost` or `127.0.0.1`; those refer to the Android runtime itself.
+
+Run the backend contract smoke:
+
+```bash
+EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL=http://device-reachable-host:port \
+  npm run test:cardano-wallet-backend-smoke
+```
+
+If the host running the smoke uses a different URL from Android, such as a local port-forward,
+provide both:
+
+```bash
+EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL=http://10.0.2.2:3010 \
+CARDANO_WALLET_BACKEND_SMOKE_URL=http://127.0.0.1:3010 \
+  npm run test:cardano-wallet-backend-smoke
+```
+
+Build an Android JS bundle and assets with the same explicit configuration:
+
+```bash
+EXPO_PUBLIC_BUILD_VARIANT=DEV \
+EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL=http://device-reachable-host:port \
+  npm run android:export
+```
+
+The ignored build output is written to `dist/android-local-backend/`.
 
 ### App Configuration
 
