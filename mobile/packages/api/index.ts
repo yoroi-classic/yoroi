@@ -90,6 +90,7 @@ export {cardanoWalletApiMaker} from './cardano/api-maker'
 export {
   CardanoWalletBackendV1Api,
   CardanoWalletBackendV1Config,
+  canUseCardanoWalletBackendV1FilterUsed,
   cardanoWalletBackendV1Maker,
 } from './cardano/adapters/cardano-wallet-backend/api-maker'
 export {CardanoBackend, ManagedCardanoApi, WalletContext} from './cardano/types'

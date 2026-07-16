@@ -1,5 +1,6 @@
 import {Fetcher, fetcher} from '@yoroi/common'
 
+import * as bech32 from 'bech32'
 import {freeze} from 'immer'
 import {z} from 'zod'
 
@@ -14,6 +15,34 @@ export type CardanoWalletBackendV1Api = {
 }
 
 const UsedAddressesSchema = z.array(z.string())
+const Bech32Limit = 1023
+const PaymentAddressPrefixes = new Set(['addr', 'addr_test'])
+const PaymentAddressMaxType = 7
+const MinAddresses = 1
+const MaxAddresses = 1000
+
+/**
+ * The backend route currently accepts Shelley payment addresses only. Callers
+ * can use this predicate when selecting an adapter so Byron batches remain on
+ * the legacy backend until cardano-wallet-backend#90 is implemented.
+ */
+export const canUseCardanoWalletBackendV1FilterUsed = (
+  addresses: Addresses,
+): boolean => {
+  if (addresses.length < MinAddresses || addresses.length > MaxAddresses) {
+    return false
+  }
+
+  return addresses.every((address) => {
+    const decoded = bech32.decodeUnsafe(address, Bech32Limit)
+    if (decoded == null || !PaymentAddressPrefixes.has(decoded.prefix)) {
+      return false
+    }
+
+    const header = bech32.fromWords(decoded.words)[0]
+    return header != null && Math.floor(header / 16) <= PaymentAddressMaxType
+  })
+}
 
 export const cardanoWalletBackendV1Maker = ({
   config,
@@ -30,8 +59,13 @@ export const cardanoWalletBackendV1Maker = ({
 
   return freeze({
     async filterUsedAddresses(addresses: Addresses): Promise<Addresses> {
-      if (addresses.length < 1 || addresses.length > 1000) {
+      if (addresses.length < MinAddresses || addresses.length > MaxAddresses) {
         throw new Error('filter-used requires between 1 and 1000 addresses')
+      }
+      if (!canUseCardanoWalletBackendV1FilterUsed(addresses)) {
+        throw new Error(
+          'cardano-wallet-backend filter-used requires Shelley bech32 payment addresses (addr / addr_test); keep Byron addresses on the legacy backend',
+        )
       }
 
       const response = await request<unknown>({
