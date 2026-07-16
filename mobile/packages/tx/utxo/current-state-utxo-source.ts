@@ -67,16 +67,17 @@ const accountUtxoSchema = z.object({
 })
 
 const accountUtxosSchema = z.array(accountUtxoSchema)
-const KOIOS_UNPAGED_RESPONSE_LIMIT = 1000
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '')
 
 /**
  * Creates the Shelley current-state driver for cardano-wallet-backend.
  *
- * The endpoint returns the complete account UTxO set in one response; it has no
- * pagination cursor. Validation stays at this boundary so malformed upstream
- * data never reaches transaction construction.
+ * The API shape is one response with no client pagination cursor. Backend issue
+ * yoroi-classic/cardano-wallet-backend#98 must be deployed before this source is
+ * wired into wallet sync so that response is complete above Koios's row limit.
+ * Validation stays at this boundary so malformed data never reaches transaction
+ * construction.
  */
 export const createCardanoWalletBackendUtxoSource = (
   baseUrl: string,
@@ -99,18 +100,6 @@ export const createCardanoWalletBackendUtxoSource = (
           Accept: 'application/json',
         },
       })
-
-      // cardano-wallet-backend currently cannot expose Koios's HTTP 206/content-range metadata.
-      // Until yoroi-classic/cardano-wallet-backend#98 pages account_utxos, fail closed at the
-      // upstream row cap instead of silently treating a potentially truncated balance as complete.
-      if (
-        Array.isArray(response) &&
-        response.length >= KOIOS_UNPAGED_RESPONSE_LIMIT
-      ) {
-        throw new Error(
-          'cardano-wallet-backend account UTxO response may be truncated',
-        )
-      }
 
       const parsed = accountUtxosSchema.safeParse(response)
 
