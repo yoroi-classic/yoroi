@@ -1,17 +1,14 @@
 # @yoroi/common
 
-[![npm version](https://img.shields.io/npm/v/@yoroi/common.svg)](https://www.npmjs.com/package/@yoroi/common)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![codecov](https://codecov.io/gh/Emurgo/yoroi/branch/develop/graph/badge.svg?component=common)](https://codecov.io/gh/Emurgo/yoroi)
+[![codecov](https://codecov.io/gh/yoroi-classic/yoroi/branch/develop/graph/badge.svg?component=common)](https://codecov.io/gh/yoroi-classic/yoroi)
 
 The Common package of Yoroi SDK - A collection of shared utilities and components used across the Yoroi ecosystem.
 
 ## 📦 Installation
 
 ```bash
-npm install @yoroi/common
-# or
-yarn add @yoroi/common
+npm ci --legacy-peer-deps
 ```
 
 ## 🔧 Requirements
@@ -52,8 +49,7 @@ function Counter() {
 
 ## 📚 Documentation
 
-For detailed documentation, please visit our [documentation site](https://github.com/Emurgo/yoroi/wiki).
-
+For detailed documentation, please visit our [documentation site](https://github.com/yoroi-classic/yoroi/wiki).
 
 ## 🧪 Testing
 
@@ -85,7 +81,7 @@ npm run build:release
 
 The package maintains a minimum code coverage threshold of 20% with a 1% threshold for status checks.
 
-[![Code Coverage](https://codecov.io/gh/Emurgo/yoroi/branch/develop/graphs/sunburst.svg?component=common)](https://codecov.io/gh/Emurgo/yoroi)
+[![Code Coverage](https://codecov.io/gh/yoroi-classic/yoroi/branch/develop/graphs/sunburst.svg?component=common)](https://codecov.io/gh/yoroi-classic/yoroi)
 
 ## 📈 Dependency Graph
 
@@ -95,13 +91,13 @@ Below is a visualization of the package's internal dependencies:
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](https://github.com/Emurgo/yoroi/blob/develop/CONTRIBUTING.md) for more details.
+We welcome contributions! Please see our [Contributing Guide](https://github.com/yoroi-classic/yoroi/blob/develop/CONTRIBUTING.md) for more details.
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/Emurgo/yoroi/blob/develop/LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/yoroi-classic/yoroi/blob/develop/LICENSE) file for details.
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/Emurgo/yoroi/tree/develop/packages/common)
-- [Issue Tracker](https://github.com/Emurgo/yoroi/issues)
+- [GitHub Repository](https://github.com/yoroi-classic/yoroi/tree/develop/scripts/packages/common)
+- [Issue Tracker](https://github.com/yoroi-classic/yoroi/issues)
