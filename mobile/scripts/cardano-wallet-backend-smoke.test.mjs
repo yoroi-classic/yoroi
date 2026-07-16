@@ -1,3 +1,4 @@
+/* global structuredClone */
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
@@ -7,7 +8,7 @@ const validTip = {
   block: 3_500_000,
   slot: 86_400_123,
   epoch: 199,
-  hash: 'aa11bb22',
+  hash: 'a'.repeat(64),
   blockTime: 1_700_000_000,
 }
 
@@ -39,6 +40,26 @@ test('rejects an Android loopback URL with routing guidance', () => {
   assert.throws(
     () => parseBackendUrl('http://127.0.0.1:3010'),
     /10\.0\.2\.2.*LAN\/ingress/,
+  )
+  assert.throws(
+    () => parseBackendUrl('http://[::1]:3010'),
+    /10\.0\.2\.2.*LAN\/ingress/,
+  )
+})
+
+test('rejects a malformed chain tip hash', async () => {
+  await assert.rejects(
+    smokeBackend({
+      deviceUrl: 'http://192.168.4.211:3010',
+      async request(url) {
+        if (url.endsWith('/health')) return response({status: 'ok'})
+        if (url.endsWith('/v1/chain/tip')) {
+          return response({...validTip, hash: 'not-a-hash'})
+        }
+        return response(validProtocolParams)
+      },
+    }),
+    /64-character hexadecimal string/,
   )
 })
 

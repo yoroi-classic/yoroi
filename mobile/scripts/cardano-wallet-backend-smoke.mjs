@@ -1,7 +1,7 @@
 const deviceUrlEnvironmentVariable = 'EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL'
 const smokeUrlEnvironmentVariable = 'CARDANO_WALLET_BACKEND_SMOKE_URL'
 
-const loopbackHostnames = new Set(['localhost', '127.0.0.1', '::1'])
+const loopbackHostnames = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
 export function parseBackendUrl(value, {allowLoopback = false} = {}) {
   if (!value) throw new Error('backend URL is required')
@@ -68,8 +68,8 @@ export async function smokeBackend({
       throw new Error(`chain tip field ${field} must be an integer`)
     }
   }
-  if (typeof tip.hash !== 'string' || tip.hash.length === 0) {
-    throw new Error('chain tip hash must be a non-empty string')
+  if (typeof tip.hash !== 'string' || !/^[0-9a-f]{64}$/i.test(tip.hash)) {
+    throw new Error('chain tip hash must be a 64-character hexadecimal string')
   }
 
   const protocolParams = await readJson(
@@ -131,7 +131,7 @@ async function main() {
   console.log(JSON.stringify(result, null, 2))
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.filename === process.argv[1]) {
   main().catch((error) => {
     console.error(
       error instanceof Error ? error.message : 'unknown backend smoke error',

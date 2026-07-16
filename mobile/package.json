@@ -41,6 +41,7 @@
     "test:mobile-deps-smoke": "tsc --pretty false --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node --rootDir scripts --outDir node_modules/.cache/mobile-dependency-smoke scripts/mobile-dependency-smoke.ts && node node_modules/.cache/mobile-dependency-smoke/mobile-dependency-smoke.js",
     "test:cardano-wallet-backend-smoke": "node scripts/cardano-wallet-backend-smoke.mjs",
     "test:cardano-wallet-backend-smoke:unit": "node --test scripts/cardano-wallet-backend-smoke.test.mjs",
+    "lint:cardano-wallet-backend-smoke": "eslint scripts/cardano-wallet-backend-smoke.mjs scripts/cardano-wallet-backend-smoke.test.mjs --parser-options '{\"ecmaVersion\":2024,\"sourceType\":\"module\"}'",
     "format": "prettier --write ."
   },
   "dependencies": {
