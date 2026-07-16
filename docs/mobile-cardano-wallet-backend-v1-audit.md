@@ -49,6 +49,7 @@ The current backend `/v1` contract uses different resource shapes:
 - `GET /v1/account/{stake}/utxos`
 - `GET /v1/account/{stake}/txs`
 - `GET /v1/account/{stake}/rewards`
+- `POST /v1/addresses/filter-used`
 - `POST /v1/tx/submit`
 - `GET /v1/tx/{hash}/status`
 - `POST /v1/tx/utxos`
@@ -81,6 +82,17 @@ There is no response adapter that can make a current-state endpoint answer "diff
 The mobile UTxO layer needs a rewrite to current-state reads plus a pending-transaction overlay
 before the wallet sync path can be switched away from the legacy backend.
 
+## Backend Coverage Already Available For Mobile Adapters
+
+Some mobile-owned Yoroi/Emurgo defaults need client adapter work, not new backend routes:
+
+- `mobile/packages/staking/governance/config.ts` DRep lookup can map to
+  `POST /v1/governance/dreps/info`.
+- The same governance config's stake-key voting state can map to
+  `GET /v1/account/{stake}/state`; the backend response includes `delegatedDrep`.
+- Backend-zero address discovery `filterUsedAddresses` can map to
+  `POST /v1/addresses/filter-used`.
+
 ## Backend/Product Decisions Still Blocking Full Cutover
 
 - Price endpoints are reserved in `/v1` but return 501 until a market-data provider is chosen.
@@ -99,8 +111,8 @@ before the wallet sync path can be switched away from the legacy backend.
    separate from `legacyApiBaseUrl` so development/test builds can target an owned deployment while
    legacy-only paths remain obvious.
 2. Add a new `/v1` adapter beside the existing legacy and backend-zero adapters. Start with
-   stateless reads that map cleanly: status/tip, protocol parameters, tx submit/status, pool info,
-   asset metadata, and remote config.
+   stateless reads that map cleanly: status/tip, protocol parameters, address discovery, governance
+   reads, tx submit/status, pool info, asset metadata, and remote config.
 3. Rewrite `mobile/packages/tx/utxo/` around `/v1/account/{stake}/utxos` and local pending
    transactions before switching wallet sync preferences.
 4. Feature-flag or remove price, Catalyst, CNS, and Emurgo-business surfaces before asserting that
