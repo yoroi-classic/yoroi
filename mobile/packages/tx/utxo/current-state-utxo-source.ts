@@ -67,6 +67,7 @@ const accountUtxoSchema = z.object({
 })
 
 const accountUtxosSchema = z.array(accountUtxoSchema)
+const KOIOS_UNPAGED_RESPONSE_LIMIT = 1000
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '')
 
@@ -98,6 +99,19 @@ export const createCardanoWalletBackendUtxoSource = (
           Accept: 'application/json',
         },
       })
+
+      // cardano-wallet-backend currently cannot expose Koios's HTTP 206/content-range metadata.
+      // Until yoroi-classic/cardano-wallet-backend#98 pages account_utxos, fail closed at the
+      // upstream row cap instead of silently treating a potentially truncated balance as complete.
+      if (
+        Array.isArray(response) &&
+        response.length >= KOIOS_UNPAGED_RESPONSE_LIMIT
+      ) {
+        throw new Error(
+          'cardano-wallet-backend account UTxO response may be truncated',
+        )
+      }
+
       const parsed = accountUtxosSchema.safeParse(response)
 
       if (!parsed.success) {

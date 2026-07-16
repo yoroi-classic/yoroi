@@ -72,7 +72,7 @@ describe('pending UTxO overlay', () => {
         .mockResolvedValueOnce([refreshed]),
     }
     const pendingStore = {
-      getPendingUtxoOverlays: jest.fn(async () => []),
+      getPendingUtxoOverlaysInSubmissionOrder: jest.fn(async () => []),
     }
     const service = createCurrentStateUtxoService(source, pendingStore)
     const stakeAddress = Branded.asStakingAddress('stake_test1account')
@@ -83,14 +83,40 @@ describe('pending UTxO overlay', () => {
     await expect(service.getAvailableUtxos(stakeAddress)).resolves.toEqual([
       refreshed,
     ])
-    expect(pendingStore.getPendingUtxoOverlays).toHaveBeenCalledTimes(2)
-    expect(pendingStore.getPendingUtxoOverlays).toHaveBeenNthCalledWith(
-      1,
-      stakeAddress,
-    )
-    expect(pendingStore.getPendingUtxoOverlays).toHaveBeenNthCalledWith(
-      2,
-      stakeAddress,
-    )
+    expect(
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder,
+    ).toHaveBeenCalledTimes(2)
+    expect(
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder,
+    ).toHaveBeenNthCalledWith(1, stakeAddress)
+    expect(
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder,
+    ).toHaveBeenNthCalledWith(2, stakeAddress)
+  })
+
+  it('applies the scoped pending overlay in the service read', async () => {
+    const confirmed = utxo('confirmed', 0)
+    const change = utxo('pending', 1)
+    const stakeAddress = Branded.asStakingAddress('stake_test1account')
+    const source = {
+      getAccountUtxos: jest.fn(async () => [confirmed]),
+    }
+    const pendingStore = {
+      getPendingUtxoOverlaysInSubmissionOrder: jest.fn(async () => [
+        {
+          txHash: Branded.asTransactionHash('pending'),
+          spentUtxoIds: [confirmed.utxoId],
+          createdUtxos: [change],
+        },
+      ]),
+    }
+    const service = createCurrentStateUtxoService(source, pendingStore)
+
+    await expect(service.getAvailableUtxos(stakeAddress)).resolves.toEqual([
+      change,
+    ])
+    expect(
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder,
+    ).toHaveBeenCalledWith(stakeAddress)
   })
 })

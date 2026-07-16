@@ -7,25 +7,27 @@ const TX_HASH = 'ab'.repeat(32)
 const POLICY_ID = 'cd'.repeat(28)
 const STAKE_ADDRESS = Branded.asStakingAddress('stake_test1account')
 
+const validAccountUtxo = () => ({
+  txHash: TX_HASH,
+  outputIndex: 2,
+  address: 'addr_test1receiver',
+  value: '9007199254740993000000',
+  assets: [
+    {
+      policyId: POLICY_ID,
+      assetName: '414243',
+      quantity: '9007199254740993000001',
+    },
+  ],
+  datumHash: 'de'.repeat(32),
+  inlineDatum: 'd87980',
+  referenceScriptHash: 'ca'.repeat(28),
+})
+
 describe('cardano-wallet-backend current-state UTxO source', () => {
   it('reads the complete account state and preserves integer quantities', async () => {
     const request = jest.fn(async () => [
-      {
-        txHash: TX_HASH,
-        outputIndex: 2,
-        address: 'addr_test1receiver',
-        value: '9007199254740993000000',
-        assets: [
-          {
-            policyId: POLICY_ID,
-            assetName: '414243',
-            quantity: '9007199254740993000001',
-          },
-        ],
-        datumHash: 'de'.repeat(32),
-        inlineDatum: 'd87980',
-        referenceScriptHash: 'ca'.repeat(28),
-      },
+      validAccountUtxo(),
     ]) as unknown as jest.MockedFunction<Fetcher>
     const source = createCardanoWalletBackendUtxoSource(
       'https://wallet.example/',
@@ -115,6 +117,65 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
 
     await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
       'Invalid cardano-wallet-backend account UTxO response',
+    )
+  })
+
+  it.each<
+    [
+      string,
+      (utxo: ReturnType<typeof validAccountUtxo>) => Record<string, unknown>,
+    ]
+  >([
+    ['transaction hash', (utxo) => ({...utxo, txHash: 'bad'})],
+    ['output index', (utxo) => ({...utxo, outputIndex: -1})],
+    ['address', (utxo) => ({...utxo, address: ''})],
+    [
+      'policy id',
+      (utxo) => ({
+        ...utxo,
+        assets: [{...utxo.assets[0], policyId: 'bad'}],
+      }),
+    ],
+    [
+      'asset name',
+      (utxo) => ({
+        ...utxo,
+        assets: [{...utxo.assets[0], assetName: 'abc'}],
+      }),
+    ],
+    ['lovelace quantity', (utxo) => ({...utxo, value: '01'})],
+    [
+      'asset quantity',
+      (utxo) => ({
+        ...utxo,
+        assets: [{...utxo.assets[0], quantity: '01'}],
+      }),
+    ],
+  ])('pins validation for malformed %s', async (_name, makeInvalid) => {
+    const request = jest.fn(async () => [
+      makeInvalid(validAccountUtxo()),
+    ]) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      request,
+    )
+
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+      'Invalid cardano-wallet-backend account UTxO response',
+    )
+  })
+
+  it('fails closed at the unpaged Koios response limit', async () => {
+    const request = jest.fn(async () =>
+      Array.from({length: 1000}, validAccountUtxo),
+    ) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      request,
+    )
+
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+      'cardano-wallet-backend account UTxO response may be truncated',
     )
   })
 

@@ -12,7 +12,7 @@ export type PendingUtxoOverlay = {
 }
 
 export type PendingUtxoOverlayStore = {
-  getPendingUtxoOverlays(
+  getPendingUtxoOverlaysInSubmissionOrder(
     stakeAddress: StakingAddress,
   ): Promise<ReadonlyArray<PendingUtxoOverlay>>
 }
@@ -54,7 +54,7 @@ export const createCurrentStateUtxoService = (
   ): Promise<ReadonlyArray<CurrentStateUtxo>> {
     const [authoritative, pending] = await Promise.all([
       source.getAccountUtxos(stakeAddress),
-      pendingStore.getPendingUtxoOverlays(stakeAddress),
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),
     ])
 
     return applyPendingUtxoOverlays(authoritative, pending)
