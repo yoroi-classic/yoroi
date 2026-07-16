@@ -50,6 +50,11 @@ jobs:
         working-directory: scripts/packages/dapp-connector
         shell: bash
 
+      - name: Verify mobile toolchain
+        run: npm run check:toolchain
+        working-directory: mobile
+        shell: bash
+
       - name: Install mobile dependencies
         run: npm ci
         working-directory: mobile
