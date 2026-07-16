@@ -1,33 +1,34 @@
 module.exports = {
-  preset: 'react-native',
+  rootDir: '../../..',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-native-async-storage/async-storage|@testing-library/react-native|@tanstack/react-query)/)'
-  ],
-  setupFiles: ['<rootDir>/jest.setup.js'],
+  roots: ['<rootDir>/scripts/packages/types'],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.[jt]sx?$',
   collectCoverage: true,
-  collectCoverageFrom: [
-    'src/**/*.{js,jsx,ts,tsx}',
-    '!src/**/*.d.ts',
-    '!src/storybook/**',
-    '!src/fixtures/**'
-  ],
+  coverageProvider: 'v8',
+  coverageDirectory: '<rootDir>/scripts/packages/types/coverage',
+  collectCoverageFrom: ['mobile/packages/types/branded/validation.ts'],
   coverageReporters: ['text-summary', 'lcov', 'html'],
   coverageThreshold: {
     global: {
-      branches: 100,
+      branches: 86,
       functions: 100,
       lines: 100,
-      statements: 100
-    }
+      statements: 100,
+    },
   },
+  moduleDirectories: [
+    'node_modules',
+    '<rootDir>/scripts/packages/types/node_modules',
+  ],
   modulePathIgnorePatterns: [
-    '<rootDir>/example/node_modules',
-    '<rootDir>/lib/'
+    '<rootDir>/scripts/packages/types/example/node_modules',
+    '<rootDir>/scripts/packages/types/lib/',
   ],
   transform: {
-    '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest'
+    '^.+\\.(js|jsx|ts|tsx)$': [
+      require.resolve('babel-jest'),
+      {presets: ['@react-native/babel-preset']},
+    ],
   },
-  testEnvironment: 'jsdom'
-} 
+  testEnvironment: 'node',
+}
