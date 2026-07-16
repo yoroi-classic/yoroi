@@ -88,8 +88,11 @@ Some mobile-owned Yoroi/Emurgo defaults need client adapter work, not new backen
 
 - `mobile/packages/staking/governance/config.ts` DRep lookup can map to
   `POST /v1/governance/dreps/info`.
-- The same governance config's stake-key voting state can map to
-  `GET /v1/account/{stake}/state`; the backend response includes `delegatedDrep`.
+- The same governance config's stake-key voting state needs an adapter that derives the bech32
+  stake address required by `GET /v1/account/{stake}/state` from the stake-key hash currently sent
+  by mobile. The response's `delegatedDrep` value also omits the `tx`, `epoch`, `slot`, and
+  delegation-kind metadata consumed by `governance/manager.ts`; preserving that behavior requires
+  backend enrichment or an explicit mobile contract change.
 - Backend-zero address discovery `filterUsedAddresses` can map to
   `POST /v1/addresses/filter-used`.
 
