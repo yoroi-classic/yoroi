@@ -83,5 +83,14 @@ describe('pending UTxO overlay', () => {
     await expect(service.getAvailableUtxos(stakeAddress)).resolves.toEqual([
       refreshed,
     ])
+    expect(pendingStore.getPendingUtxoOverlays).toHaveBeenCalledTimes(2)
+    expect(pendingStore.getPendingUtxoOverlays).toHaveBeenNthCalledWith(
+      1,
+      stakeAddress,
+    )
+    expect(pendingStore.getPendingUtxoOverlays).toHaveBeenNthCalledWith(
+      2,
+      stakeAddress,
+    )
   })
 })

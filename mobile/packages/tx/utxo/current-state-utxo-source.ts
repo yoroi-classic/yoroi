@@ -42,6 +42,9 @@ export type CurrentStateUtxoSource = {
 }
 
 const hex = z.string().regex(/^[0-9a-fA-F]*$/)
+const datumHash = z.string().regex(/^[0-9a-fA-F]{64}$/)
+const inlineDatum = hex.refine((value) => value.length % 2 === 0)
+const referenceScriptHash = z.string().regex(/^[0-9a-fA-F]{56}$/)
 const quantity = z.string().regex(/^(0|[1-9][0-9]*)$/)
 
 const accountUtxoSchema = z.object({
@@ -58,9 +61,9 @@ const accountUtxoSchema = z.object({
       quantity,
     }),
   ),
-  datumHash: hex.optional(),
-  inlineDatum: hex.optional(),
-  referenceScriptHash: hex.optional(),
+  datumHash: datumHash.optional(),
+  inlineDatum: inlineDatum.optional(),
+  referenceScriptHash: referenceScriptHash.optional(),
 })
 
 const accountUtxosSchema = z.array(accountUtxoSchema)

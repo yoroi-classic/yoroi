@@ -22,9 +22,9 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
             quantity: '9007199254740993000001',
           },
         ],
-        datumHash: 'deadbeef',
+        datumHash: 'de'.repeat(32),
         inlineDatum: 'd87980',
-        referenceScriptHash: 'cafe',
+        referenceScriptHash: 'ca'.repeat(28),
       },
     ]) as unknown as jest.MockedFunction<Fetcher>
     const source = createCardanoWalletBackendUtxoSource(
@@ -47,9 +47,9 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
             amount: '9007199254740993000001',
           },
         ],
-        datumHash: 'deadbeef',
+        datumHash: 'de'.repeat(32),
         inlineDatum: 'd87980',
-        referenceScriptHash: 'cafe',
+        referenceScriptHash: 'ca'.repeat(28),
       },
     ])
     expect(request).toHaveBeenCalledWith({
@@ -90,6 +90,31 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
 
     await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
       'backend unavailable',
+    )
+  })
+
+  it.each([
+    ['datumHash', 'deadbeef'],
+    ['inlineDatum', 'abc'],
+    ['referenceScriptHash', 'cafe'],
+  ])('rejects a malformed %s', async (field, value) => {
+    const request = jest.fn(async () => [
+      {
+        txHash: TX_HASH,
+        outputIndex: 0,
+        address: 'addr_test1receiver',
+        value: '42',
+        assets: [],
+        [field]: value,
+      },
+    ]) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      request,
+    )
+
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+      'Invalid cardano-wallet-backend account UTxO response',
     )
   })
 
