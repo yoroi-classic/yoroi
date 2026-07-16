@@ -1,0 +1,56 @@
+name: tx-checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/tx-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/tx/**"
+      - "scripts/packages/tx/**"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/tx-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/tx/**"
+      - "scripts/packages/tx/**"
+
+permissions:
+  contents: read
+
+jobs:
+  tx:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: "npm"
+          cache-dependency-path: |
+            mobile/package-lock.json
+            scripts/packages/tx/package-lock.json
+
+      - name: Validate tx package lock
+        run: npm ci --legacy-peer-deps
+        working-directory: scripts/packages/tx
+        shell: bash
+
+      - name: Install mobile dependencies
+        run: npm ci
+        working-directory: mobile
+        shell: bash
+
+      - name: Test tx
+        run: npx jest --config jest.config.js packages/tx --runInBand --coverage=false
+        working-directory: mobile
+        shell: bash
