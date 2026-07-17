@@ -520,6 +520,24 @@ npm install
 npm run tsc
 ```
 
+**Hermes compiler architecture mismatch:**
+
+Android commands run `npm run check:hermesc` before Expo or Gradle work. The
+preflight compares the current host architecture with the compiler bundled by
+React Native and fails immediately when they cannot run together. Production
+Hermes output must use a builder matching that bundled compiler.
+
+On a development machine without a compatible Hermes compiler, a JavaScript-only
+export can still validate Metro bundling without claiming a production build:
+
+```bash
+npx expo export --platform android --no-bytecode --output-dir dist/android-js-validation --clear
+```
+
+Do not publish that validation output as an Android production artifact.
+Remove this validation-only fallback after native ARM64 Hermes support lands
+under [#76](https://github.com/yoroi-classic/yoroi/issues/76).
+
 ### Performance Optimization
 
 1. **Enable Hermes (Android):**
