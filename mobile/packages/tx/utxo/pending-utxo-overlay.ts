@@ -33,15 +33,22 @@ const sameUtxo = (left: CurrentStateUtxo, right: CurrentStateUtxo): boolean => {
   }
 
   const leftAssets = new Map(left.assets.map((asset) => [asset.assetId, asset]))
-  return right.assets.every((asset) => {
-    const matching = leftAssets.get(asset.assetId)
-    return (
-      matching !== undefined &&
-      matching.policyId === asset.policyId &&
-      matching.name === asset.name &&
-      matching.amount === asset.amount
-    )
-  })
+  const rightAssets = new Map(
+    right.assets.map((asset) => [asset.assetId, asset]),
+  )
+  return (
+    leftAssets.size === left.assets.length &&
+    rightAssets.size === right.assets.length &&
+    right.assets.every((asset) => {
+      const matching = leftAssets.get(asset.assetId)
+      return (
+        matching !== undefined &&
+        matching.policyId === asset.policyId &&
+        matching.name === asset.name &&
+        matching.amount === asset.amount
+      )
+    })
+  )
 }
 
 /**
@@ -65,6 +72,12 @@ export const applyPendingUtxoOverlays = (
       available.delete(spentUtxoId)
     }
     for (const createdUtxo of transaction.createdUtxos) {
+      if (
+        new Set(createdUtxo.assets.map((asset) => asset.assetId)).size !==
+        createdUtxo.assets.length
+      ) {
+        throw new Error('Duplicate asset in pending UTxO overlay')
+      }
       const existing = available.get(createdUtxo.utxoId)
       if (existing !== undefined && !sameUtxo(existing, createdUtxo)) {
         throw new Error('Conflicting pending UTxO overlay')

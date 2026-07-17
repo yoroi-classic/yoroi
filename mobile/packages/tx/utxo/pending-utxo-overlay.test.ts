@@ -79,6 +79,35 @@ describe('pending UTxO overlay', () => {
     )
   })
 
+  it('rejects duplicate assets in a pending-created output', () => {
+    const pending = {
+      ...utxo('pending', 1),
+      assets: [
+        {
+          assetId: Branded.asTokenId('policy.asset'),
+          policyId: Branded.asPolicyId('policy'),
+          name: Branded.asAssetName('asset'),
+          amount: '1' as Balance.Quantity,
+        },
+        {
+          assetId: Branded.asTokenId('policy.asset'),
+          policyId: Branded.asPolicyId('policy'),
+          name: Branded.asAssetName('asset'),
+          amount: '1' as Balance.Quantity,
+        },
+      ],
+    }
+    const overlay: PendingUtxoOverlay = {
+      txHash: Branded.asTransactionHash('pending'),
+      spentUtxoIds: [],
+      createdUtxos: [pending],
+    }
+
+    expect(() => applyPendingUtxoOverlays([], [overlay])).toThrow(
+      'Duplicate asset in pending UTxO overlay',
+    )
+  })
+
   it('refreshes authoritative state on every service read', async () => {
     const first = utxo('first', 0)
     const refreshed = utxo('refreshed', 0)
