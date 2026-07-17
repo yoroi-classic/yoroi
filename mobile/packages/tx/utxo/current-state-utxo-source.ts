@@ -69,11 +69,9 @@ const accountUtxoSchema = z.object({
 
 const accountUtxosSchema = z.array(accountUtxoSchema)
 const backendStatusSchema = z.object({
-  network: z.enum([
-    Chain.Network.Mainnet,
-    Chain.Network.Preprod,
-    Chain.Network.Preview,
-  ]),
+  // Keep this boundary free of runtime access to the @yoroi/types namespace.
+  // Some consumers intentionally provide type-only mocks of that package.
+  network: z.enum(['mainnet', 'preprod', 'preview']),
   chain: z.enum(['ok', 'stale', 'down']),
 })
 
@@ -108,7 +106,7 @@ export const createCardanoWalletBackendUtxoSource = (
   return {
     async getAccountUtxos(stakeAddress) {
       const expectedStakePrefix =
-        expectedNetwork === Chain.Network.Mainnet ? 'stake1' : 'stake_test1'
+        expectedNetwork === 'mainnet' ? 'stake1' : 'stake_test1'
       if (!stakeAddress.startsWith(expectedStakePrefix)) {
         throw new Error('Stake address does not match the selected network')
       }
@@ -157,7 +155,7 @@ export const createCardanoWalletBackendUtxoSource = (
       }
 
       const expectedAddressPrefix =
-        expectedNetwork === Chain.Network.Mainnet ? 'addr1' : 'addr_test1'
+        expectedNetwork === 'mainnet' ? 'addr1' : 'addr_test1'
       const seenUtxos = new Set<string>()
       for (const utxo of parsed.data) {
         if (!utxo.address.startsWith(expectedAddressPrefix)) {
