@@ -62,6 +62,23 @@ describe('pending UTxO overlay', () => {
     expect(applyPendingUtxoOverlays([observed], [overlay])).toEqual([observed])
   })
 
+  it('rejects conflicting content for an already observed output reference', () => {
+    const observed = utxo('pending', 1)
+    const conflicting = {
+      ...observed,
+      amount: '2000000' as Balance.Quantity,
+    }
+    const overlay: PendingUtxoOverlay = {
+      txHash: Branded.asTransactionHash('pending'),
+      spentUtxoIds: [],
+      createdUtxos: [conflicting],
+    }
+
+    expect(() => applyPendingUtxoOverlays([observed], [overlay])).toThrow(
+      'Conflicting pending UTxO overlay',
+    )
+  })
+
   it('refreshes authoritative state on every service read', async () => {
     const first = utxo('first', 0)
     const refreshed = utxo('refreshed', 0)
@@ -118,5 +135,28 @@ describe('pending UTxO overlay', () => {
     expect(
       pendingStore.getPendingUtxoOverlaysInSubmissionOrder,
     ).toHaveBeenCalledWith(stakeAddress)
+  })
+
+  it('rejects a pending output from another network', async () => {
+    const stakeAddress = Branded.asStakingAddress('stake_test1account')
+    const mainnetChange = {
+      ...utxo('pending', 1),
+      receiver: Branded.asAddress('addr1mainnet'),
+    }
+    const source = {getAccountUtxos: jest.fn(async () => [])}
+    const pendingStore = {
+      getPendingUtxoOverlaysInSubmissionOrder: jest.fn(async () => [
+        {
+          txHash: Branded.asTransactionHash('pending'),
+          spentUtxoIds: [],
+          createdUtxos: [mainnetChange],
+        },
+      ]),
+    }
+    const service = createCurrentStateUtxoService(source, pendingStore)
+
+    await expect(service.getAvailableUtxos(stakeAddress)).rejects.toThrow(
+      'Pending UTxO overlay network mismatch',
+    )
   })
 })

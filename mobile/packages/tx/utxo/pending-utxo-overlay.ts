@@ -17,6 +17,33 @@ export type PendingUtxoOverlayStore = {
   ): Promise<ReadonlyArray<PendingUtxoOverlay>>
 }
 
+const sameUtxo = (left: CurrentStateUtxo, right: CurrentStateUtxo): boolean => {
+  if (
+    left.utxoId !== right.utxoId ||
+    left.txHash !== right.txHash ||
+    left.txIndex !== right.txIndex ||
+    left.receiver !== right.receiver ||
+    left.amount !== right.amount ||
+    left.datumHash !== right.datumHash ||
+    left.inlineDatum !== right.inlineDatum ||
+    left.referenceScriptHash !== right.referenceScriptHash ||
+    left.assets.length !== right.assets.length
+  ) {
+    return false
+  }
+
+  const leftAssets = new Map(left.assets.map((asset) => [asset.assetId, asset]))
+  return right.assets.every((asset) => {
+    const matching = leftAssets.get(asset.assetId)
+    return (
+      matching !== undefined &&
+      matching.policyId === asset.policyId &&
+      matching.name === asset.name &&
+      matching.amount === asset.amount
+    )
+  })
+}
+
 /**
  * Applies pending transactions in submission order over authoritative state.
  *
@@ -38,6 +65,10 @@ export const applyPendingUtxoOverlays = (
       available.delete(spentUtxoId)
     }
     for (const createdUtxo of transaction.createdUtxos) {
+      const existing = available.get(createdUtxo.utxoId)
+      if (existing !== undefined && !sameUtxo(existing, createdUtxo)) {
+        throw new Error('Conflicting pending UTxO overlay')
+      }
       available.set(createdUtxo.utxoId, createdUtxo)
     }
   }
@@ -56,6 +87,22 @@ export const createCurrentStateUtxoService = (
       source.getAccountUtxos(stakeAddress),
       pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),
     ])
+
+    const expectedAddressPrefix = stakeAddress.startsWith('stake_test1')
+      ? 'addr_test1'
+      : stakeAddress.startsWith('stake1')
+        ? 'addr1'
+        : undefined
+    if (
+      expectedAddressPrefix === undefined ||
+      pending.some((overlay) =>
+        overlay.createdUtxos.some(
+          (utxo) => !utxo.receiver.startsWith(expectedAddressPrefix),
+        ),
+      )
+    ) {
+      throw new Error('Pending UTxO overlay network mismatch')
+    }
 
     return applyPendingUtxoOverlays(authoritative, pending)
   },
