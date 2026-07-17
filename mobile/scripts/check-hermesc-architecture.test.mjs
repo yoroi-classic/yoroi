@@ -5,6 +5,7 @@ import {describe, it} from 'node:test'
 import {
   checkHermescArchitecture,
   hermescPath,
+  hermescPaths,
   readBinaryArchitectures,
 } from './check-hermesc-architecture.mjs'
 
@@ -85,6 +86,24 @@ describe('Hermes compiler architecture preflight', () => {
     )
   })
 
+  it('prefers the compiler React Native builds from source on Linux', () => {
+    const reads = []
+    const result = checkHermescArchitecture({
+      arch: 'arm64',
+      cwd: '/workspace/mobile',
+      platform: 'linux',
+      readFile: (compilerPath) => {
+        reads.push(compilerPath)
+        return elf(183)
+      },
+    })
+
+    assert.deepEqual(reads, [
+      '/workspace/mobile/node_modules/react-native/sdks/hermes/build/bin/hermesc',
+    ])
+    assert.equal(result.compilerPath, reads[0])
+  })
+
   it('reports a missing install instead of failing after Metro', () => {
     assert.throws(
       () =>
@@ -112,5 +131,24 @@ describe('Hermes compiler architecture preflight', () => {
       hermescPath({cwd: '/app', platform: 'win32'}),
       /win64-bin\/hermesc\.exe$/,
     )
+  })
+
+  it('falls back from React Native source output to the packaged Linux compiler', () => {
+    const candidates = hermescPaths({cwd: '/app', platform: 'linux'})
+    assert.deepEqual(candidates, [
+      '/app/node_modules/react-native/sdks/hermes/build/bin/hermesc',
+      '/app/node_modules/react-native/sdks/hermesc/linux64-bin/hermesc',
+    ])
+
+    const result = checkHermescArchitecture({
+      arch: 'x64',
+      cwd: '/app',
+      platform: 'linux',
+      readFile: (compilerPath) => {
+        if (compilerPath === candidates[0]) throw new Error('missing')
+        return elf(62)
+      },
+    })
+    assert.equal(result.compilerPath, candidates[1])
   })
 })

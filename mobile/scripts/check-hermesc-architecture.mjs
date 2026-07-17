@@ -140,6 +140,28 @@ export const hermescPath = ({
   )
 }
 
+export const hermescPaths = ({
+  cwd = process.cwd(),
+  platform = process.platform,
+} = {}) => {
+  const packagedCompiler = hermescPath({cwd, platform})
+  if (platform !== 'linux') return [packagedCompiler]
+
+  return [
+    path.join(
+      cwd,
+      'node_modules',
+      'react-native',
+      'sdks',
+      'hermes',
+      'build',
+      'bin',
+      'hermesc',
+    ),
+    packagedCompiler,
+  ]
+}
+
 export const checkHermescArchitecture = ({
   arch = process.arch,
   cwd = process.cwd(),
@@ -152,14 +174,24 @@ export const checkHermescArchitecture = ({
     )
   }
 
-  const compilerPath = hermescPath({cwd, platform})
+  let compilerPath
   let compiler
-  try {
-    compiler = readFile(compilerPath)
-  } catch (error) {
+  let readError
+  for (const candidate of hermescPaths({cwd, platform})) {
+    try {
+      compiler = readFile(candidate)
+      compilerPath = candidate
+      break
+    } catch (error) {
+      readError = error
+    }
+  }
+  if (!compiler || !compilerPath) {
     throw new Error(
-      `Hermes compiler was not found at ${compilerPath}; run npm ci before the architecture preflight`,
-      {cause: error},
+      `Hermes compiler was not found at ${hermescPaths({cwd, platform}).join(
+        ' or ',
+      )}; run npm ci before the architecture preflight`,
+      {cause: readError},
     )
   }
 
