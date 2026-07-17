@@ -48,6 +48,8 @@ const readElfArchitectures = (buffer) => {
 
 const readMachArchitectures = (buffer) => {
   if (buffer.length < 8) return []
+  // Decode the magic as big-endian bytes. The byte-swapped CIGAM values mean
+  // subsequent header fields must be decoded as little-endian.
   const magic = buffer.readUInt32BE(0)
   const thinFormats = new Map([
     [0xfeedface, false],

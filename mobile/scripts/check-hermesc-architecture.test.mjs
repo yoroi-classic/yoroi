@@ -15,10 +15,13 @@ const elf = (machine) => {
   return buffer
 }
 
-const mach = (cpu) => {
+const mach = (cpu, littleEndian) => {
   const buffer = Buffer.alloc(32)
-  buffer.writeUInt32BE(0xcffaedfe, 0)
-  buffer.writeUInt32LE(cpu, 4)
+  // Magic is decoded as big-endian bytes; CIGAM identifies a little-endian
+  // header, while MAGIC identifies a big-endian header.
+  buffer.writeUInt32BE(littleEndian ? 0xcffaedfe : 0xfeedfacf, 0)
+  if (littleEndian) buffer.writeUInt32LE(cpu, 4)
+  else buffer.writeUInt32BE(cpu, 4)
   return buffer
 }
 
@@ -44,7 +47,8 @@ describe('Hermes compiler architecture preflight', () => {
     assert.deepEqual(readBinaryArchitectures(elf(62)), ['x64'])
     assert.deepEqual(readBinaryArchitectures(elf(183)), ['arm64'])
     assert.deepEqual(readBinaryArchitectures(elf(7)), [])
-    assert.deepEqual(readBinaryArchitectures(mach(0x0100000c)), ['arm64'])
+    assert.deepEqual(readBinaryArchitectures(mach(0x0100000c, true)), ['arm64'])
+    assert.deepEqual(readBinaryArchitectures(mach(0x01000007, false)), ['x64'])
     assert.deepEqual(
       readBinaryArchitectures(fatMach([0x01000007, 0x0100000c])),
       ['arm64', 'x64'],
