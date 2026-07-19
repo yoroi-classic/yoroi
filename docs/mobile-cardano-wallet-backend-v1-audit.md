@@ -1,7 +1,7 @@
 # Mobile cardano-wallet-backend /v1 Audit
 
 Refs: yoroi-classic/yoroi#55 and yoroi-classic/cardano-wallet-backend#71.
-Checked on 2026-07-15 against mobile `develop` and the backend `development` branch.
+Checked on 2026-07-19 against mobile `develop` and backend `development` at `c8aed78`.
 
 ## Current Mobile Backend Defaults
 
@@ -50,6 +50,8 @@ The current backend `/v1` contract uses different resource shapes:
 - `GET /v1/account/{stake}/txs`
 - `GET /v1/account/{stake}/rewards`
 - `POST /v1/addresses/filter-used`
+- `POST /v1/addresses/utxos`
+- `POST /v1/addresses/txs`
 - `POST /v1/tx/submit`
 - `GET /v1/tx/{hash}/status`
 - `POST /v1/tx/utxos`
@@ -58,6 +60,13 @@ The current backend `/v1` contract uses different resource shapes:
 - `POST /v1/assets/info`
 - `POST /v1/assets/media`
 - `GET /v1/assets/{fingerprint}/image`
+- `GET /v1/governance/dreps`
+- `POST /v1/governance/dreps/info`
+- `GET /v1/governance/proposals`
+- `GET /v1/price/ada`
+- `GET /v1/price/ada/history`
+- `POST /v1/price/tokens`
+- `POST /v1/price/tokens/history`
 - `GET /v1/config`
 - `GET /v1/openapi.json`
 
@@ -87,7 +96,11 @@ before the wallet sync path can be switched away from the legacy backend.
 Some mobile-owned Yoroi/Emurgo defaults need client adapter work, not new backend routes:
 
 - `mobile/packages/staking/governance/config.ts` DRep lookup can map to
-  `POST /v1/governance/dreps/info`.
+  `POST /v1/governance/dreps/info`, but mobile currently sends the bare credential hex while the
+  route requires a bech32 `drep` identifier. The adapter must encode that credential before the
+  request. It also should not preserve the legacy `{txId, epoch} | null` response shape: the only
+  consumer asks whether the DRep is registered, which `/v1` answers directly through `status`;
+  `/v1` does not return the registration transaction or epoch.
 - The same governance config's stake-key voting state needs an adapter that derives the bech32
   stake address required by `GET /v1/account/{stake}/state` from the stake-key hash currently sent
   by mobile. The response's `delegatedDrep` value also omits the `tx`, `epoch`, `slot`, and
@@ -95,11 +108,12 @@ Some mobile-owned Yoroi/Emurgo defaults need client adapter work, not new backen
   backend enrichment or an explicit mobile contract change.
 - Backend-zero address discovery `filterUsedAddresses` can map to
   `POST /v1/addresses/filter-used`.
+- ADA fiat price/history and native-token price/history can map to the four `/v1/price/*` routes.
+  Backend production startup wires CoinGecko and GeckoTerminal providers; a bare test server with
+  no provider deliberately returns 501 rather than an invented price.
 
 ## Backend/Product Decisions Still Blocking Full Cutover
 
-- Price endpoints are reserved in `/v1` but return 501 until a market-data provider is chosen.
-  Mobile uses token activity and token price history for fiat values and charts.
 - Catalyst `fundInfo` is not implemented in `/v1`; either drop/feature-flag Catalyst UI or add an
   owned replacement.
 - Emurgo-business endpoints should be removed or feature-flagged, not reimplemented:
@@ -115,7 +129,7 @@ Some mobile-owned Yoroi/Emurgo defaults need client adapter work, not new backen
    legacy-only paths remain obvious.
 2. Add a new `/v1` adapter beside the existing legacy and backend-zero adapters. Start with
    stateless reads that map cleanly: status/tip, protocol parameters, address discovery, governance
-   reads, tx submit/status, pool info, asset metadata, and remote config.
+   reads, tx submit/status, pool info, asset metadata, price/history, and remote config.
 3. Rewrite `mobile/packages/tx/utxo/` around `/v1/account/{stake}/utxos` and local pending
    transactions before switching wallet sync preferences.
 4. Feature-flag or remove price, Catalyst, CNS, and Emurgo-business surfaces before asserting that
