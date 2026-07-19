@@ -532,10 +532,11 @@ compiler from pinned Hermes source after `npm ci`:
 npm run install:hermesc:arm64
 ```
 
-The installer verifies the source archive checksum, compiler architecture,
-Hermes release, HBC bytecode version, and real bytecode generation. It installs
-to React Native's preferred source-build location. Run it again after replacing
-`node_modules`.
+The installer builds with Clang 14 and verifies the source archive checksum,
+compiler architecture, Hermes release, HBC bytecode version, and bytecode
+generation for both a smoke program and the app's production-sized unminified
+Android bundle. It installs to React Native's preferred source-build location.
+Run it again after replacing `node_modules`.
 
 ### Performance Optimization
 

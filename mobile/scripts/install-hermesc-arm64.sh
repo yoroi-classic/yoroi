@@ -74,6 +74,41 @@ npm run check:hermesc
 printf 'globalThis.__yoroiHermesArm64Smoke = 96;\n' >"${tmp_dir}/smoke.js"
 "${TARGET}" -O -emit-binary -out "${tmp_dir}/smoke.hbc" "${tmp_dir}/smoke.js"
 test -s "${tmp_dir}/smoke.hbc"
+
+# Exercise the optimizer with the same unminified production-sized input that
+# React Native's Gradle plugin passes to Hermes. A one-line smoke program did
+# not catch an ARM64 GCC miscompile in InstSimplify.
+expo_cli="$(
+  cd -- "${MOBILE_DIR}"
+  node -e "console.log(require.resolve('@expo/cli', {paths: [require.resolve('expo/package.json')]}))"
+)"
+entry_file="$(
+  cd -- "${MOBILE_DIR}"
+  node -e "require('expo/scripts/resolveAppEntry')" "${MOBILE_DIR}" android absolute
+)"
+mkdir -p "${tmp_dir}/assets"
+(
+  cd -- "${MOBILE_DIR}"
+  EXPO_NO_DOTENV=1 EXPO_PUBLIC_BUILD_VARIANT=DEV node "${expo_cli}" export:embed \
+    --platform android \
+    --dev false \
+    --reset-cache \
+    --entry-file "${entry_file}" \
+    --bundle-output "${tmp_dir}/release.js" \
+    --assets-dest "${tmp_dir}/assets" \
+    --sourcemap-output "${tmp_dir}/release.js.map" \
+    --minify false
+)
+"${TARGET}" \
+  -w \
+  -emit-binary \
+  -max-diagnostic-width=80 \
+  -out "${tmp_dir}/release.hbc" \
+  "${tmp_dir}/release.js" \
+  -O \
+  -output-source-map
+test -s "${tmp_dir}/release.hbc"
+test -s "${tmp_dir}/release.hbc.map"
 node -e '
   const bytecode = require("node:fs").readFileSync(process.argv[1])
   if (
@@ -83,6 +118,15 @@ node -e '
     throw new Error("hermesc did not generate the expected HBC bytecode")
   }
 ' "${tmp_dir}/smoke.hbc" "${HERMES_BYTECODE_VERSION}"
+node -e '
+  const bytecode = require("node:fs").readFileSync(process.argv[1])
+  if (
+    bytecode.subarray(0, 8).toString("hex") !== "c61fbc03c103191f" ||
+    bytecode.readUInt32LE(8) !== Number(process.argv[2])
+  ) {
+    throw new Error("hermesc did not generate the expected release HBC bytecode")
+  }
+' "${tmp_dir}/release.hbc" "${HERMES_BYTECODE_VERSION}"
 
 echo "Installed native Hermes ${HERMES_RELEASE_VERSION} (HBC ${HERMES_BYTECODE_VERSION}) at ${TARGET}."
-echo "Generated ARM64 Hermes bytecode successfully."
+echo "Generated smoke and production-sized ARM64 Hermes bytecode successfully."

@@ -7,6 +7,7 @@ RUN apt-get update \
   && apt-get install --yes --no-install-recommends \
     build-essential \
     ca-certificates \
+    clang-14 \
     cmake \
     curl \
     libicu-dev \
@@ -29,6 +30,8 @@ RUN curl --fail --location --show-error \
       -S source \
       -B build \
       -G Ninja \
+      -DCMAKE_C_COMPILER=clang-14 \
+      -DCMAKE_CXX_COMPILER=clang++-14 \
       -DCMAKE_BUILD_TYPE=Release \
       -DHERMES_ENABLE_TEST_SUITE=OFF \
       -DHERMES_STATIC_LINK=ON \
