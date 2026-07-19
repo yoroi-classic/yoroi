@@ -39,7 +39,7 @@ export const canUseCardanoWalletBackendV1FilterUsed = (
       return false
     }
 
-    const header = bech32.fromWords(decoded.words)[0]
+    const header = bech32.fromWordsUnsafe(decoded.words)?.[0]
     return header != null && Math.floor(header / 16) <= PaymentAddressMaxType
   })
 }

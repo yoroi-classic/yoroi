@@ -16,6 +16,12 @@ describe('cardanoWalletBackendV1Maker', () => {
   const byron = Branded.asAddress(
     'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bf',
   )
+  const rewardAddress = Branded.asAddress(
+    'stake1uxf6uf5ws2aypnuzszp24kjkk7epqtef3sxymh5gq3xznfcg5w4sq',
+  )
+  const rewardHeaderWithPaymentPrefix = Branded.asAddress(
+    'addr1uxf6uf5ws2aypnuzszp24kjkk7epqtef3sxymh5gq3xznfcwvcnsj',
+  )
 
   it('maps the filter-used contract without configuring a production host', async () => {
     const request: Fetcher = jest.fn().mockResolvedValue([testnet])
@@ -85,6 +91,9 @@ describe('cardanoWalletBackendV1Maker', () => {
     ['Byron', [byron]],
     ['mixed Shelley and Byron', [mainnet, byron]],
     ['malformed bech32', [Branded.asAddress('addr_test1_not_real')]],
+    ['invalid bech32 padding', [Branded.asAddress('addr1qps5c0s')]],
+    ['reward address', [rewardAddress]],
+    ['reward header with payment prefix', [rewardHeaderWithPaymentPrefix]],
   ])(
     'keeps a %s batch on the legacy backend',
     async (_description, addresses) => {
