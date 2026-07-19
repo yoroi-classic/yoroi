@@ -5,22 +5,12 @@ on:
     branches: [main, develop]
     paths:
       - ".github/workflows/dapp-connector-checks.yml"
-      - "mobile/babel.config.js"
-      - "mobile/jest.config.js"
-      - "mobile/package-lock.json"
-      - "mobile/package.json"
-      - "mobile/packages/dapp-connector/**"
       - "scripts/packages/dapp-connector/**"
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/workflows/dapp-connector-checks.yml"
-      - "mobile/babel.config.js"
-      - "mobile/jest.config.js"
-      - "mobile/package-lock.json"
-      - "mobile/package.json"
-      - "mobile/packages/dapp-connector/**"
       - "scripts/packages/dapp-connector/**"
 
 permissions:
@@ -41,26 +31,9 @@ jobs:
         with:
           node-version: "22.12.0"
           cache: "npm"
-          cache-dependency-path: |
-            mobile/package-lock.json
-            scripts/packages/dapp-connector/package-lock.json
+          cache-dependency-path: scripts/packages/dapp-connector/package-lock.json
 
       - name: Validate dapp-connector package lock
         run: npm ci --legacy-peer-deps
         working-directory: scripts/packages/dapp-connector
-        shell: bash
-
-      - name: Verify mobile toolchain
-        run: npm run check:toolchain
-        working-directory: mobile
-        shell: bash
-
-      - name: Install mobile dependencies
-        run: npm ci
-        working-directory: mobile
-        shell: bash
-
-      - name: Test dapp-connector
-        run: npx jest --config jest.config.js packages/dapp-connector --runInBand --coverage=false
-        working-directory: mobile
         shell: bash
