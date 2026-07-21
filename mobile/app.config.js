@@ -1,3 +1,9 @@
+const {
+  assertNoProductionFixtureMnemonics,
+} = require('./scripts/mobile-fixture-safety.cjs')
+
+assertNoProductionFixtureMnemonics(process.env)
+
 const baseConfig = require('./app.json')
 
 // Determine if this is a development build

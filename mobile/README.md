@@ -326,7 +326,17 @@ eas build --platform all --profile production
 
 - **development** - Development client with debugging (uses repo Firebase configs)
 - **preview** - Internal testing build (uses repo Firebase configs)
-- **production** - App Store/Play Store ready build (uses Firebase configs from EAS secrets)
+- **production** - App Store/Play Store ready build (uses Firebase configs from EAS secrets and rejects non-empty public wallet fixture mnemonics)
+
+Production configuration fails closed when any
+`EXPO_PUBLIC_WALLET_<N>_MNEMONIC` variable is non-empty. CI also generates and
+scans the production Android JavaScript and Hermes bytecode against every
+fixture configured in tracked dotenv/EAS files. To scan a locally generated APK
+or bundle without printing fixture values, run:
+
+```bash
+npm run scan:mobile-fixtures -- path/to/app-release.apk
+```
 
 #### Automated Production Deployments
 

@@ -42,6 +42,14 @@ jobs:
         run: npm run check:hermesc
         working-directory: mobile
         shell: bash
+      - name: Test mobile fixture safety
+        run: npm run lint:mobile-fixture-safety && npm run test:mobile-fixture-safety
+        working-directory: mobile
+        shell: bash
+      - name: Scan generated production Hermes artifacts for fixtures
+        run: npm run verify:production-fixture-artifacts
+        working-directory: mobile
+        shell: bash
       - name: TypeScript check
         run: npm run tsc
         working-directory: mobile
