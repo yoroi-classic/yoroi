@@ -114,6 +114,7 @@ const main = async () => {
     )
     const hermesc = resolveHermesc()
     run(hermesc, ['-O', '-emit-binary', '-out', bytecodePath, bundlePath], {
+      capture: true,
       env: sanitizedEnv,
       label: 'Hermes bytecode generation',
     })
