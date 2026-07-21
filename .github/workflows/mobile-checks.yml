@@ -30,6 +30,18 @@ jobs:
         run: npm ci
         working-directory: mobile
         shell: bash
+      - name: Test Hermes compiler architecture preflight
+        run: npm run test:hermesc-architecture
+        working-directory: mobile
+        shell: bash
+      - name: Lint Hermes compiler architecture preflight
+        run: npm run lint:hermesc-architecture
+        working-directory: mobile
+        shell: bash
+      - name: Verify Hermes compiler architecture
+        run: npm run check:hermesc
+        working-directory: mobile
+        shell: bash
       - name: TypeScript check
         run: npm run tsc
         working-directory: mobile
