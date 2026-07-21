@@ -2,7 +2,8 @@
 set -euo pipefail
 
 readonly HERMES_COMMIT="7f9a871eefeb2c3852365ee80f0b6733ec12ac3b"
-readonly HERMES_SOURCE_SHA256="439d47add0d646b632a61b6b48515314be459c01e6c14bcab5e7e29223f420c2"
+readonly HERMES_TREE_SHA1="28a5c9aac4e67850a428724db6faad9f7aed27bf"
+readonly HERMES_ARCHIVE_SHA256="5e5de1a86e02c8f839dbb3c6fcf65f06a62650f9c4dec2f9078ce904daf85ddd"
 readonly HERMES_RELEASE_VERSION="0.12.0"
 readonly HERMES_BYTECODE_VERSION="96"
 readonly RN_HERMES_VERSION="hermes-2025-06-04-RNv0.79.3-${HERMES_COMMIT}"
@@ -41,7 +42,8 @@ docker build \
   --platform linux/arm64 \
   --file "${DOCKERFILE}" \
   --build-arg "HERMES_COMMIT=${HERMES_COMMIT}" \
-  --build-arg "HERMES_SOURCE_SHA256=${HERMES_SOURCE_SHA256}" \
+  --build-arg "HERMES_TREE_SHA1=${HERMES_TREE_SHA1}" \
+  --build-arg "HERMES_ARCHIVE_SHA256=${HERMES_ARCHIVE_SHA256}" \
   --tag "${IMAGE}" \
   "${SCRIPT_DIR}"
 
