@@ -126,7 +126,11 @@ const main = async () => {
     run(
       hermesc,
       ['-emit-binary', '-out', canaryBytecodePath, canarySourcePath],
-      {env: sanitizedEnv, label: 'Hermes fixture scanner canary'},
+      {
+        capture: true,
+        env: sanitizedEnv,
+        label: 'Hermes fixture scanner canary',
+      },
     )
     const canaryMatch = await scanArtifacts(
       [canaryBytecodePath],
