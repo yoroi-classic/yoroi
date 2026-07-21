@@ -44,6 +44,19 @@ import {
   UtxoDiffToBestBlock,
 } from './models'
 
+export {
+  createCardanoWalletBackendUtxoSource,
+  type CurrentStateAsset,
+  type CurrentStateUtxo,
+  type CurrentStateUtxoSource,
+} from './current-state-utxo-source'
+export {
+  applyPendingUtxoOverlays,
+  createCurrentStateUtxoService,
+  type PendingUtxoOverlay,
+  type PendingUtxoOverlayStore,
+} from './pending-utxo-overlay'
+
 export type UtxoStorage = {
   getUtxoAtSafePoint(): Promise<UtxoAtSafePoint | undefined>
   getUtxoDiffToBestBlock(): Promise<UtxoDiffToBestBlock[]>
