@@ -1,0 +1,34 @@
+name: staking-checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/staking-checks.yml"
+      - "scripts/packages/staking/**"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/staking-checks.yml"
+      - "scripts/packages/staking/**"
+
+permissions:
+  contents: read
+
+jobs:
+  staking:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: "npm"
+          cache-dependency-path: scripts/packages/staking/package-lock.json
+
+      - name: Validate staking package lock
+        run: npm ci --legacy-peer-deps
+        working-directory: scripts/packages/staking
+        shell: bash
