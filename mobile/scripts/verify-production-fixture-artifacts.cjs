@@ -12,6 +12,12 @@ const {
 
 const mobileDir = path.resolve(__dirname, '..')
 
+const redact = (output, values = []) =>
+  values.reduce(
+    (sanitized, value) => sanitized.split(value).join('[REDACTED]'),
+    output,
+  )
+
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, {
     cwd: mobileDir,
@@ -21,8 +27,14 @@ const run = (command, args, options = {}) => {
   })
   if (result.error) throw result.error
   if (result.status !== 0) {
+    const diagnostics = options.capture
+      ? redact(
+          [result.stderr, result.stdout].filter(Boolean).join('\n').trim(),
+          options.redactValues,
+        )
+      : ''
     throw new Error(
-      `${options.label || command} exited with status ${result.status}.`,
+      `${options.label || command} exited with status ${result.status}.${diagnostics ? `\n${diagnostics}` : ''}`,
     )
   }
   return options.capture ? result.stdout.trim() : ''
@@ -117,6 +129,7 @@ const main = async () => {
       capture: true,
       env: sanitizedEnv,
       label: 'Hermes bytecode generation',
+      redactValues: fixtureMnemonics,
     })
 
     writeFileSync(
@@ -131,6 +144,7 @@ const main = async () => {
         capture: true,
         env: sanitizedEnv,
         label: 'Hermes fixture scanner canary',
+        redactValues: fixtureMnemonics,
       },
     )
     const canaryMatch = await scanArtifacts(
@@ -160,7 +174,11 @@ const main = async () => {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message)
-  process.exitCode = 1
-})
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message)
+    process.exitCode = 1
+  })
+}
+
+module.exports = {run}

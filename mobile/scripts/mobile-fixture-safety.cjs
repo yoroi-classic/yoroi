@@ -7,6 +7,7 @@ const {
   statSync,
 } = require('node:fs')
 const path = require('node:path')
+const {createInterface} = require('node:readline')
 
 const fixtureVariablePattern = /^EXPO_PUBLIC_WALLET_[1-9][0-9]*_MNEMONIC$/u
 
@@ -124,8 +125,14 @@ const scanReadable = async (readable, values) => {
   return found
 }
 
-const scanArchive = async (archivePath, values) => {
-  const unzip = spawn('unzip', ['-p', path.resolve(archivePath)], {
+const waitForChild = (child) =>
+  new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', resolve)
+  })
+
+const scanArchiveEntry = async (archivePath, entry, values) => {
+  const unzip = spawn('unzip', ['-p', archivePath, entry], {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let stderr = ''
@@ -136,14 +143,39 @@ const scanArchive = async (archivePath, values) => {
 
   const [found, exitCode] = await Promise.all([
     scanReadable(unzip.stdout, values),
-    new Promise((resolve, reject) => {
-      unzip.once('error', reject)
-      unzip.once('close', resolve)
-    }),
+    waitForChild(unzip),
   ])
   if (exitCode !== 0) {
     throw new Error(
-      `Unable to inspect archive ${archivePath}: ${stderr.trim() || `unzip exited ${exitCode}`}`,
+      `Unable to inspect archive entry ${JSON.stringify(entry)}: ${stderr.trim() || `unzip exited ${exitCode}`}`,
+    )
+  }
+  return found
+}
+
+const scanArchive = async (archivePath, values) => {
+  const resolvedPath = path.resolve(archivePath)
+  const unzip = spawn('unzip', ['-Z1', resolvedPath], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let stderr = ''
+  unzip.stderr.setEncoding('utf8')
+  unzip.stderr.on('data', (chunk) => {
+    if (stderr.length < 4096) stderr += chunk
+  })
+
+  const exitCodePromise = waitForChild(unzip)
+  const entries = createInterface({input: unzip.stdout, crlfDelay: Infinity})
+  let found = false
+  for await (const entry of entries) {
+    if (found || entry.endsWith('/')) continue
+    found = await scanArchiveEntry(resolvedPath, entry, values)
+  }
+
+  const exitCode = await exitCodePromise
+  if (exitCode !== 0) {
+    throw new Error(
+      `Unable to list archive ${archivePath}: ${stderr.trim() || `unzip exited ${exitCode}`}`,
     )
   }
   return found

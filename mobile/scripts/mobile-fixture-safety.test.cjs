@@ -10,6 +10,7 @@ const {
   configuredFixtureMnemonics,
   scanArtifacts,
 } = require('./mobile-fixture-safety.cjs')
+const {run} = require('./verify-production-fixture-artifacts.cjs')
 
 const fixture =
   'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu'
@@ -111,6 +112,46 @@ describe('mobile fixture safety', () => {
     } finally {
       rmSync(temporaryDir, {force: true, recursive: true})
     }
+  })
+
+  it('does not match fixture fragments across APK entries', async () => {
+    const temporaryDir = mkdtempSync(
+      path.join(os.tmpdir(), 'fixture-apk-boundary-test-'),
+    )
+    try {
+      const payloadDir = path.join(temporaryDir, 'payload')
+      const artifact = path.join(temporaryDir, 'app-release.apk')
+      const split = Math.floor(fixture.length / 2)
+      mkdirSync(payloadDir)
+      writeFileSync(path.join(payloadDir, 'first'), fixture.slice(0, split))
+      writeFileSync(path.join(payloadDir, 'second'), fixture.slice(split))
+      const zip = spawnSync('zip', ['-q', artifact, 'first', 'second'], {
+        cwd: payloadDir,
+      })
+      assert.equal(zip.status, 0)
+      assert.equal(await scanArtifacts([artifact], [fixture]), null)
+    } finally {
+      rmSync(temporaryDir, {force: true, recursive: true})
+    }
+  })
+
+  it('reports captured compiler diagnostics with fixture values redacted', () => {
+    assert.throws(
+      () =>
+        run(
+          process.execPath,
+          [
+            '-e',
+            `console.error(${JSON.stringify(`invalid source: ${fixture}`)}); process.exit(1)`,
+          ],
+          {capture: true, label: 'Compiler', redactValues: [fixture]},
+        ),
+      (error) => {
+        assert.match(error.message, /invalid source: \[REDACTED\]/u)
+        assert.doesNotMatch(error.message, new RegExp(fixture, 'u'))
+        return true
+      },
+    )
   })
 
   it('accepts clean artifacts', async () => {
