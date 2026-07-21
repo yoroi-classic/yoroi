@@ -55,8 +55,9 @@ trap cleanup EXIT
 
 docker cp "${container}:/hermesc" "${tmp_dir}/hermesc"
 chmod 0755 "${tmp_dir}/hermesc"
+readonly CANDIDATE="${tmp_dir}/hermesc"
 
-version_output="$("${tmp_dir}/hermesc" -version 2>&1)"
+version_output="$("${CANDIDATE}" -version 2>&1)"
 grep -Fq "Hermes release version: ${HERMES_RELEASE_VERSION}" <<<"${version_output}" || {
   echo "Built hermesc does not report Hermes ${HERMES_RELEASE_VERSION}." >&2
   exit 1
@@ -66,13 +67,8 @@ grep -Fq "HBC bytecode version: ${HERMES_BYTECODE_VERSION}" <<<"${version_output
   exit 1
 }
 
-mkdir -p "$(dirname -- "${TARGET}")"
-install -m 0755 "${tmp_dir}/hermesc" "${TARGET}.new"
-mv -f "${TARGET}.new" "${TARGET}"
-
-npm run check:hermesc
 printf 'globalThis.__yoroiHermesArm64Smoke = 96;\n' >"${tmp_dir}/smoke.js"
-"${TARGET}" -O -emit-binary -out "${tmp_dir}/smoke.hbc" "${tmp_dir}/smoke.js"
+"${CANDIDATE}" -O -emit-binary -out "${tmp_dir}/smoke.hbc" "${tmp_dir}/smoke.js"
 test -s "${tmp_dir}/smoke.hbc"
 
 # Exercise the optimizer with the same unminified production-sized input that
@@ -99,7 +95,7 @@ mkdir -p "${tmp_dir}/assets"
     --sourcemap-output "${tmp_dir}/release.js.map" \
     --minify false
 )
-"${TARGET}" \
+"${CANDIDATE}" \
   -w \
   -emit-binary \
   -max-diagnostic-width=80 \
@@ -127,6 +123,29 @@ node -e '
     throw new Error("hermesc did not generate the expected release HBC bytecode")
   }
 ' "${tmp_dir}/release.hbc" "${HERMES_BYTECODE_VERSION}"
+
+# Do not replace React Native's active compiler until every validation has
+# passed. Keep a backup for the final architecture preflight so an unexpected
+# install/copy failure cannot leave a compiler that this installer rejected.
+mkdir -p "$(dirname -- "${TARGET}")"
+previous_target="${tmp_dir}/hermesc.previous"
+target_existed=false
+if [[ -e "${TARGET}" ]]; then
+  cp -p -- "${TARGET}" "${previous_target}"
+  target_existed=true
+fi
+install -m 0755 "${CANDIDATE}" "${TARGET}.new"
+mv -f "${TARGET}.new" "${TARGET}"
+
+if ! npm run check:hermesc; then
+  if [[ "${target_existed}" == true ]]; then
+    install -m 0755 "${previous_target}" "${TARGET}.new"
+    mv -f "${TARGET}.new" "${TARGET}"
+  else
+    rm -f -- "${TARGET}"
+  fi
+  exit 1
+fi
 
 echo "Installed native Hermes ${HERMES_RELEASE_VERSION} (HBC ${HERMES_BYTECODE_VERSION}) at ${TARGET}."
 echo "Generated smoke and production-sized ARM64 Hermes bytecode successfully."
