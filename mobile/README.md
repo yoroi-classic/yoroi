@@ -523,20 +523,20 @@ npm run tsc
 **Hermes compiler architecture mismatch:**
 
 Android commands run `npm run check:hermesc` before Expo or Gradle work. The
-preflight compares the current host architecture with the compiler bundled by
-React Native and fails immediately when they cannot run together. Production
-Hermes output must use a builder matching that bundled compiler.
-
-On a development machine without a compatible Hermes compiler, a JavaScript-only
-export can still validate Metro bundling without claiming a production build:
+preflight compares the current host architecture with React Native's selected
+compiler and fails immediately when they cannot run together. React Native ships
+an x86-64 Linux compiler. On an ARM64 Linux builder, install the matching native
+compiler from pinned Hermes source after `npm ci`:
 
 ```bash
-npx expo export --platform android --no-bytecode --output-dir dist/android-js-validation --clear
+npm run install:hermesc:arm64
 ```
 
-Do not publish that validation output as an Android production artifact.
-Remove this validation-only fallback after native ARM64 Hermes support lands
-under [#76](https://github.com/yoroi-classic/yoroi/issues/76).
+The installer builds with Clang 14 and verifies the source archive checksum,
+compiler architecture, Hermes release, HBC bytecode version, and bytecode
+generation for both a smoke program and the app's production-sized unminified
+Android bundle. It installs to React Native's preferred source-build location.
+Run it again after replacing `node_modules`.
 
 ### Performance Optimization
 
