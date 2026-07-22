@@ -30,6 +30,12 @@ describe('cardanoWalletBackendV1Maker', () => {
   const malformedShelleyWithValidChecksum = Branded.asAddress(
     bech32.encode('addr', bech32.toWords(new Uint8Array([0x01])), 1023),
   )
+  const mainnetPayloadWithTestnetPrefix = Branded.asAddress(
+    bech32.encode('addr_test', bech32.decode(mainnet, 1023).words, 1023),
+  )
+  const testnetPayloadWithMainnetPrefix = Branded.asAddress(
+    bech32.encode('addr', bech32.decode(testnet, 1023).words, 1023),
+  )
 
   it('maps the filter-used contract without configuring a production host', async () => {
     const request: Fetcher = jest.fn().mockResolvedValue([testnet])
@@ -120,6 +126,14 @@ describe('cardanoWalletBackendV1Maker', () => {
     [
       'malformed Shelley payload with a valid checksum',
       [malformedShelleyWithValidChecksum],
+    ],
+    [
+      'mainnet payload with a testnet prefix',
+      [mainnetPayloadWithTestnetPrefix],
+    ],
+    [
+      'testnet payload with a mainnet prefix',
+      [testnetPayloadWithMainnetPrefix],
     ],
     ['malformed Base58', [Branded.asAddress('Ae2tdPwUPEZ6ip0')]],
     ['Byron address with an invalid checksum', [byronWithInvalidChecksum]],

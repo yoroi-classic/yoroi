@@ -19,6 +19,7 @@ const UsedAddressesSchema = z.array(z.string())
 const Bech32Limit = 1023
 const PaymentAddressPrefixes = new Set(['addr', 'addr_test'])
 const PaymentAddressMaxType = 7
+const MainnetNetworkId = 1
 const MinAddresses = 1
 const MaxAddresses = 1000
 
@@ -32,7 +33,11 @@ const isShelleyPaymentAddress = (
   }
 
   const header = bech32.fromWordsUnsafe(decoded.words)?.[0]
-  if (header == null || Math.floor(header / 16) > PaymentAddressMaxType) {
+  if (
+    header == null ||
+    Math.floor(header / 16) > PaymentAddressMaxType ||
+    (decoded.prefix === 'addr') !== (header % 16 === MainnetNetworkId)
+  ) {
     return false
   }
 
