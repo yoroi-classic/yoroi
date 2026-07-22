@@ -1,5 +1,6 @@
 import {CardanoMobileWrapped, Fetcher, fetcher} from '@yoroi/common'
 
+import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import * as bech32 from 'bech32'
 import {freeze} from 'immer'
 import {z} from 'zod'
@@ -21,14 +22,22 @@ const PaymentAddressMaxType = 7
 const MinAddresses = 1
 const MaxAddresses = 1000
 
-const isShelleyPaymentAddress = (address: string): boolean => {
+const isShelleyPaymentAddress = (
+  address: string,
+  csl: WasmModuleProxy,
+): boolean => {
   const decoded = bech32.decodeUnsafe(address, Bech32Limit)
   if (decoded == null || !PaymentAddressPrefixes.has(decoded.prefix)) {
     return false
   }
 
   const header = bech32.fromWordsUnsafe(decoded.words)?.[0]
-  return header != null && Math.floor(header / 16) <= PaymentAddressMaxType
+  if (header == null || Math.floor(header / 16) > PaymentAddressMaxType) {
+    return false
+  }
+
+  const parsed = csl.Address.fromBech32(address)
+  return parsed != null && !parsed.isMalformed()
 }
 
 export const canUseCardanoWalletBackendV1FilterUsed = (
@@ -38,15 +47,12 @@ export const canUseCardanoWalletBackendV1FilterUsed = (
     return false
   }
 
-  const possibleByronAddresses = addresses.filter(
-    (address) => !isShelleyPaymentAddress(address),
-  )
-  if (possibleByronAddresses.length === 0) return true
-
   try {
     return CardanoMobileWrapped.cslScope((csl) =>
-      possibleByronAddresses.every((address) =>
-        csl.ByronAddress.isValid(address),
+      addresses.every(
+        (address) =>
+          isShelleyPaymentAddress(address, csl) ||
+          csl.ByronAddress.isValid(address),
       ),
     )
   } catch {

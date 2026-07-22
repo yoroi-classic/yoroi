@@ -1,6 +1,8 @@
 import {Fetcher} from '@yoroi/common'
 import {Branded} from '@yoroi/types'
 
+import * as bech32 from 'bech32'
+
 import {
   canUseCardanoWalletBackendV1FilterUsed,
   cardanoWalletBackendV1Maker,
@@ -24,6 +26,9 @@ describe('cardanoWalletBackendV1Maker', () => {
   )
   const rewardHeaderWithPaymentPrefix = Branded.asAddress(
     'addr1uxf6uf5ws2aypnuzszp24kjkk7epqtef3sxymh5gq3xznfcwvcnsj',
+  )
+  const malformedShelleyWithValidChecksum = Branded.asAddress(
+    bech32.encode('addr', bech32.toWords(new Uint8Array([0x01])), 1023),
   )
 
   it('maps the filter-used contract without configuring a production host', async () => {
@@ -112,6 +117,10 @@ describe('cardanoWalletBackendV1Maker', () => {
   it.each([
     ['malformed bech32', [Branded.asAddress('addr_test1_not_real')]],
     ['invalid bech32 padding', [Branded.asAddress('addr1qps5c0s')]],
+    [
+      'malformed Shelley payload with a valid checksum',
+      [malformedShelleyWithValidChecksum],
+    ],
     ['malformed Base58', [Branded.asAddress('Ae2tdPwUPEZ6ip0')]],
     ['Byron address with an invalid checksum', [byronWithInvalidChecksum]],
     ['reward address', [rewardAddress]],
