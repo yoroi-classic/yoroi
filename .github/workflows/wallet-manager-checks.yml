@@ -32,25 +32,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/mobile-package-check
         with:
-          node-version: "22.12.0"
-          cache: "npm"
+          package-name: wallet-manager
+          package-directory: scripts/packages/wallet-manager
           cache-dependency-path: |
             mobile/package-lock.json
             scripts/packages/wallet-manager/package-lock.json
-
-      - name: Validate wallet-manager package lock
-        run: npm ci --legacy-peer-deps
-        working-directory: scripts/packages/wallet-manager
-        shell: bash
-
-      - name: Install mobile dependencies
-        run: npm ci
-        working-directory: mobile
-        shell: bash
-
-      - name: Test wallet-manager
-        run: npx jest --config jest.config.js packages/wallet-manager --runInBand --coverage=false
-        working-directory: mobile
-        shell: bash
+          install-mobile: "true"
+          mobile-test-path: packages/wallet-manager
