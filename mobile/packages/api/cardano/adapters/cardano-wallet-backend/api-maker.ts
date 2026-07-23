@@ -1,5 +1,6 @@
-import {Fetcher, fetcher} from '@yoroi/common'
+import {CardanoMobileWrapped, Fetcher, fetcher} from '@yoroi/common'
 
+import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import * as bech32 from 'bech32'
 import {freeze} from 'immer'
 import {z} from 'zod'
@@ -18,14 +19,32 @@ const UsedAddressesSchema = z.array(z.string())
 const Bech32Limit = 1023
 const PaymentAddressPrefixes = new Set(['addr', 'addr_test'])
 const PaymentAddressMaxType = 7
+const MainnetNetworkId = 1
 const MinAddresses = 1
 const MaxAddresses = 1000
 
-/**
- * The backend route currently accepts Shelley payment addresses only. Callers
- * can use this predicate when selecting an adapter so Byron batches remain on
- * the legacy backend until cardano-wallet-backend#90 is implemented.
- */
+const isShelleyPaymentAddress = (
+  address: string,
+  csl: WasmModuleProxy,
+): boolean => {
+  const decoded = bech32.decodeUnsafe(address, Bech32Limit)
+  if (decoded == null || !PaymentAddressPrefixes.has(decoded.prefix)) {
+    return false
+  }
+
+  const header = bech32.fromWordsUnsafe(decoded.words)?.[0]
+  if (
+    header == null ||
+    Math.floor(header / 16) > PaymentAddressMaxType ||
+    (decoded.prefix === 'addr') !== (header % 16 === MainnetNetworkId)
+  ) {
+    return false
+  }
+
+  const parsed = csl.Address.fromBech32(address)
+  return parsed != null && !parsed.isMalformed()
+}
+
 export const canUseCardanoWalletBackendV1FilterUsed = (
   addresses: Addresses,
 ): boolean => {
@@ -33,15 +52,17 @@ export const canUseCardanoWalletBackendV1FilterUsed = (
     return false
   }
 
-  return addresses.every((address) => {
-    const decoded = bech32.decodeUnsafe(address, Bech32Limit)
-    if (decoded == null || !PaymentAddressPrefixes.has(decoded.prefix)) {
-      return false
-    }
-
-    const header = bech32.fromWordsUnsafe(decoded.words)?.[0]
-    return header != null && Math.floor(header / 16) <= PaymentAddressMaxType
-  })
+  try {
+    return CardanoMobileWrapped.cslScope((csl) =>
+      addresses.every(
+        (address) =>
+          isShelleyPaymentAddress(address, csl) ||
+          csl.ByronAddress.isValid(address),
+      ),
+    )
+  } catch {
+    return false
+  }
 }
 
 export const cardanoWalletBackendV1Maker = ({
@@ -64,7 +85,7 @@ export const cardanoWalletBackendV1Maker = ({
       }
       if (!canUseCardanoWalletBackendV1FilterUsed(addresses)) {
         throw new Error(
-          'cardano-wallet-backend filter-used requires Shelley bech32 payment addresses (addr / addr_test); keep Byron addresses on the legacy backend',
+          'cardano-wallet-backend filter-used requires valid Shelley or Byron payment addresses',
         )
       }
 
