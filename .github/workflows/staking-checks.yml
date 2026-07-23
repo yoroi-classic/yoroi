@@ -4,12 +4,14 @@ on:
   push:
     branches: [main, develop]
     paths:
+      - ".github/actions/mobile-package-check/action.yml"
       - ".github/workflows/staking-checks.yml"
       - "scripts/packages/staking/**"
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - ".github/actions/mobile-package-check/action.yml"
       - ".github/workflows/staking-checks.yml"
       - "scripts/packages/staking/**"
 
