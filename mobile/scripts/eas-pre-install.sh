@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+node ./scripts/check-production-fixture-env.cjs
+
 echo "EAS pre-install: Rust setup"
 
 # Inject Firebase production configs if this is a production build
@@ -131,4 +133,3 @@ if [[ "${EAS_BUILD_PLATFORM:-}" == "android" ]]; then
     fi
   fi
 fi
-
