@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, develop]
     paths:
+      - ".github/actions/mobile-package-check/action.yml"
       - ".github/workflows/api-checks.yml"
       - "mobile/babel.config.js"
       - "mobile/jest.config.js"
@@ -15,6 +16,7 @@ on:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - ".github/actions/mobile-package-check/action.yml"
       - ".github/workflows/api-checks.yml"
       - "mobile/babel.config.js"
       - "mobile/jest.config.js"
@@ -32,25 +34,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/mobile-package-check
         with:
-          node-version: "22.12.0"
-          cache: "npm"
+          package-name: api
+          package-directory: scripts/packages/api
           cache-dependency-path: |
             mobile/package-lock.json
             scripts/packages/api/package-lock.json
-
-      - name: Validate api package lock
-        run: npm ci --legacy-peer-deps
-        working-directory: scripts/packages/api
-        shell: bash
-
-      - name: Install mobile dependencies
-        run: npm ci
-        working-directory: mobile
-        shell: bash
-
-      - name: Test api
-        run: npx jest --config jest.config.js packages/api --runInBand --coverage=false
-        working-directory: mobile
-        shell: bash
+          install-mobile: "true"
+          mobile-test-path: packages/api

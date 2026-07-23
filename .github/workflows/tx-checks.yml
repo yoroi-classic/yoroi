@@ -4,12 +4,14 @@ on:
   push:
     branches: [main, develop]
     paths:
+      - ".github/actions/mobile-package-check/action.yml"
       - ".github/workflows/tx-checks.yml"
       - "scripts/packages/tx/**"
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - ".github/actions/mobile-package-check/action.yml"
       - ".github/workflows/tx-checks.yml"
       - "scripts/packages/tx/**"
 
@@ -27,13 +29,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/mobile-package-check
         with:
-          node-version: "22.12.0"
-          cache: "npm"
+          package-name: tx
+          package-directory: scripts/packages/tx
           cache-dependency-path: scripts/packages/tx/package-lock.json
-
-      - name: Validate tx package lock
-        run: npm ci --legacy-peer-deps
-        working-directory: scripts/packages/tx
-        shell: bash
