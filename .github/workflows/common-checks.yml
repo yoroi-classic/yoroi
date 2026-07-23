@@ -1,23 +1,41 @@
 name: Common Package Checks
 
 on:
-  pull_request:
+  push:
+    branches: [main, develop]
     paths:
-      - '.github/workflows/common-checks.yml'
-      - 'mobile/packages/common/**'
-      - 'mobile/packages/logger/**'
-      - 'mobile/packages/types/**'
-      - 'scripts/packages/common/**'
-      - 'scripts/packages/logger/**'
-      - 'scripts/packages/types/**'
+      - ".github/workflows/common-checks.yml"
+      - "mobile/packages/common/**"
+      - "mobile/packages/logger/**"
+      - "mobile/packages/types/**"
+      - "scripts/packages/common/**"
+      - "scripts/packages/logger/**"
+      - "scripts/packages/types/**"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/common-checks.yml"
+      - "mobile/packages/common/**"
+      - "mobile/packages/logger/**"
+      - "mobile/packages/types/**"
+      - "scripts/packages/common/**"
+      - "scripts/packages/logger/**"
+      - "scripts/packages/types/**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   common:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     defaults:
       run:
