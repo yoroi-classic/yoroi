@@ -15,6 +15,8 @@ export const unstoppableApiKey = process.env.EXPO_PUBLIC_UNSTOPPABLE_API_KEY
 export const commit = process.env.EXPO_PUBLIC_COMMIT
 export const buildVariant = process.env.EXPO_PUBLIC_BUILD_VARIANT
 export const disableLogbox = Boolean(process.env.EXPO_PUBLIC_DISABLE_LOGBOX)
+export const cardanoWalletBackendUrl =
+  process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL
 
 // Runtime
 export const isNightly = buildVariant === 'NIGHTLY'

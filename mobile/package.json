@@ -23,6 +23,7 @@
     "android:production": "npm run check:hermesc && EXPO_PUBLIC_APP_CONFIG=app.config.production.js npx expo prebuild --platform android && EXPO_PUBLIC_APP_CONFIG=app.config.production.js expo run:android",
     "android:standalone": "npm run check:hermesc && EXPO_PUBLIC_BUILD_VARIANT=DEV npx expo prebuild --platform android && cd android && EXPO_PUBLIC_BUILD_VARIANT=DEV SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew assembleRelease && cd ..",
     "android:standalone:apk": "npm run check:hermesc && EXPO_PUBLIC_BUILD_VARIANT=DEV npx expo prebuild --platform android && cd android && EXPO_PUBLIC_BUILD_VARIANT=DEV SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew assembleRelease && cd .. && echo 'APK location: android/app/build/outputs/apk/release/app-release.apk'",
+    "android:export": "npm run check:hermesc && npx expo export --platform android --output-dir dist/android-local-backend --clear --source-maps",
     "ios": "npx expo prebuild --platform ios && expo run:ios",
     "ios:device": "npx expo prebuild --platform ios && expo run:ios --device",
     "ios:reset": "rm -rf node_modules ios && npm i && npx expo prebuild --platform ios && expo run:ios",
@@ -38,6 +39,9 @@
     "tsc:fix": "tsc --noEmit --fix",
     "test": "jest --config jest.config.js",
     "test:mobile-deps-smoke": "tsc --pretty false --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node --rootDir scripts --outDir node_modules/.cache/mobile-dependency-smoke scripts/mobile-dependency-smoke.ts && node node_modules/.cache/mobile-dependency-smoke/mobile-dependency-smoke.js",
+    "test:cardano-wallet-backend-smoke": "node scripts/cardano-wallet-backend-smoke.mjs",
+    "test:cardano-wallet-backend-smoke:unit": "node --test scripts/cardano-wallet-backend-smoke.test.mjs",
+    "lint:cardano-wallet-backend-smoke": "eslint scripts/cardano-wallet-backend-smoke.mjs scripts/cardano-wallet-backend-smoke.test.mjs --parser-options '{\"ecmaVersion\":2024,\"sourceType\":\"module\"}'",
     "format": "prettier --write ."
   },
   "dependencies": {

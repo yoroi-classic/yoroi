@@ -58,6 +58,14 @@ jobs:
         run: npm run test:mobile-deps-smoke
         working-directory: mobile
         shell: bash
+      - name: Cardano wallet backend smoke unit tests
+        run: npm run test:cardano-wallet-backend-smoke:unit
+        working-directory: mobile
+        shell: bash
+      - name: Lint Cardano wallet backend smoke
+        run: npm run lint:cardano-wallet-backend-smoke
+        working-directory: mobile
+        shell: bash
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@af09b5e394c93991b95a5e7646aeb90c1917f78f # v5.5.1
         with:
