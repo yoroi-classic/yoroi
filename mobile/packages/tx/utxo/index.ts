@@ -56,6 +56,10 @@ export {
   type PendingUtxoOverlay,
   type PendingUtxoOverlayStore,
 } from './pending-utxo-overlay'
+export {
+  createPersistentPendingUtxoOverlayStore,
+  type PersistentPendingUtxoOverlayStore,
+} from './persistent-pending-utxo-overlay-store'
 
 export type UtxoStorage = {
   getUtxoAtSafePoint(): Promise<UtxoAtSafePoint | undefined>
