@@ -4,13 +4,16 @@ import {App} from '@yoroi/types'
 import {useQuery} from '@tanstack/react-query'
 
 import {persistPrefixKeyword} from '~/kernel/connection/ConnectionProvider'
-import {isDev} from '~/kernel/constants'
+import {cardanoWalletBackendUrl, isDev} from '~/kernel/constants'
 import {logger} from '~/kernel/logger/logger'
 
-const queryKey = [persistPrefixKeyword, 'yoroi-config', isDev]
-const basePath =
-  'https://raw.githubusercontent.com/Emurgo/yoroi-config/refs/heads/main/'
-const url = `${basePath}${isDev ? 'dev.json' : 'prod.json'}`
+import {
+  getRemoteConfigQueryKey,
+  getRemoteConfigUrl,
+} from './remote-config-source'
+
+const url = getRemoteConfigUrl({cardanoWalletBackendUrl, isDev})
+const queryKey = getRemoteConfigQueryKey({persistPrefixKeyword, url})
 
 export const useRemoteConfig = () => {
   const query = useQuery({
