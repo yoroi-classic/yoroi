@@ -111,6 +111,65 @@ describe('cardanoApiManagerMaker', () => {
   })
 
   describe('adapter selection', () => {
+    it('should use cardano-wallet-backend for configured transaction submission', async () => {
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const cardanoWalletBackendAdapter = {
+        submitTransaction: jest.fn().mockResolvedValue(undefined),
+      }
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'legacy',
+        submitTransaction: 'cardano-wallet-backend',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        cardanoWalletBackendAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const signedTx = 'signed-tx' as TransactionCborBase64
+
+      await expect(api.submitTransaction(signedTx)).resolves.toBeUndefined()
+      expect(
+        cardanoWalletBackendAdapter.submitTransaction,
+      ).toHaveBeenCalledWith(signedTx)
+    })
+
+    it('should keep transaction submission on legacy without a backend preference', async () => {
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const legacySubmit = jest.spyOn(legacyAdapter, 'submitTransaction')
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'legacy',
+        submitTransaction: 'legacy',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const signedTx = 'signed-tx' as TransactionCborBase64
+
+      await expect(api.submitTransaction(signedTx)).resolves.toBeUndefined()
+      expect(legacySubmit).toHaveBeenCalledWith(signedTx)
+    })
+
     it('should use backend-zero adapter when preference is backend-zero', async () => {
       const backendZeroAdapter = createMockAdapter('backend-zero')
       const legacyAdapter = createMockAdapter('legacy')

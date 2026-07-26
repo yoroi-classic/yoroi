@@ -16,13 +16,21 @@ import {getSpendingKey} from '../addressInfo/addressInfo'
 const apiInstances = new Map<string, ReturnType<typeof cardanoWalletApiMaker>>()
 
 const getApi = (baseApiUrl: string) => {
-  if (!apiInstances.has(baseApiUrl)) {
+  const cardanoWalletBackendUrl =
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL
+  const cacheKey = `${baseApiUrl}\u0000${cardanoWalletBackendUrl ?? ''}`
+
+  if (!apiInstances.has(cacheKey)) {
     apiInstances.set(
-      baseApiUrl,
-      cardanoWalletApiMaker({baseApiUrl, getSpendingKey}),
+      cacheKey,
+      cardanoWalletApiMaker({
+        baseApiUrl,
+        cardanoWalletBackendUrl,
+        getSpendingKey,
+      }),
     )
   }
-  return apiInstances.get(baseApiUrl)!
+  return apiInstances.get(cacheKey)!
 }
 
 /**

@@ -15,10 +15,12 @@ import {
 
 export const cardanoApiManagerMaker = ({
   backendZeroAdapter,
+  cardanoWalletBackendAdapter,
   legacyAdapter,
   preferences,
 }: {
   backendZeroAdapter: CardanoApiAdapter
+  cardanoWalletBackendAdapter?: Pick<CardanoApiAdapter, 'submitTransaction'>
   legacyAdapter: CardanoApiAdapter
   preferences: EndpointPreference
 }): ManagedCardanoApi => {
@@ -49,6 +51,37 @@ export const cardanoApiManagerMaker = ({
       )
     }
 
+    if (preference === 'cardano-wallet-backend') {
+      throw new Error(
+        `Backend cardano-wallet-backend does not support endpoint ${endpoint}`,
+      )
+    }
+
+    return preference === 'backend-zero' ? backendZeroAdapter : legacyAdapter
+  }
+
+  const getSubmitTransactionAdapter = (): Pick<
+    CardanoApiAdapter,
+    'submitTransaction'
+  > => {
+    const preference = preferences.submitTransaction
+    const availableBackends = ENDPOINT_AVAILABILITY.submitTransaction
+
+    if (!availableBackends?.includes(preference)) {
+      throw new Error(
+        `Backend ${preference} does not support endpoint submitTransaction. Available: ${availableBackends?.join(', ') ?? ''}`,
+      )
+    }
+
+    if (preference === 'cardano-wallet-backend') {
+      if (cardanoWalletBackendAdapter == null) {
+        throw new Error(
+          'cardano-wallet-backend submitTransaction adapter is not configured',
+        )
+      }
+      return cardanoWalletBackendAdapter
+    }
+
     return preference === 'backend-zero' ? backendZeroAdapter : legacyAdapter
   }
 
@@ -69,7 +102,7 @@ export const cardanoApiManagerMaker = ({
     },
 
     async submitTransaction(signedTx: TransactionCborBase64 | string) {
-      const adapter = getAdapter('submitTransaction')
+      const adapter = getSubmitTransactionAdapter()
       const txCbor =
         typeof signedTx === 'string'
           ? (signedTx as TransactionCborBase64)

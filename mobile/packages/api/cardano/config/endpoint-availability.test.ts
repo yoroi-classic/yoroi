@@ -50,10 +50,18 @@ describe('ENDPOINT_AVAILABILITY', () => {
     expect(ENDPOINT_AVAILABILITY.getFundInfo).toEqual(['legacy'])
   })
 
+  it('should expose transaction submission through cardano-wallet-backend', () => {
+    expect(ENDPOINT_AVAILABILITY.submitTransaction).toContain(
+      'cardano-wallet-backend',
+    )
+  })
+
   it('should have valid backend values', () => {
     Object.values(ENDPOINT_AVAILABILITY).forEach((backends) => {
       backends.forEach((backend) => {
-        expect(['backend-zero', 'legacy']).toContain(backend)
+        expect(['backend-zero', 'cardano-wallet-backend', 'legacy']).toContain(
+          backend,
+        )
       })
     })
   })

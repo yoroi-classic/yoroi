@@ -1,4 +1,5 @@
 import {backendZeroApiMaker} from './adapters/backend-zero/api-maker'
+import {cardanoWalletBackendV1Maker} from './adapters/cardano-wallet-backend/api-maker'
 import {legacyApiMaker} from './adapters/legacy/api-maker'
 import {cardanoApiManagerMaker} from './manager'
 import {EndpointPreference, ManagedCardanoApi} from './types'
@@ -6,9 +7,11 @@ import {getBackendZeroUrl} from './utils/url-mapping'
 
 export const cardanoWalletApiMaker = ({
   baseApiUrl,
+  cardanoWalletBackendUrl,
   getSpendingKey,
 }: {
   baseApiUrl: string
+  cardanoWalletBackendUrl?: string
   getSpendingKey: (address: string) => string | null
 }): ManagedCardanoApi => {
   const backendZeroUrl = getBackendZeroUrl(baseApiUrl)
@@ -18,6 +21,12 @@ export const cardanoWalletApiMaker = ({
     getSpendingKey,
   })
   const legacyAdapter = legacyApiMaker({baseApiUrl})
+  const normalizedCardanoWalletBackendUrl = cardanoWalletBackendUrl?.trim()
+  const cardanoWalletBackendAdapter = normalizedCardanoWalletBackendUrl
+    ? cardanoWalletBackendV1Maker({
+        config: {baseUrl: normalizedCardanoWalletBackendUrl},
+      })
+    : undefined
 
   // Default preferences matching develop branch usage
   // All endpoints use legacyApiBaseUrl in develop branch
@@ -25,7 +34,8 @@ export const cardanoWalletApiMaker = ({
     getTipStatus: 'legacy', // Uses legacyApiBaseUrl in develop (via syncTxs)
     fetchNewTxHistory: 'legacy', // Uses legacyApiBaseUrl in develop (via syncTxs)
     filterUsedAddresses: 'legacy', // Uses legacyApiBaseUrl in develop
-    submitTransaction: 'legacy', // Uses legacyApiBaseUrl in develop (backend-zero /tx endpoint not implemented)
+    submitTransaction:
+      cardanoWalletBackendAdapter == null ? 'legacy' : 'cardano-wallet-backend',
     getAccountState: 'legacy', // Uses legacyApiBaseUrl in develop
     bulkGetAccountState: 'legacy', // Uses legacyApiBaseUrl in develop
     getPoolInfo: 'legacy', // Uses legacyApiBaseUrl in develop
@@ -36,6 +46,7 @@ export const cardanoWalletApiMaker = ({
 
   return cardanoApiManagerMaker({
     backendZeroAdapter,
+    cardanoWalletBackendAdapter,
     legacyAdapter,
     preferences: defaultPreferences,
   })
