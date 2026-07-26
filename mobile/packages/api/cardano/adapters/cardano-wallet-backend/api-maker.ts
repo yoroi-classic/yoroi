@@ -1,4 +1,5 @@
 import {CardanoMobileWrapped, Fetcher, fetcher} from '@yoroi/common'
+import type {TransactionCborBase64} from '@yoroi/types'
 
 import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import * as bech32 from 'bech32'
@@ -13,15 +14,37 @@ export type CardanoWalletBackendV1Config = {
 
 export type CardanoWalletBackendV1Api = {
   filterUsedAddresses(addresses: Addresses): Promise<Addresses>
+  submitTransaction(signedTx: TransactionCborBase64): Promise<void>
 }
 
 const UsedAddressesSchema = z.array(z.string())
+const SubmitTransactionResponseSchema = z
+  .object({txHash: z.string().regex(/^[0-9a-fA-F]{64}$/)})
+  .strict()
+const Base64CborSchema = z
+  .string()
+  .min(1)
+  .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)
 const Bech32Limit = 1023
 const PaymentAddressPrefixes = new Set(['addr', 'addr_test'])
 const PaymentAddressMaxType = 7
 const MainnetNetworkId = 1
 const MinAddresses = 1
 const MaxAddresses = 1000
+
+const transactionCborHex = (signedTx: TransactionCborBase64): string => {
+  const encoded = String(signedTx)
+  if (!Base64CborSchema.safeParse(encoded).success) {
+    throw new Error('Invalid base64 transaction CBOR')
+  }
+
+  const bytes = Buffer.from(encoded, 'base64')
+  if (bytes.length === 0 || bytes.toString('base64') !== encoded) {
+    throw new Error('Invalid base64 transaction CBOR')
+  }
+
+  return bytes.toString('hex')
+}
 
 const isShelleyPaymentAddress = (
   address: string,
@@ -112,6 +135,21 @@ export const cardanoWalletBackendV1Maker = ({
 
       const used = new Set(parsed.data)
       return addresses.filter((address) => used.has(address))
+    },
+
+    async submitTransaction(signedTx: TransactionCborBase64): Promise<void> {
+      const response = await request<unknown>({
+        url: `${baseUrl}/v1/tx/submit`,
+        data: {cbor: transactionCborHex(signedTx)},
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+      })
+
+      if (!SubmitTransactionResponseSchema.safeParse(response).success) {
+        throw new Error(
+          'Invalid cardano-wallet-backend transaction submission response',
+        )
+      }
     },
   })
 }
