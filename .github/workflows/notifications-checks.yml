@@ -1,0 +1,51 @@
+name: notifications-checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/actions/mobile-package-check/action.yml"
+      - ".github/workflows/notifications-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/notifications/**"
+      - "scripts/packages/notifications/**"
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/actions/mobile-package-check/action.yml"
+      - ".github/workflows/notifications-checks.yml"
+      - "mobile/babel.config.js"
+      - "mobile/jest.config.js"
+      - "mobile/package-lock.json"
+      - "mobile/package.json"
+      - "mobile/packages/notifications/**"
+      - "scripts/packages/notifications/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notifications:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: ./.github/actions/mobile-package-check
+        with:
+          package-name: notifications
+          package-directory: scripts/packages/notifications
+          cache-dependency-path: |
+            mobile/package-lock.json
+            scripts/packages/notifications/package-lock.json
+          install-mobile: "true"
+          mobile-test-path: packages/notifications
