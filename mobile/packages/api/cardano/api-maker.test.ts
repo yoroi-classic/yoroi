@@ -107,12 +107,16 @@ describe('cardanoWalletApiMaker', () => {
 
     cardanoWalletApiMaker({
       baseApiUrl,
+      cardanoWalletBackendNetwork: 'mainnet',
       cardanoWalletBackendUrl,
       getSpendingKey: mockGetSpendingKey,
     })
 
     expect(cardanoWalletBackendV1Maker).toHaveBeenCalledWith({
-      config: {baseUrl: 'https://wallet-backend.example.com/'},
+      config: {
+        baseUrl: 'https://wallet-backend.example.com/',
+        submitExpectedNetwork: 'mainnet',
+      },
     })
     expect(cardanoApiManagerMaker).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -129,6 +133,7 @@ describe('cardanoWalletApiMaker', () => {
     (cardanoWalletBackendUrl) => {
       cardanoWalletApiMaker({
         baseApiUrl: 'https://api.yoroiwallet.com/api',
+        cardanoWalletBackendNetwork: 'mainnet',
         cardanoWalletBackendUrl,
         getSpendingKey: mockGetSpendingKey,
       })
@@ -144,6 +149,24 @@ describe('cardanoWalletApiMaker', () => {
       )
     },
   )
+
+  it('keeps legacy transaction submission without a wallet network', () => {
+    cardanoWalletApiMaker({
+      baseApiUrl: 'https://api.yoroiwallet.com/api',
+      cardanoWalletBackendUrl: 'https://wallet-backend.example.com',
+      getSpendingKey: mockGetSpendingKey,
+    })
+
+    expect(cardanoWalletBackendV1Maker).not.toHaveBeenCalled()
+    expect(cardanoApiManagerMaker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardanoWalletBackendAdapter: undefined,
+        preferences: expect.objectContaining({
+          submitTransaction: 'legacy',
+        }),
+      }),
+    )
+  })
 
   it('should have preferences that match endpoint availability', () => {
     const baseApiUrl = 'https://api.yoroiwallet.com/api'

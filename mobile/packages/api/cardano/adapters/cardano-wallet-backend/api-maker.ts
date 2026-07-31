@@ -1,5 +1,5 @@
 import {CardanoMobileWrapped, Fetcher, fetcher} from '@yoroi/common'
-import type {TransactionCborBase64} from '@yoroi/types'
+import type {Chain, TransactionCborBase64} from '@yoroi/types'
 
 import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import * as bech32 from 'bech32'
@@ -10,6 +10,7 @@ import {Addresses} from '../../types'
 
 export type CardanoWalletBackendV1Config = {
   baseUrl: string
+  submitExpectedNetwork?: Chain.SupportedNetworks
 }
 
 export type CardanoWalletBackendV1Api = {
@@ -21,6 +22,9 @@ const UsedAddressesSchema = z.array(z.string())
 const SubmitTransactionResponseSchema = z
   .object({txHash: z.string().regex(/^[0-9a-fA-F]{64}$/)})
   .strict()
+const StatusResponseSchema = z
+  .object({network: z.enum(['mainnet', 'preprod', 'preview'])})
+  .passthrough()
 const Base64CborSchema = z
   .string()
   .min(1)
@@ -96,6 +100,7 @@ export const cardanoWalletBackendV1Maker = ({
   request?: Fetcher
 }): Readonly<CardanoWalletBackendV1Api> => {
   const baseUrl = config.baseUrl.replace(/\/+$/, '')
+  const {submitExpectedNetwork} = config
 
   if (!baseUrl) {
     throw new Error('cardano-wallet-backend /v1 base URL is required')
@@ -138,9 +143,29 @@ export const cardanoWalletBackendV1Maker = ({
     },
 
     async submitTransaction(signedTx: TransactionCborBase64): Promise<void> {
+      const cbor = transactionCborHex(signedTx)
+      if (submitExpectedNetwork == null) {
+        throw new Error(
+          'cardano-wallet-backend submit network is not configured',
+        )
+      }
+
+      const statusResponse = await request<unknown>({
+        url: `${baseUrl}/v1/status`,
+        method: 'GET',
+        headers: {Accept: 'application/json'},
+      })
+      const status = StatusResponseSchema.safeParse(statusResponse)
+      if (!status.success) {
+        throw new Error('Invalid cardano-wallet-backend status response')
+      }
+      if (status.data.network !== submitExpectedNetwork) {
+        throw new Error('cardano-wallet-backend network mismatch')
+      }
+
       const response = await request<unknown>({
         url: `${baseUrl}/v1/tx/submit`,
-        data: {cbor: transactionCborHex(signedTx)},
+        data: {cbor},
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
       })

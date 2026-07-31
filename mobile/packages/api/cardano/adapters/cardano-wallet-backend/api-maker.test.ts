@@ -76,14 +76,25 @@ describe('cardanoWalletBackendV1Maker', () => {
   })
 
   it('submits base64 transaction CBOR as exact hex once', async () => {
-    const request: Fetcher = jest.fn().mockResolvedValue({txHash})
+    const request: Fetcher = jest
+      .fn()
+      .mockResolvedValueOnce({network: 'preprod', chain: 'ok'})
+      .mockResolvedValueOnce({txHash})
     const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://localhost:3000/'},
+      config: {
+        baseUrl: 'http://localhost:3000/',
+        submitExpectedNetwork: 'preprod',
+      },
       request,
     })
 
     await expect(api.submitTransaction(signedTx)).resolves.toBeUndefined()
-    expect(request).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenNthCalledWith(1, {
+      url: 'http://localhost:3000/v1/status',
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
     expect(request).toHaveBeenCalledWith({
       url: 'http://localhost:3000/v1/tx/submit',
       data: {cbor: '84a100818258208f'},
@@ -102,16 +113,22 @@ describe('cardanoWalletBackendV1Maker', () => {
   ])(
     'rejects an invalid transaction submission response: %p',
     async (response) => {
-      const request: Fetcher = jest.fn().mockResolvedValue(response)
+      const request: Fetcher = jest
+        .fn()
+        .mockResolvedValueOnce({network: 'mainnet'})
+        .mockResolvedValueOnce(response)
       const api = cardanoWalletBackendV1Maker({
-        config: {baseUrl: 'http://localhost:3000'},
+        config: {
+          baseUrl: 'http://localhost:3000',
+          submitExpectedNetwork: 'mainnet',
+        },
         request,
       })
 
       await expect(api.submitTransaction(signedTx)).rejects.toThrow(
         'Invalid cardano-wallet-backend transaction submission response',
       )
-      expect(request).toHaveBeenCalledTimes(1)
+      expect(request).toHaveBeenCalledTimes(2)
     },
   )
 
@@ -134,16 +151,70 @@ describe('cardanoWalletBackendV1Maker', () => {
   it('does not retry a failed transaction submission', async () => {
     const request: Fetcher = jest
       .fn()
+      .mockResolvedValueOnce({network: 'preprod'})
       .mockRejectedValue(new Error('backend unavailable'))
     const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://localhost:3000'},
+      config: {
+        baseUrl: 'http://localhost:3000',
+        submitExpectedNetwork: 'preprod',
+      },
       request,
     })
 
     await expect(api.submitTransaction(signedTx)).rejects.toThrow(
       'backend unavailable',
     )
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([null, {}, {network: 'unknown'}])(
+    'rejects an invalid status response before submission: %p',
+    async (response) => {
+      const request: Fetcher = jest.fn().mockResolvedValue(response)
+      const api = cardanoWalletBackendV1Maker({
+        config: {
+          baseUrl: 'http://localhost:3000',
+          submitExpectedNetwork: 'mainnet',
+        },
+        request,
+      })
+
+      await expect(api.submitTransaction(signedTx)).rejects.toThrow(
+        'Invalid cardano-wallet-backend status response',
+      )
+      expect(request).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('rejects a backend serving a different network before submission', async () => {
+    const request: Fetcher = jest
+      .fn()
+      .mockResolvedValue({network: 'mainnet', chain: 'ok'})
+    const api = cardanoWalletBackendV1Maker({
+      config: {
+        baseUrl: 'http://localhost:3000',
+        submitExpectedNetwork: 'preprod',
+      },
+      request,
+    })
+
+    await expect(api.submitTransaction(signedTx)).rejects.toThrow(
+      'cardano-wallet-backend network mismatch',
+    )
     expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires an expected network before checking backend status', async () => {
+    const request: Fetcher = jest.fn()
+    const api = cardanoWalletBackendV1Maker({
+      config: {baseUrl: 'http://localhost:3000'},
+      request,
+    })
+
+    await expect(api.submitTransaction(signedTx)).rejects.toThrow(
+      'cardano-wallet-backend submit network is not configured',
+    )
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('maps Byron and mixed Shelley/Byron discovery batches', async () => {
