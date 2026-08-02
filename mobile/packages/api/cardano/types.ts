@@ -16,7 +16,10 @@ import {
   TxStatusResponse,
 } from './api-types'
 
-export type CardanoBackend = 'backend-zero' | 'legacy'
+export type CardanoBackend =
+  | 'backend-zero'
+  | 'cardano-wallet-backend'
+  | 'legacy'
 
 export type WalletContext = {
   walletId: string

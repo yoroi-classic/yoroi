@@ -8,21 +8,38 @@ import {
 } from '@yoroi/api'
 import {WalletContext, cardanoWalletApiMaker} from '@yoroi/api'
 import {StakePoolInfoRequest, StakePoolInfosAndHistories} from '@yoroi/staking'
-import {Address, TransactionCborBase64, WalletTransaction} from '@yoroi/types'
+import {
+  Address,
+  Chain,
+  TransactionCborBase64,
+  WalletTransaction,
+} from '@yoroi/types'
 
 import {getSpendingKey} from '../addressInfo/addressInfo'
 
 // Create API instances per baseApiUrl - preferences are set at initialization
 const apiInstances = new Map<string, ReturnType<typeof cardanoWalletApiMaker>>()
 
-const getApi = (baseApiUrl: string) => {
-  if (!apiInstances.has(baseApiUrl)) {
+const getApi = (
+  baseApiUrl: string,
+  cardanoWalletBackendNetwork?: Chain.SupportedNetworks,
+) => {
+  const cardanoWalletBackendUrl =
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL
+  const cacheKey = `${baseApiUrl}\u0000${cardanoWalletBackendUrl ?? ''}\u0000${cardanoWalletBackendNetwork ?? ''}`
+
+  if (!apiInstances.has(cacheKey)) {
     apiInstances.set(
-      baseApiUrl,
-      cardanoWalletApiMaker({baseApiUrl, getSpendingKey}),
+      cacheKey,
+      cardanoWalletApiMaker({
+        baseApiUrl,
+        cardanoWalletBackendNetwork,
+        cardanoWalletBackendUrl,
+        getSpendingKey,
+      }),
     )
   }
-  return apiInstances.get(baseApiUrl)!
+  return apiInstances.get(cacheKey)!
 }
 
 /**
@@ -67,12 +84,14 @@ export const filterUsedAddresses = async (
  * Submit transaction
  * @param signedTx - Signed transaction CBOR (base64 encoded)
  * @param baseApiUrl - Base API URL (used to create/get API instance)
+ * @param network - Wallet network required to validate the configured backend
  */
 export const submitTransaction = async (
   signedTx: TransactionCborBase64,
   baseApiUrl: string,
+  network: Chain.SupportedNetworks,
 ): Promise<void> => {
-  return getApi(baseApiUrl).submitTransaction(signedTx)
+  return getApi(baseApiUrl, network).submitTransaction(signedTx)
 }
 
 /**

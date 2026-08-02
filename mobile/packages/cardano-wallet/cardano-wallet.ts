@@ -1048,6 +1048,7 @@ function createWalletObject(
       await legacyApi.submitTransaction(
         base64SignedTx,
         networkManager.legacyApiBaseUrl,
+        networkManager.network,
       )
     } catch (error) {
       logger.error('cardano-wallet.submitTransaction: API submission failed', {

@@ -8,7 +8,7 @@ export const ENDPOINT_AVAILABILITY: Record<string, CardanoBackend[]> = {
   getTipStatus: ['backend-zero', 'legacy'],
   fetchNewTxHistory: ['backend-zero', 'legacy'],
   filterUsedAddresses: ['backend-zero', 'legacy'],
-  submitTransaction: ['backend-zero', 'legacy'],
+  submitTransaction: ['backend-zero', 'cardano-wallet-backend', 'legacy'],
   getAccountState: ['backend-zero', 'legacy'],
   bulkGetAccountState: ['backend-zero', 'legacy'],
   getPoolInfo: ['backend-zero', 'legacy'],
