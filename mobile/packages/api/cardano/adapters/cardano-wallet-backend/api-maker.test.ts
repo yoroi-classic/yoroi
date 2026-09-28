@@ -20,6 +20,9 @@ describe('cardanoWalletBackendV1Maker', () => {
   const byron = Branded.asAddress(
     'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bf',
   )
+  const byronRandom = Branded.asAddress(
+    'DdzFFzCqrht9W56zJGEFvHHywdeXZiGVYGqVhoZj6SRrS9o2HNLmorEzZhKm7khqfBKvCaTKGLtTnQSToxuvdzJTkQqcAf6f2ErxbSKS',
+  )
   const testnet = Branded.asAddress(
     'addr_test1qrg0x4sx2wfd3l26zqs658u8vyg8qz4dzqw0zke45lpy0vkr3y3kdut55a40jff00qmg74686vz44v6k363md06qkq0qzplc3l',
   )
@@ -80,16 +83,18 @@ describe('cardanoWalletBackendV1Maker', () => {
   })
 
   it('accepts a valid Byron address alongside Shelley addresses', async () => {
-    const request: Fetcher = jest.fn().mockResolvedValue([byron])
+    const request: Fetcher = jest.fn().mockResolvedValue([byron, byronRandom])
     const api = cardanoWalletBackendV1Maker({
       config: {baseUrl: 'http://localhost:3000'},
       request,
     })
 
-    expect(canUseCardanoWalletBackendV1FilterUsed([mainnet, byron])).toBe(true)
-    await expect(api.filterUsedAddresses([mainnet, byron])).resolves.toEqual([
-      byron,
-    ])
+    expect(
+      canUseCardanoWalletBackendV1FilterUsed([mainnet, byron, byronRandom]),
+    ).toBe(true)
+    await expect(
+      api.filterUsedAddresses([mainnet, byron, byronRandom]),
+    ).resolves.toEqual([byron, byronRandom])
   })
 
   it('accepts structurally valid pointer and enterprise Shelley addresses', () => {
@@ -314,6 +319,30 @@ describe('cardanoWalletBackendV1Maker', () => {
         ),
       ],
     ],
+    [
+      'Byron address with an unsupported attribute key',
+      [
+        Branded.asAddress(
+          '4EmqGiXr8GR26GQ5YYJvLGRDKbLt81wPX7NjKZxmkqynthb38uRkS2q3cEFtnx',
+        ),
+      ],
+    ],
+    [
+      'Byron address with a malformed derivation-path attribute',
+      [
+        Branded.asAddress(
+          'FHnt4NL7yPXgQR7wDQxY97QswqEfiiafTS2yJnLPcqQgoznP6kB9AJjPz19ewtd',
+        ),
+      ],
+    ],
+    [
+      'Byron address with a malformed network-magic attribute',
+      [
+        Branded.asAddress(
+          'FHnt4NL7yPXgQR7wDQxY97QswqEfiiafTS2yJnLPcqQgoznP6kB9uAgGJHRWYmW',
+        ),
+      ],
+    ],
     ['reward address', [rewardAddress]],
     ['reward header with payment prefix', [rewardHeaderWithPaymentPrefix]],
   ])(
@@ -335,7 +364,12 @@ describe('cardanoWalletBackendV1Maker', () => {
 
   it('marks real Shelley and Byron vectors as eligible', () => {
     expect(
-      canUseCardanoWalletBackendV1FilterUsed([mainnet, testnet, byron]),
+      canUseCardanoWalletBackendV1FilterUsed([
+        mainnet,
+        testnet,
+        byron,
+        byronRandom,
+      ]),
     ).toBe(true)
   })
 

@@ -90,33 +90,39 @@ const readCborHeader = (bytes: Uint8Array, offset: number): CborHeader => {
   throw new Error(`unsupported CBOR additional info ${info}`)
 }
 
-const skipCborItem = (bytes: Uint8Array, offset: number): number => {
+const readCborBytes = (
+  bytes: Uint8Array,
+  offset: number,
+): {value: Uint8Array; next: number} | undefined => {
   const header = readCborHeader(bytes, offset)
-  let next = offset + header.headerLength
-  switch (header.majorType) {
-    case 0:
-    case 1:
-      return next
-    case 2:
-    case 3:
-      if (next + header.value > bytes.length)
-        throw new Error('truncated CBOR string')
-      return next + header.value
-    case 4:
-      for (let index = 0; index < header.value; index += 1) {
-        next = skipCborItem(bytes, next)
-      }
-      return next
-    case 5:
-      for (let index = 0; index < header.value; index += 1) {
-        next = skipCborItem(bytes, next)
-        next = skipCborItem(bytes, next)
-      }
-      return next
-    case 6:
-      return skipCborItem(bytes, next)
-    default:
-      throw new Error(`unsupported CBOR major type ${header.majorType}`)
+  const start = offset + header.headerLength
+  const end = start + header.value
+  if (header.majorType !== 2 || end > bytes.length) return undefined
+  return {value: bytes.subarray(start, end), next: end}
+}
+
+const isEncodedCborBytesOfLength = (
+  bytes: Uint8Array,
+  length: number,
+): boolean => {
+  const decoded = readCborBytes(bytes, 0)
+  return (
+    decoded !== undefined &&
+    decoded.value.length === length &&
+    decoded.next === bytes.length
+  )
+}
+
+const isEncodedCborUint32 = (bytes: Uint8Array): boolean => {
+  try {
+    const value = readCborHeader(bytes, 0)
+    return (
+      value.majorType === 0 &&
+      value.value <= 0xffffffff &&
+      value.headerLength === bytes.length
+    )
+  } catch {
+    return false
   }
 }
 
@@ -135,9 +141,23 @@ const isByronPayload = (payload: Uint8Array): boolean => {
   const attributes = readCborHeader(payload, offset)
   if (attributes.majorType !== 5) return false
   offset += attributes.headerLength
+  const seenAttributes = new Set<number>()
   for (let index = 0; index < attributes.value; index += 1) {
-    offset = skipCborItem(payload, offset)
-    offset = skipCborItem(payload, offset)
+    const key = readCborHeader(payload, offset)
+    if (key.majorType !== 0 || (key.value !== 1 && key.value !== 2))
+      return false
+    if (seenAttributes.has(key.value)) return false
+    seenAttributes.add(key.value)
+    offset += key.headerLength
+
+    const encodedValue = readCborBytes(payload, offset)
+    if (encodedValue === undefined) return false
+    const validValue =
+      key.value === 1
+        ? isEncodedCborBytesOfLength(encodedValue.value, 28)
+        : isEncodedCborUint32(encodedValue.value)
+    if (!validValue) return false
+    offset = encodedValue.next
   }
 
   const type = readCborHeader(payload, offset)
