@@ -300,6 +300,26 @@ describe('cardanoWalletBackendV1Maker', () => {
       [makeShelleyAddress(0x41, [...new Array(28).fill(0), 0x81, 0x80, 0x80])],
     ],
     [
+      'pointer address with a fourth pointer byte',
+      [makeShelleyAddress(0x41, [...new Array(28).fill(0), 0, 0, 0, 0])],
+    ],
+    [
+      'pointer address with a non-minimal zero-prefixed field',
+      [makeShelleyAddress(0x41, [...new Array(28).fill(0), 0x80, 0, 0, 0])],
+    ],
+    [
+      'pointer address with a field longer than ten bytes',
+      [
+        makeShelleyAddress(0x41, [
+          ...new Array(28).fill(0),
+          ...new Array(10).fill(0x80),
+          0,
+          0,
+          0,
+        ]),
+      ],
+    ],
+    [
       'Shelley address with unsupported network id',
       [makeShelleyAddress(0x02, new Array(56).fill(0))],
     ],
@@ -316,6 +336,34 @@ describe('cardanoWalletBackendV1Maker', () => {
       [
         Branded.asAddress(
           'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bg',
+        ),
+      ],
+    ],
+    [
+      'Byron envelope with a valid checksum and a non-address payload',
+      [Branded.asAddress('ZSsYYFzf5iARz84')],
+    ],
+    [
+      'Byron address with a 27-byte root',
+      [
+        Branded.asAddress(
+          '3Bf3BWfUXmSBBeQP2cML6F2vMKhQjfNiCkA5P3sVXwBUSUL5UaoQfA4Nsb',
+        ),
+      ],
+    ],
+    [
+      'Byron address with unsupported type 3',
+      [
+        Branded.asAddress(
+          'Ae2tdPwUPEYvomFBZFSaDRf2uJu2cj9CnMGDgM3axCkmBwUPmfLJHffVCQS',
+        ),
+      ],
+    ],
+    [
+      'Byron address with trailing payload bytes',
+      [
+        Branded.asAddress(
+          'jYTLseJK1m1UZwMpbzSSSjniobYfctzUzSktVPqTQofw6y2NFqTPQYQ7YhLz',
         ),
       ],
     ],
