@@ -344,6 +344,38 @@ describe('cardanoWalletBackendV1Maker', () => {
       [Branded.asAddress('ZSsYYFzf5iARz84')],
     ],
     [
+      'Byron envelope with an outer array of the wrong length',
+      [
+        Branded.asAddress(
+          'AZm5umR9YQWaBq5ZRzi5aLJjwZtH2MMh99zWdua3cLnVgFB9P3PhBpmiuPE',
+        ),
+      ],
+    ],
+    [
+      'Byron envelope with a tag other than 24',
+      [
+        Branded.asAddress(
+          'Ae2tQgBQcExuf7pKACUkruaMVxLXhvaNjjxahTmgA9rWRqPTe1pLbNJXCc8',
+        ),
+      ],
+    ],
+    [
+      'Byron envelope with trailing bytes after the checksum',
+      [
+        Branded.asAddress(
+          'jYTLseFRs8ovVQHbbLjsbqpsPsze8h1D1ASAxfUQretA3HRuW8C4iR5LaPeo',
+        ),
+      ],
+    ],
+    [
+      'Byron address with a non-map attribute section',
+      [
+        Branded.asAddress(
+          'Ae2tdPwUPEYvomFBZFSaDRf2uJu2cj9CnMGDgM3axCkmBwUPme7wRAuRXuc',
+        ),
+      ],
+    ],
+    [
       'Byron address with a 27-byte root',
       [
         Branded.asAddress(
