@@ -1,11 +1,11 @@
 import {Fetcher, fetcher} from '@yoroi/common'
 import type {Chain, TransactionCborBase64} from '@yoroi/types'
 
-import * as bech32 from 'bech32'
 import {freeze} from 'immer'
 import {z} from 'zod'
 
 import {Addresses} from '../../types'
+import {isCardanoPaymentAddress} from './address-validation'
 
 export type CardanoWalletBackendV1Config = {
   baseUrl: string
@@ -28,10 +28,6 @@ const Base64CborSchema = z
   .string()
   .min(1)
   .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)
-const Bech32Limit = 1023
-const PaymentAddressPrefixes = new Set(['addr', 'addr_test'])
-const PaymentAddressMaxType = 7
-const MainnetNetworkId = 1
 const MinAddresses = 1
 const MaxAddresses = 1000
 
@@ -49,24 +45,6 @@ const transactionCborHex = (signedTx: TransactionCborBase64): string => {
   return bytes.toString('hex')
 }
 
-const isShelleyPaymentAddress = (address: string): boolean => {
-  const decoded = bech32.decodeUnsafe(address, Bech32Limit)
-  if (decoded == null || !PaymentAddressPrefixes.has(decoded.prefix)) {
-    return false
-  }
-
-  const header = bech32.fromWordsUnsafe(decoded.words)?.[0]
-  if (
-    header == null ||
-    Math.floor(header / 16) > PaymentAddressMaxType ||
-    (decoded.prefix === 'addr') !== (header % 16 === MainnetNetworkId)
-  ) {
-    return false
-  }
-
-  return true
-}
-
 export const canUseCardanoWalletBackendV1FilterUsed = (
   addresses: Addresses,
 ): boolean => {
@@ -75,7 +53,7 @@ export const canUseCardanoWalletBackendV1FilterUsed = (
   }
 
   try {
-    return addresses.every(isShelleyPaymentAddress)
+    return addresses.every(isCardanoPaymentAddress)
   } catch {
     return false
   }
@@ -102,7 +80,7 @@ export const cardanoWalletBackendV1Maker = ({
       }
       if (!canUseCardanoWalletBackendV1FilterUsed(addresses)) {
         throw new Error(
-          'cardano-wallet-backend filter-used requires valid Shelley payment addresses',
+          'cardano-wallet-backend filter-used requires valid payment addresses',
         )
       }
 
