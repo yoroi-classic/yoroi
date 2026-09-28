@@ -278,9 +278,9 @@ describe('cardanoWalletBackendV1Maker', () => {
   )
 
   it('marks real Shelley vectors as eligible', () => {
-    expect(
-      canUseCardanoWalletBackendV1FilterUsed([mainnet, testnet]),
-    ).toBe(true)
+    expect(canUseCardanoWalletBackendV1FilterUsed([mainnet, testnet])).toBe(
+      true,
+    )
   })
 
   it('requires the caller to opt in with an explicit base URL', () => {
