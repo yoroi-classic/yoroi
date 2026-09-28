@@ -1,7 +1,6 @@
-import {CardanoMobileWrapped, Fetcher, fetcher} from '@yoroi/common'
+import {Fetcher, fetcher} from '@yoroi/common'
 import type {Chain, TransactionCborBase64} from '@yoroi/types'
 
-import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import * as bech32 from 'bech32'
 import {freeze} from 'immer'
 import {z} from 'zod'
@@ -50,10 +49,7 @@ const transactionCborHex = (signedTx: TransactionCborBase64): string => {
   return bytes.toString('hex')
 }
 
-const isShelleyPaymentAddress = (
-  address: string,
-  csl: WasmModuleProxy,
-): boolean => {
+const isShelleyPaymentAddress = (address: string): boolean => {
   const decoded = bech32.decodeUnsafe(address, Bech32Limit)
   if (decoded == null || !PaymentAddressPrefixes.has(decoded.prefix)) {
     return false
@@ -68,8 +64,7 @@ const isShelleyPaymentAddress = (
     return false
   }
 
-  const parsed = csl.Address.fromBech32(address)
-  return parsed != null && !parsed.isMalformed()
+  return true
 }
 
 export const canUseCardanoWalletBackendV1FilterUsed = (
@@ -80,13 +75,7 @@ export const canUseCardanoWalletBackendV1FilterUsed = (
   }
 
   try {
-    return CardanoMobileWrapped.cslScope((csl) =>
-      addresses.every(
-        (address) =>
-          isShelleyPaymentAddress(address, csl) ||
-          csl.ByronAddress.isValid(address),
-      ),
-    )
+    return addresses.every(isShelleyPaymentAddress)
   } catch {
     return false
   }
@@ -113,7 +102,7 @@ export const cardanoWalletBackendV1Maker = ({
       }
       if (!canUseCardanoWalletBackendV1FilterUsed(addresses)) {
         throw new Error(
-          'cardano-wallet-backend filter-used requires valid Shelley or Byron payment addresses',
+          'cardano-wallet-backend filter-used requires valid Shelley payment addresses',
         )
       }
 

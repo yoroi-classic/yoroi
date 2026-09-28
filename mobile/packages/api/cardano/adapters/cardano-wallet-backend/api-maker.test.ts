@@ -20,20 +20,11 @@ describe('cardanoWalletBackendV1Maker', () => {
   const testnet = Branded.asAddress(
     'addr_test1qrg0x4sx2wfd3l26zqs658u8vyg8qz4dzqw0zke45lpy0vkr3y3kdut55a40jff00qmg74686vz44v6k363md06qkq0qzplc3l',
   )
-  const byron = Branded.asAddress(
-    'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bf',
-  )
-  const byronWithInvalidChecksum = Branded.asAddress(
-    'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bg',
-  )
   const rewardAddress = Branded.asAddress(
     'stake1uxf6uf5ws2aypnuzszp24kjkk7epqtef3sxymh5gq3xznfcg5w4sq',
   )
   const rewardHeaderWithPaymentPrefix = Branded.asAddress(
     'addr1uxf6uf5ws2aypnuzszp24kjkk7epqtef3sxymh5gq3xznfcwvcnsj',
-  )
-  const malformedShelleyWithValidChecksum = Branded.asAddress(
-    bech32.encode('addr', bech32.toWords(new Uint8Array([0x01])), 1023),
   )
   const mainnetPayloadWithTestnetPrefix = Branded.asAddress(
     bech32.encode('addr_test', bech32.decode(mainnet, 1023).words, 1023),
@@ -217,25 +208,6 @@ describe('cardanoWalletBackendV1Maker', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('maps Byron and mixed Shelley/Byron discovery batches', async () => {
-    const request: Fetcher = jest.fn().mockResolvedValue([byron])
-    const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://localhost:3000'},
-      request,
-    })
-
-    expect(canUseCardanoWalletBackendV1FilterUsed([mainnet, byron])).toBe(true)
-    await expect(api.filterUsedAddresses([mainnet, byron])).resolves.toEqual([
-      byron,
-    ])
-    expect(request).toHaveBeenCalledWith({
-      url: 'http://localhost:3000/v1/addresses/filter-used',
-      data: {addresses: [mainnet, byron]},
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-    })
-  })
-
   it.each([null, {}, [42], ['not-requested']])(
     'rejects a response outside the backend contract: %p',
     async (response) => {
@@ -271,10 +243,6 @@ describe('cardanoWalletBackendV1Maker', () => {
     ['malformed bech32', [Branded.asAddress('addr_test1_not_real')]],
     ['invalid bech32 padding', [Branded.asAddress('addr1qps5c0s')]],
     [
-      'malformed Shelley payload with a valid checksum',
-      [malformedShelleyWithValidChecksum],
-    ],
-    [
       'mainnet payload with a testnet prefix',
       [mainnetPayloadWithTestnetPrefix],
     ],
@@ -282,8 +250,14 @@ describe('cardanoWalletBackendV1Maker', () => {
       'testnet payload with a mainnet prefix',
       [testnetPayloadWithMainnetPrefix],
     ],
-    ['malformed Base58', [Branded.asAddress('Ae2tdPwUPEZ6ip0')]],
-    ['Byron address with an invalid checksum', [byronWithInvalidChecksum]],
+    [
+      'Byron address',
+      [
+        Branded.asAddress(
+          'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bf',
+        ),
+      ],
+    ],
     ['reward address', [rewardAddress]],
     ['reward header with payment prefix', [rewardHeaderWithPaymentPrefix]],
   ])(
@@ -297,16 +271,14 @@ describe('cardanoWalletBackendV1Maker', () => {
 
       expect(canUseCardanoWalletBackendV1FilterUsed(addresses)).toBe(false)
       await expect(api.filterUsedAddresses(addresses)).rejects.toThrow(
-        'requires valid Shelley or Byron payment addresses',
+        'requires valid Shelley payment addresses',
       )
       expect(request).not.toHaveBeenCalled()
     },
   )
 
-  it('marks real Shelley and Byron vectors as eligible', () => {
-    expect(
-      canUseCardanoWalletBackendV1FilterUsed([mainnet, testnet, byron]),
-    ).toBe(true)
+  it('marks real Shelley vectors as eligible', () => {
+    expect(canUseCardanoWalletBackendV1FilterUsed([mainnet, testnet])).toBe(true)
   })
 
   it('requires the caller to opt in with an explicit base URL', () => {
