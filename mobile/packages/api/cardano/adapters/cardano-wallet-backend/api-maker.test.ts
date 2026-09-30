@@ -451,6 +451,14 @@ describe('cardanoWalletBackendV1Maker', () => {
       [makeByronAddress([0x63, ...validByronPayload.slice(1)])],
     ],
     [
+      'Byron payload with an array body count of four',
+      [makeByronAddress([0x84, ...validByronPayload.slice(1)])],
+    ],
+    [
+      'Byron payload with an array body count of two',
+      [makeByronAddress([0x82, ...validByronPayload.slice(1)])],
+    ],
+    [
       'Byron payload with a negative address type',
       [makeByronAddress([...validByronPayload.slice(0, -1), 0x20])],
     ],
