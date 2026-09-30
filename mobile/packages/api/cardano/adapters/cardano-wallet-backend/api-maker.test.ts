@@ -1,7 +1,9 @@
+/* eslint-disable no-bitwise -- CBOR and CRC32 test vectors use byte-level encoding. */
 import {Fetcher} from '@yoroi/common'
 import {Branded} from '@yoroi/types'
 import type {TransactionCborBase64} from '@yoroi/types'
 
+import {base58} from '@scure/base'
 import * as bech32 from 'bech32'
 
 import {
@@ -48,6 +50,62 @@ describe('cardanoWalletBackendV1Maker', () => {
       ),
     )
   }
+  const encodeCborHead = (majorType: number, value: number): number[] => {
+    const prefix = majorType << 5
+    if (value < 24) return [prefix | value]
+    if (value <= 0xff) return [prefix | 24, value]
+    if (value <= 0xffff) return [prefix | 25, value >> 8, value & 0xff]
+    return [
+      prefix | 26,
+      (value >>> 24) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 8) & 0xff,
+      value & 0xff,
+    ]
+  }
+  const crc32 = (bytes: number[]): number => {
+    let crc = 0xffffffff
+    for (const byte of bytes) {
+      crc ^= byte
+      for (let bit = 0; bit < 8; bit += 1) {
+        const mask = -(crc & 1)
+        crc = (crc >>> 1) ^ (0xedb88320 & mask)
+      }
+    }
+    return (crc ^ 0xffffffff) >>> 0
+  }
+  const makeByronAddress = (
+    payload: number[],
+    {
+      outerHeader = encodeCborHead(4, 2),
+      tag = [0xd8, 0x18],
+      payloadMajorType = 2,
+      checksum = encodeCborHead(0, crc32(payload)),
+    }: {
+      outerHeader?: number[]
+      tag?: number[]
+      payloadMajorType?: number
+      checksum?: number[]
+    } = {},
+  ) =>
+    Branded.asAddress(
+      base58.encode(
+        Uint8Array.from([
+          ...outerHeader,
+          ...tag,
+          ...encodeCborHead(payloadMajorType, payload.length),
+          ...payload,
+          ...checksum,
+        ]),
+      ),
+    )
+  const validByronPayload = [
+    0x83,
+    ...encodeCborHead(2, 28),
+    ...new Array(28).fill(0),
+    0xa0,
+    0x00,
+  ]
 
   it('maps the filter-used contract without configuring a production host', async () => {
     const request: Fetcher = jest.fn().mockResolvedValue([testnet])
@@ -312,7 +370,20 @@ describe('cardanoWalletBackendV1Maker', () => {
       [
         makeShelleyAddress(0x41, [
           ...new Array(28).fill(0),
-          ...new Array(10).fill(0x80),
+          ...new Array(10).fill(0x81),
+          0,
+          0,
+          0,
+        ]),
+      ],
+    ],
+    [
+      'pointer address with a ten-byte field exceeding u64',
+      [
+        makeShelleyAddress(0x41, [
+          ...new Array(28).fill(0),
+          0x82,
+          ...new Array(8).fill(0x80),
           0,
           0,
           0,
@@ -373,6 +444,34 @@ describe('cardanoWalletBackendV1Maker', () => {
         Branded.asAddress(
           'Ae2tdPwUPEYvomFBZFSaDRf2uJu2cj9CnMGDgM3axCkmBwUPme7wRAuRXuc',
         ),
+      ],
+    ],
+    [
+      'Byron payload with a non-array body header',
+      [makeByronAddress([0x63, ...validByronPayload.slice(1)])],
+    ],
+    [
+      'Byron payload with a negative address type',
+      [makeByronAddress([...validByronPayload.slice(0, -1), 0x20])],
+    ],
+    [
+      'Byron envelope with a map body header',
+      [makeByronAddress(validByronPayload, {outerHeader: [0xa2]})],
+    ],
+    [
+      'Byron envelope with an unsigned integer instead of tag 24',
+      [makeByronAddress(validByronPayload, {tag: [0x18, 0x18]})],
+    ],
+    [
+      'Byron envelope with a text string instead of byte string payload',
+      [makeByronAddress(validByronPayload, {payloadMajorType: 3})],
+    ],
+    [
+      'Byron envelope with a negative integer checksum',
+      [
+        makeByronAddress(validByronPayload, {
+          checksum: encodeCborHead(1, crc32(validByronPayload)),
+        }),
       ],
     ],
     [
