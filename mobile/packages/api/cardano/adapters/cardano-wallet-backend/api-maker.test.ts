@@ -346,6 +346,10 @@ describe('cardanoWalletBackendV1Maker', () => {
       [makeShelleyAddress(0x01, new Array(29).fill(0))],
     ],
     [
+      'base address payload one byte longer than expected',
+      [makeShelleyAddress(0x01, new Array(57).fill(0))],
+    ],
+    [
       'enterprise address payload with an invalid length',
       [makeShelleyAddress(0x61, new Array(56).fill(0))],
     ],
@@ -356,6 +360,10 @@ describe('cardanoWalletBackendV1Maker', () => {
     [
       'pointer address with unterminated fields',
       [makeShelleyAddress(0x41, [...new Array(28).fill(0), 0x81, 0x80, 0x80])],
+    ],
+    [
+      'type 5 Shelley address with a pointer payload length mismatch',
+      [makeShelleyAddress(0x51, new Array(28).fill(0))],
     ],
     [
       'pointer address with a fourth pointer byte',
@@ -488,6 +496,34 @@ describe('cardanoWalletBackendV1Maker', () => {
         Branded.asAddress(
           '3Bf3BWfUXmSBBeQP2cML6F2vMKhQjfNiCkA5P3sVXwBUSUL5UaoQfA4Nsb',
         ),
+      ],
+    ],
+    [
+      'Byron address with a text-encoded root',
+      [
+        makeByronAddress([
+          0x83,
+          0x78,
+          0x1c,
+          ...new Array(28).fill(0),
+          0xa0,
+          0x00,
+        ]),
+      ],
+    ],
+    [
+      'Byron address with a byte-string-encoded attribute key',
+      [
+        makeByronAddress([
+          0x83,
+          ...encodeCborHead(2, 28),
+          ...new Array(28).fill(0),
+          0xa1,
+          0x42,
+          0x41,
+          0x00,
+          0x00,
+        ]),
       ],
     ],
     [
