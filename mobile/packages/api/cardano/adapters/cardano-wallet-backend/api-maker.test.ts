@@ -342,6 +342,10 @@ describe('cardanoWalletBackendV1Maker', () => {
     ['invalid bech32 padding', [Branded.asAddress('addr1qps5c0s')]],
     ['header-only Shelley payload', [makeShelleyAddress(0x01, [])]],
     [
+      'Shelley address with a type 8 header',
+      [makeShelleyAddress(0x81, new Array(28).fill(0))],
+    ],
+    [
       'base address payload with an invalid length',
       [makeShelleyAddress(0x01, new Array(29).fill(0))],
     ],
@@ -352,6 +356,10 @@ describe('cardanoWalletBackendV1Maker', () => {
     [
       'enterprise address payload with an invalid length',
       [makeShelleyAddress(0x61, new Array(56).fill(0))],
+    ],
+    [
+      'enterprise address payload one byte shorter than expected',
+      [makeShelleyAddress(0x61, new Array(27).fill(0))],
     ],
     [
       'pointer address without pointer fields',
@@ -475,8 +483,16 @@ describe('cardanoWalletBackendV1Maker', () => {
       [makeByronAddress(validByronPayload, {outerHeader: [0xa2]})],
     ],
     [
+      'Byron envelope with an outer array count of three',
+      [makeByronAddress(validByronPayload, {outerHeader: [0x83]})],
+    ],
+    [
       'Byron envelope with an unsigned integer instead of tag 24',
       [makeByronAddress(validByronPayload, {tag: [0x18, 0x18]})],
+    ],
+    [
+      'Byron envelope with tag 25',
+      [makeByronAddress(validByronPayload, {tag: [0xd8, 0x19]})],
     ],
     [
       'Byron envelope with a text string instead of byte string payload',
@@ -506,6 +522,18 @@ describe('cardanoWalletBackendV1Maker', () => {
           0x78,
           0x1c,
           ...new Array(28).fill(0),
+          0xa0,
+          0x00,
+        ]),
+      ],
+    ],
+    [
+      'Byron address with a 29-byte root',
+      [
+        makeByronAddress([
+          0x83,
+          ...encodeCborHead(2, 29),
+          ...new Array(29).fill(0),
           0xa0,
           0x00,
         ]),
