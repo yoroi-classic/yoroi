@@ -1,7 +1,9 @@
+/* eslint-disable no-bitwise -- CBOR and CRC32 test vectors use byte-level encoding. */
 import {Fetcher} from '@yoroi/common'
 import {Branded} from '@yoroi/types'
 import type {TransactionCborBase64} from '@yoroi/types'
 
+import {base58} from '@scure/base'
 import * as bech32 from 'bech32'
 
 import {
@@ -17,14 +19,14 @@ describe('cardanoWalletBackendV1Maker', () => {
   const mainnet = Branded.asAddress(
     'addr1qxxvt9rzpdxxysmqp50d7f5a3gdescgrejsu7zsdxqjy8yun4cngaq46gr8c9qyz4td9ddajzqhjnrqvfh0gspzv9xnsmq6nqx',
   )
-  const testnet = Branded.asAddress(
-    'addr_test1qrg0x4sx2wfd3l26zqs658u8vyg8qz4dzqw0zke45lpy0vkr3y3kdut55a40jff00qmg74686vz44v6k363md06qkq0qzplc3l',
-  )
   const byron = Branded.asAddress(
     'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bf',
   )
-  const byronWithInvalidChecksum = Branded.asAddress(
-    'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bg',
+  const byronRandom = Branded.asAddress(
+    'DdzFFzCqrht9W56zJGEFvHHywdeXZiGVYGqVhoZj6SRrS9o2HNLmorEzZhKm7khqfBKvCaTKGLtTnQSToxuvdzJTkQqcAf6f2ErxbSKS',
+  )
+  const testnet = Branded.asAddress(
+    'addr_test1qrg0x4sx2wfd3l26zqs658u8vyg8qz4dzqw0zke45lpy0vkr3y3kdut55a40jff00qmg74686vz44v6k363md06qkq0qzplc3l',
   )
   const rewardAddress = Branded.asAddress(
     'stake1uxf6uf5ws2aypnuzszp24kjkk7epqtef3sxymh5gq3xznfcg5w4sq',
@@ -32,15 +34,78 @@ describe('cardanoWalletBackendV1Maker', () => {
   const rewardHeaderWithPaymentPrefix = Branded.asAddress(
     'addr1uxf6uf5ws2aypnuzszp24kjkk7epqtef3sxymh5gq3xznfcwvcnsj',
   )
-  const malformedShelleyWithValidChecksum = Branded.asAddress(
-    bech32.encode('addr', bech32.toWords(new Uint8Array([0x01])), 1023),
-  )
   const mainnetPayloadWithTestnetPrefix = Branded.asAddress(
     bech32.encode('addr_test', bech32.decode(mainnet, 1023).words, 1023),
   )
   const testnetPayloadWithMainnetPrefix = Branded.asAddress(
     bech32.encode('addr', bech32.decode(testnet, 1023).words, 1023),
   )
+  const makeShelleyAddress = (header: number, payload: number[]) => {
+    const networkPrefix = header % 16 === 1 ? 'addr' : 'addr_test'
+    return Branded.asAddress(
+      bech32.encode(
+        networkPrefix,
+        bech32.toWords(new Uint8Array([header, ...payload])),
+        1023,
+      ),
+    )
+  }
+  const encodeCborHead = (majorType: number, value: number): number[] => {
+    const prefix = majorType << 5
+    if (value < 24) return [prefix | value]
+    if (value <= 0xff) return [prefix | 24, value]
+    if (value <= 0xffff) return [prefix | 25, value >> 8, value & 0xff]
+    return [
+      prefix | 26,
+      (value >>> 24) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 8) & 0xff,
+      value & 0xff,
+    ]
+  }
+  const crc32 = (bytes: number[]): number => {
+    let crc = 0xffffffff
+    for (const byte of bytes) {
+      crc ^= byte
+      for (let bit = 0; bit < 8; bit += 1) {
+        const mask = -(crc & 1)
+        crc = (crc >>> 1) ^ (0xedb88320 & mask)
+      }
+    }
+    return (crc ^ 0xffffffff) >>> 0
+  }
+  const makeByronAddress = (
+    payload: number[],
+    {
+      outerHeader = encodeCborHead(4, 2),
+      tag = [0xd8, 0x18],
+      payloadMajorType = 2,
+      checksum = encodeCborHead(0, crc32(payload)),
+    }: {
+      outerHeader?: number[]
+      tag?: number[]
+      payloadMajorType?: number
+      checksum?: number[]
+    } = {},
+  ) =>
+    Branded.asAddress(
+      base58.encode(
+        Uint8Array.from([
+          ...outerHeader,
+          ...tag,
+          ...encodeCborHead(payloadMajorType, payload.length),
+          ...payload,
+          ...checksum,
+        ]),
+      ),
+    )
+  const validByronPayload = [
+    0x83,
+    ...encodeCborHead(2, 28),
+    ...new Array(28).fill(0),
+    0xa0,
+    0x00,
+  ]
 
   it('maps the filter-used contract without configuring a production host', async () => {
     const request: Fetcher = jest.fn().mockResolvedValue([testnet])
@@ -73,6 +138,30 @@ describe('cardanoWalletBackendV1Maker', () => {
       mainnet,
       testnet,
     ])
+  })
+
+  it('accepts a valid Byron address alongside Shelley addresses', async () => {
+    const request: Fetcher = jest.fn().mockResolvedValue([byron, byronRandom])
+    const api = cardanoWalletBackendV1Maker({
+      config: {baseUrl: 'http://localhost:3000'},
+      request,
+    })
+
+    expect(
+      canUseCardanoWalletBackendV1FilterUsed([mainnet, byron, byronRandom]),
+    ).toBe(true)
+    await expect(
+      api.filterUsedAddresses([mainnet, byron, byronRandom]),
+    ).resolves.toEqual([byron, byronRandom])
+  })
+
+  it('accepts structurally valid pointer and enterprise Shelley addresses', () => {
+    expect(
+      canUseCardanoWalletBackendV1FilterUsed([
+        makeShelleyAddress(0x41, [...new Array(28).fill(0), 0, 0, 0]),
+        makeShelleyAddress(0x61, new Array(28).fill(0)),
+      ]),
+    ).toBe(true)
   })
 
   it('submits base64 transaction CBOR as exact hex once', async () => {
@@ -217,25 +306,6 @@ describe('cardanoWalletBackendV1Maker', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('maps Byron and mixed Shelley/Byron discovery batches', async () => {
-    const request: Fetcher = jest.fn().mockResolvedValue([byron])
-    const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://localhost:3000'},
-      request,
-    })
-
-    expect(canUseCardanoWalletBackendV1FilterUsed([mainnet, byron])).toBe(true)
-    await expect(api.filterUsedAddresses([mainnet, byron])).resolves.toEqual([
-      byron,
-    ])
-    expect(request).toHaveBeenCalledWith({
-      url: 'http://localhost:3000/v1/addresses/filter-used',
-      data: {addresses: [mainnet, byron]},
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-    })
-  })
-
   it.each([null, {}, [42], ['not-requested']])(
     'rejects a response outside the backend contract: %p',
     async (response) => {
@@ -270,9 +340,75 @@ describe('cardanoWalletBackendV1Maker', () => {
   it.each([
     ['malformed bech32', [Branded.asAddress('addr_test1_not_real')]],
     ['invalid bech32 padding', [Branded.asAddress('addr1qps5c0s')]],
+    ['header-only Shelley payload', [makeShelleyAddress(0x01, [])]],
     [
-      'malformed Shelley payload with a valid checksum',
-      [malformedShelleyWithValidChecksum],
+      'Shelley address with a type 8 header',
+      [makeShelleyAddress(0x81, new Array(28).fill(0))],
+    ],
+    [
+      'base address payload with an invalid length',
+      [makeShelleyAddress(0x01, new Array(29).fill(0))],
+    ],
+    [
+      'base address payload one byte longer than expected',
+      [makeShelleyAddress(0x01, new Array(57).fill(0))],
+    ],
+    [
+      'enterprise address payload with an invalid length',
+      [makeShelleyAddress(0x61, new Array(56).fill(0))],
+    ],
+    [
+      'enterprise address payload one byte shorter than expected',
+      [makeShelleyAddress(0x61, new Array(27).fill(0))],
+    ],
+    [
+      'pointer address without pointer fields',
+      [makeShelleyAddress(0x41, new Array(28).fill(0))],
+    ],
+    [
+      'pointer address with unterminated fields',
+      [makeShelleyAddress(0x41, [...new Array(28).fill(0), 0x81, 0x80, 0x80])],
+    ],
+    [
+      'type 5 Shelley address with a pointer payload length mismatch',
+      [makeShelleyAddress(0x51, new Array(28).fill(0))],
+    ],
+    [
+      'pointer address with a fourth pointer byte',
+      [makeShelleyAddress(0x41, [...new Array(28).fill(0), 0, 0, 0, 0])],
+    ],
+    [
+      'pointer address with a non-minimal zero-prefixed field',
+      [makeShelleyAddress(0x41, [...new Array(28).fill(0), 0x80, 0, 0, 0])],
+    ],
+    [
+      'pointer address with a field longer than ten bytes',
+      [
+        makeShelleyAddress(0x41, [
+          ...new Array(28).fill(0),
+          ...new Array(10).fill(0x81),
+          0,
+          0,
+          0,
+        ]),
+      ],
+    ],
+    [
+      'pointer address with a ten-byte field exceeding u64',
+      [
+        makeShelleyAddress(0x41, [
+          ...new Array(28).fill(0),
+          0x82,
+          ...new Array(8).fill(0x80),
+          0,
+          0,
+          0,
+        ]),
+      ],
+    ],
+    [
+      'Shelley address with unsupported network id',
+      [makeShelleyAddress(0x02, new Array(56).fill(0))],
     ],
     [
       'mainnet payload with a testnet prefix',
@@ -282,8 +418,182 @@ describe('cardanoWalletBackendV1Maker', () => {
       'testnet payload with a mainnet prefix',
       [testnetPayloadWithMainnetPrefix],
     ],
-    ['malformed Base58', [Branded.asAddress('Ae2tdPwUPEZ6ip0')]],
-    ['Byron address with an invalid checksum', [byronWithInvalidChecksum]],
+    [
+      'Byron address with an invalid checksum',
+      [
+        Branded.asAddress(
+          'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bg',
+        ),
+      ],
+    ],
+    [
+      'Byron envelope with a valid checksum and a non-address payload',
+      [Branded.asAddress('ZSsYYFzf5iARz84')],
+    ],
+    [
+      'Byron envelope with an outer array of the wrong length',
+      [
+        Branded.asAddress(
+          'AZm5umR9YQWaBq5ZRzi5aLJjwZtH2MMh99zWdua3cLnVgFB9P3PhBpmiuPE',
+        ),
+      ],
+    ],
+    [
+      'Byron envelope with a tag other than 24',
+      [
+        Branded.asAddress(
+          'Ae2tQgBQcExuf7pKACUkruaMVxLXhvaNjjxahTmgA9rWRqPTe1pLbNJXCc8',
+        ),
+      ],
+    ],
+    [
+      'Byron envelope with trailing bytes after the checksum',
+      [
+        Branded.asAddress(
+          'jYTLseFRs8ovVQHbbLjsbqpsPsze8h1D1ASAxfUQretA3HRuW8C4iR5LaPeo',
+        ),
+      ],
+    ],
+    [
+      'Byron address with a non-map attribute section',
+      [
+        Branded.asAddress(
+          'Ae2tdPwUPEYvomFBZFSaDRf2uJu2cj9CnMGDgM3axCkmBwUPme7wRAuRXuc',
+        ),
+      ],
+    ],
+    [
+      'Byron payload with a non-array body header',
+      [makeByronAddress([0x63, ...validByronPayload.slice(1)])],
+    ],
+    [
+      'Byron payload with an array body count of four',
+      [makeByronAddress([0x84, ...validByronPayload.slice(1)])],
+    ],
+    [
+      'Byron payload with an array body count of two',
+      [makeByronAddress([0x82, ...validByronPayload.slice(1)])],
+    ],
+    [
+      'Byron payload with a negative address type',
+      [makeByronAddress([...validByronPayload.slice(0, -1), 0x20])],
+    ],
+    [
+      'Byron envelope with a map body header',
+      [makeByronAddress(validByronPayload, {outerHeader: [0xa2]})],
+    ],
+    [
+      'Byron envelope with an outer array count of three',
+      [makeByronAddress(validByronPayload, {outerHeader: [0x83]})],
+    ],
+    [
+      'Byron envelope with an unsigned integer instead of tag 24',
+      [makeByronAddress(validByronPayload, {tag: [0x18, 0x18]})],
+    ],
+    [
+      'Byron envelope with tag 25',
+      [makeByronAddress(validByronPayload, {tag: [0xd8, 0x19]})],
+    ],
+    [
+      'Byron envelope with a text string instead of byte string payload',
+      [makeByronAddress(validByronPayload, {payloadMajorType: 3})],
+    ],
+    [
+      'Byron envelope with a negative integer checksum',
+      [
+        makeByronAddress(validByronPayload, {
+          checksum: encodeCborHead(1, crc32(validByronPayload)),
+        }),
+      ],
+    ],
+    [
+      'Byron address with a 27-byte root',
+      [
+        Branded.asAddress(
+          '3Bf3BWfUXmSBBeQP2cML6F2vMKhQjfNiCkA5P3sVXwBUSUL5UaoQfA4Nsb',
+        ),
+      ],
+    ],
+    [
+      'Byron address with a text-encoded root',
+      [
+        makeByronAddress([
+          0x83,
+          0x78,
+          0x1c,
+          ...new Array(28).fill(0),
+          0xa0,
+          0x00,
+        ]),
+      ],
+    ],
+    [
+      'Byron address with a 29-byte root',
+      [
+        makeByronAddress([
+          0x83,
+          ...encodeCborHead(2, 29),
+          ...new Array(29).fill(0),
+          0xa0,
+          0x00,
+        ]),
+      ],
+    ],
+    [
+      'Byron address with a byte-string-encoded attribute key',
+      [
+        makeByronAddress([
+          0x83,
+          ...encodeCborHead(2, 28),
+          ...new Array(28).fill(0),
+          0xa1,
+          0x42,
+          0x41,
+          0x00,
+          0x00,
+        ]),
+      ],
+    ],
+    [
+      'Byron address with unsupported type 3',
+      [
+        Branded.asAddress(
+          'Ae2tdPwUPEYvomFBZFSaDRf2uJu2cj9CnMGDgM3axCkmBwUPmfLJHffVCQS',
+        ),
+      ],
+    ],
+    [
+      'Byron address with trailing payload bytes',
+      [
+        Branded.asAddress(
+          'jYTLseJK1m1UZwMpbzSSSjniobYfctzUzSktVPqTQofw6y2NFqTPQYQ7YhLz',
+        ),
+      ],
+    ],
+    [
+      'Byron address with an unsupported attribute key',
+      [
+        Branded.asAddress(
+          '4EmqGiXr8GR26GQ5YYJvLGRDKbLt81wPX7NjKZxmkqynthb38uRkS2q3cEFtnx',
+        ),
+      ],
+    ],
+    [
+      'Byron address with a malformed derivation-path attribute',
+      [
+        Branded.asAddress(
+          'FHnt4NL7yPXgQR7wDQxY97QswqEfiiafTS2yJnLPcqQgoznP6kB9AJjPz19ewtd',
+        ),
+      ],
+    ],
+    [
+      'Byron address with a malformed network-magic attribute',
+      [
+        Branded.asAddress(
+          'FHnt4NL7yPXgQR7wDQxY97QswqEfiiafTS2yJnLPcqQgoznP6kB9uAgGJHRWYmW',
+        ),
+      ],
+    ],
     ['reward address', [rewardAddress]],
     ['reward header with payment prefix', [rewardHeaderWithPaymentPrefix]],
   ])(
@@ -297,7 +607,7 @@ describe('cardanoWalletBackendV1Maker', () => {
 
       expect(canUseCardanoWalletBackendV1FilterUsed(addresses)).toBe(false)
       await expect(api.filterUsedAddresses(addresses)).rejects.toThrow(
-        'requires valid Shelley or Byron payment addresses',
+        'requires valid payment addresses',
       )
       expect(request).not.toHaveBeenCalled()
     },
@@ -305,7 +615,12 @@ describe('cardanoWalletBackendV1Maker', () => {
 
   it('marks real Shelley and Byron vectors as eligible', () => {
     expect(
-      canUseCardanoWalletBackendV1FilterUsed([mainnet, testnet, byron]),
+      canUseCardanoWalletBackendV1FilterUsed([
+        mainnet,
+        testnet,
+        byron,
+        byronRandom,
+      ]),
     ).toBe(true)
   })
 
