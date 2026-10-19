@@ -467,6 +467,10 @@ describe('cardanoWalletBackendV1Maker', () => {
       [makeByronAddress([0x63, ...validByronPayload.slice(1)])],
     ],
     [
+      'Byron payload with a map body header',
+      [makeByronAddress([0xa3, ...validByronPayload.slice(1)])],
+    ],
+    [
       'Byron payload with an array body count of four',
       [makeByronAddress([0x84, ...validByronPayload.slice(1)])],
     ],
@@ -487,6 +491,10 @@ describe('cardanoWalletBackendV1Maker', () => {
       [makeByronAddress(validByronPayload, {outerHeader: [0x83]})],
     ],
     [
+      'Byron envelope with an unsigned integer outer header',
+      [makeByronAddress(validByronPayload, {outerHeader: [0x02]})],
+    ],
+    [
       'Byron envelope with an unsigned integer instead of tag 24',
       [makeByronAddress(validByronPayload, {tag: [0x18, 0x18]})],
     ],
@@ -495,8 +503,16 @@ describe('cardanoWalletBackendV1Maker', () => {
       [makeByronAddress(validByronPayload, {tag: [0xd8, 0x19]})],
     ],
     [
+      'Byron envelope with a simple-value tag header',
+      [makeByronAddress(validByronPayload, {tag: [0xf8, 0x18]})],
+    ],
+    [
       'Byron envelope with a text string instead of byte string payload',
       [makeByronAddress(validByronPayload, {payloadMajorType: 3})],
+    ],
+    [
+      'Byron envelope with an unsigned integer instead of byte string payload',
+      [makeByronAddress(validByronPayload, {payloadMajorType: 0})],
     ],
     [
       'Byron envelope with a negative integer checksum',
@@ -535,6 +551,31 @@ describe('cardanoWalletBackendV1Maker', () => {
           ...encodeCborHead(2, 29),
           ...new Array(29).fill(0),
           0xa0,
+          0x00,
+        ]),
+      ],
+    ],
+    [
+      'Byron address with an unsigned integer root',
+      [
+        makeByronAddress([
+          0x83,
+          0x18,
+          0x1c,
+          ...new Array(28).fill(0),
+          0xa0,
+          0x00,
+        ]),
+      ],
+    ],
+    [
+      'Byron address with a tag-encoded attribute section',
+      [
+        makeByronAddress([
+          0x83,
+          ...encodeCborHead(2, 28),
+          ...new Array(28).fill(0),
+          0xc0,
           0x00,
         ]),
       ],
