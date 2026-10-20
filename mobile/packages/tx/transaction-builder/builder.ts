@@ -675,8 +675,8 @@ export async function buildTransaction(
   const scriptReferenceOutput = scriptReference?.output
   const canBuildSinglePlutusV3WithCml = Boolean(
     state.scriptInputs.length === 1 &&
-      plutusScriptInput?.datumSource === 'inline' &&
-      plutusScriptInput.utxo.inlineDatumCborHex &&
+      ((plutusScriptInput?.datumSource === 'inline' && plutusScriptInput.utxo.inlineDatumCborHex) ||
+        (typeof plutusScriptInput?.datumSource === 'object' && plutusScriptInput.datumSource.data)) &&
       scriptReference?.langVersion === 'v3' &&
       scriptReferenceOutput?.scriptCborHex &&
       state.collateralInputs.length === 1 &&
@@ -737,7 +737,9 @@ export async function buildTransaction(
         address: plutusScriptInput.utxo.receiver,
         lovelace: String(plutusScriptInput.utxo.balance[primaryTokenId] ?? '0'),
         assets: assetsFromAmounts(plutusScriptInput.utxo.balance),
-        inlineDatumCborHex: plutusScriptInput.utxo.inlineDatumCborHex,
+        ...(plutusScriptInput.datumSource === 'inline'
+          ? {inlineDatumCborHex: plutusScriptInput.utxo.inlineDatumCborHex}
+          : {datumCborHex: plutusScriptInput.datumSource.data}),
       },
       referenceScriptInput: {
         txHashHex: scriptReference.txHash,

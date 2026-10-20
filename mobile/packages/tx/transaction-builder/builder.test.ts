@@ -611,6 +611,62 @@ describe('transaction builder', () => {
       bridgeBuilder.mockRestore()
     })
 
+    it('routes an explicit-datum Plutus V3 reference-script spend through CML', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildEscrowRedeemTransactionCml').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      const address = 'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const fundingUtxo = {
+        ...createMockUtxo('11'.repeat(32), 0, {[primaryTokenId]: '10000000' as Balance.Quantity}),
+        receiver: address,
+      }
+      const scriptUtxo = {
+        ...createMockUtxo('12'.repeat(32), 0, {[primaryTokenId]: '5000000' as Balance.Quantity}),
+        receiver: address,
+      }
+      const collateralUtxo = {
+        ...createMockUtxo('13'.repeat(32), 0, {[primaryTokenId]: '5000000' as Balance.Quantity}),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), fundingUtxo)
+      state = addScriptInput(state, {
+        utxo: scriptUtxo,
+        scriptHash: 'ab'.repeat(28),
+        redeemer: 'd87980',
+        redeemerExUnits: {mem: '900000', steps: '250000000'},
+        referenceScriptUtxo: {
+          txHash: '14'.repeat(32), txIndex: 0, langVersion: 'v3', scriptSize: 3,
+          output: {address, lovelace: '2000000', assets: [], scriptCborHex: '010000'},
+        },
+        datumSource: {data: 'd87980'},
+      })
+      state = addCollateralInput(state, collateralUtxo)
+      state = addOutput(state, address, {[primaryTokenId]: '2000000' as Balance.Quantity})
+      state = setChangeAddress(state, address)
+      state = setValidityInterval(state, 100, 1000)
+      const plutusProtocolConfig = {
+        ...protocolConfig,
+        collateralPercentage: '150',
+        scriptExecutionPrices: {
+          memory: {numerator: '577', denominator: '10000'},
+          cpu: {numerator: '721', denominator: '10000000'},
+        },
+        plutusV3CostModel: [0],
+      }
+
+      await buildTransaction(state, plutusProtocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        scriptInput: expect.objectContaining({
+          txHashHex: '12'.repeat(32),
+          datumCborHex: 'd87980',
+        }),
+      }))
+      expect(bridgeBuilder.mock.calls[0]?.[0].scriptInput).not.toHaveProperty('inlineDatumCborHex')
+      bridgeBuilder.mockRestore()
+    })
+
     it('routes multiasset outputs and metadata through CML when no CSL-only recipe fields are present', async () => {
       const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
         cborHex: '84a0a0f5',
