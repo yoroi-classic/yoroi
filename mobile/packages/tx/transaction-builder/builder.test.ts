@@ -646,6 +646,20 @@ describe('transaction builder', () => {
         },
         datumSource: {data: 'd87980'},
       })
+      state = addScriptInput(state, {
+        utxo: {
+          ...createMockUtxo('16'.repeat(32), 0, {[primaryTokenId]: '5000000' as Balance.Quantity}),
+          receiver: address,
+        },
+        scriptHash: 'ab'.repeat(28),
+        redeemer: '80',
+        redeemerExUnits: {mem: '100', steps: '200'},
+        referenceScriptUtxo: {
+          txHash: '14'.repeat(32), txIndex: 0, langVersion: 'v3', scriptSize: 3,
+          output: {address, lovelace: '2000000', assets: [], scriptCborHex: '010000'},
+        },
+        datumSource: {data: 'd87980'},
+      })
       state = addCollateralInput(state, collateralUtxo)
       state = addOutput(state, address, {[primaryTokenId]: '2000000' as Balance.Quantity})
       state = setChangeAddress(state, address)
@@ -673,6 +687,16 @@ describe('transaction builder', () => {
           address,
           lovelace: '3000000',
           assets: [],
+        }],
+        additionalScriptInputs: [{
+          scriptInput: expect.objectContaining({
+            txHashHex: '16'.repeat(32),
+            datumCborHex: 'd87980',
+          }),
+          scriptHashHex: 'ab'.repeat(28),
+          redeemerCborHex: '80',
+          redeemerMem: '100',
+          redeemerSteps: '200',
         }],
       }))
       expect(bridgeBuilder.mock.calls[0]?.[0].scriptInput).not.toHaveProperty('inlineDatumCborHex')

@@ -673,8 +673,17 @@ export async function buildTransaction(
   const plutusScriptInput = state.scriptInputs[0]
   const scriptReference = plutusScriptInput?.referenceScriptUtxo
   const scriptReferenceOutput = scriptReference?.output
-  const canBuildSinglePlutusV3WithCml = Boolean(
-    state.scriptInputs.length === 1 &&
+  const canBuildPlutusV3WithCml = Boolean(
+    state.scriptInputs.length > 0 &&
+      state.scriptInputs.every((input) =>
+        input.referenceScriptUtxo?.langVersion === 'v3' &&
+        input.referenceScriptUtxo.txHash === scriptReference?.txHash &&
+        input.referenceScriptUtxo.txIndex === scriptReference?.txIndex &&
+        input.referenceScriptUtxo.scriptSize === scriptReference?.scriptSize &&
+        input.referenceScriptUtxo.output?.scriptCborHex === scriptReferenceOutput?.scriptCborHex &&
+        input.scriptHash === plutusScriptInput?.scriptHash &&
+        (input.datumSource === 'inline' ? Boolean(input.utxo.inlineDatumCborHex) : Boolean(input.datumSource.data)),
+      ) &&
       ((plutusScriptInput?.datumSource === 'inline' && plutusScriptInput.utxo.inlineDatumCborHex) ||
         (typeof plutusScriptInput?.datumSource === 'object' && plutusScriptInput.datumSource.data)) &&
       scriptReference?.langVersion === 'v3' &&
@@ -697,7 +706,7 @@ export async function buildTransaction(
       protocolParams.refScriptMultiplier,
   )
 
-  if (canBuildSinglePlutusV3WithCml && plutusScriptInput && scriptReference && scriptReferenceOutput) {
+  if (canBuildPlutusV3WithCml && plutusScriptInput && scriptReference && scriptReferenceOutput) {
     validateInputs(state)
     const assetsFromAmounts = (amounts: Balance.Amounts) =>
       Object.entries(amounts)
@@ -722,6 +731,21 @@ export async function buildTransaction(
       : undefined
     const buildEscrowWithCollateralReturn = buildEscrowRedeemTransactionCml as (
       args: Parameters<typeof buildEscrowRedeemTransactionCml>[0] & {
+        additionalScriptInputs: Array<{
+          scriptInput: {
+            txHashHex: string
+            index: string
+            address: string
+            lovelace: string
+            assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
+            inlineDatumCborHex?: string
+            datumCborHex?: string
+          }
+          scriptHashHex: string
+          redeemerCborHex: string
+          redeemerMem: string
+          redeemerSteps: string
+        }>
         referenceInputs: Array<{
           txHashHex: string
           index: string
@@ -747,6 +771,22 @@ export async function buildTransaction(
           ? {inlineDatumCborHex: plutusScriptInput.utxo.inlineDatumCborHex}
           : {datumCborHex: plutusScriptInput.datumSource.data}),
       },
+      additionalScriptInputs: state.scriptInputs.slice(1).map((scriptInput) => ({
+        scriptInput: {
+          txHashHex: scriptInput.utxo.txHash,
+          index: String(scriptInput.utxo.txIndex),
+          address: scriptInput.utxo.receiver,
+          lovelace: String(scriptInput.utxo.balance[primaryTokenId] ?? '0'),
+          assets: assetsFromAmounts(scriptInput.utxo.balance),
+          ...(scriptInput.datumSource === 'inline'
+            ? {inlineDatumCborHex: scriptInput.utxo.inlineDatumCborHex}
+            : {datumCborHex: scriptInput.datumSource.data}),
+        },
+        scriptHashHex: scriptInput.scriptHash,
+        redeemerCborHex: scriptInput.redeemer,
+        redeemerMem: scriptInput.redeemerExUnits.mem,
+        redeemerSteps: scriptInput.redeemerExUnits.steps,
+      })),
       referenceScriptInput: {
         txHashHex: scriptReference.txHash,
         index: String(scriptReference.txIndex),
