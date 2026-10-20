@@ -1,6 +1,5 @@
 import {cardanoConfig} from '@yoroi/blockchains'
 import {
-  CardanoMobileWrapped,
   WalletEvent,
   YoroiWallet,
   deriveAddressFromXPub,
@@ -9,13 +8,16 @@ import {
   validatePassword,
   validateWalletName,
 } from '@yoroi/cardano-wallet'
-import {isHex, parseSafe} from '@yoroi/common'
+import {parseSafe} from '@yoroi/common'
 import {Blockies} from '@yoroi/identicon'
 import {getLogger, throwLoggedError} from '@yoroi/logger'
 import {Chain, HW, Network, Portfolio, Wallet} from '@yoroi/types'
 
 import {walletChecksum} from '@emurgo/cip4-js'
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {
+  addressToHex as cmlAddressToHex,
+  rewardAddressFromAddress,
+} from '@yoroi-classic/csl-mobile-bridge'
 import {Buffer} from 'buffer'
 import {freeze} from 'immer'
 import {BehaviorSubject, Observable, Subscription} from 'rxjs'
@@ -1336,44 +1338,11 @@ export const makeWalletManager = (
         if (addressToUse && isValidCardanoAddress(addressToUse)) {
           try {
             const chainId = networkManagers[network].chainId
-            const rewardAddressBech32 = CardanoMobileWrapped.cslScope(
-              (csl: WasmModuleProxy) => {
-                // Handle Byron addresses (base58) - they don't have stake credentials
-                if (csl.ByronAddress.isValid(addressToUse)) {
-                  // Byron addresses don't support staking, so we can't derive a reward address
-                  throw new Error(
-                    'Byron addresses do not support staking/reward addresses',
-                  )
-                }
-
-                // Parse address - supports hex or bech32
-                const isHexAddr = isHex(addressToUse)
-                const addr = isHexAddr
-                  ? csl.Address.fromHex(addressToUse)
-                  : csl.Address.fromBech32(addressToUse)
-
-                if (!addr || addr.isMalformed()) {
-                  throw new Error('Invalid address format')
-                }
-
-                const baseAddr = csl.BaseAddress.fromAddress(addr)
-                if (!baseAddr) {
-                  throw new Error('Address is not a base address')
-                }
-                const stakeCred = baseAddr.stakeCred()
-                const rewardAddr = csl.RewardAddress.new(chainId, stakeCred)
-                return rewardAddr.toAddress().toBech32(undefined)
-              },
+            const rewardAddressBech32 = rewardAddressFromAddress(
+              addressToUse,
+              chainId,
             )
-
-            if (typeof rewardAddressBech32 === 'string') {
-              finalRewardAddressHex = CardanoMobileWrapped.cslScope(
-                (csl: WasmModuleProxy) => {
-                  const addr = csl.Address.fromBech32(rewardAddressBech32)
-                  return Buffer.from(addr.toBytes()).toString('hex')
-                },
-              )
-            }
+            finalRewardAddressHex = cmlAddressToHex(rewardAddressBech32)
           } catch (error) {
             getLogger().warn('Failed to derive reward address', {error})
             finalRewardAddressHex = ''
