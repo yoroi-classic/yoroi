@@ -25,6 +25,7 @@ import {
   addOutput,
   addOutputs,
   addReferenceInput,
+  addScriptInput,
   addWithdrawal,
   buildTransaction,
   buildTransactionCBOR,
@@ -51,6 +52,7 @@ import type {
 
 jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
   buildSimplePaymentTransaction: jest.fn(() => ({cborHex: '84a0a0f5', fee: '168581'})),
+  buildEscrowRedeemTransactionCml: jest.fn(() => ({cborHex: '84a0a0f5', fee: '168581'})),
 }))
 
 describe('transaction builder', () => {
@@ -534,6 +536,77 @@ describe('transaction builder', () => {
           lovelace: '1000000',
           assets: [],
         }],
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes a single inline-datum Plutus V3 reference-script spend with collateral return through CML', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildEscrowRedeemTransactionCml').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      const address = 'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const fundingUtxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {[primaryTokenId]: '10000000' as Balance.Quantity}),
+        receiver: address,
+      }
+      const scriptUtxo = {
+        ...createMockUtxo('02'.repeat(32), 0, {[primaryTokenId]: '5000000' as Balance.Quantity}),
+        receiver: address,
+        inlineDatumCborHex: 'd87980',
+      }
+      const collateralUtxo = {
+        ...createMockUtxo('03'.repeat(32), 0, {[primaryTokenId]: '5000000' as Balance.Quantity}),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), fundingUtxo)
+      state = addScriptInput(state, {
+        utxo: scriptUtxo,
+        scriptHash: 'ab'.repeat(28),
+        redeemer: 'd87980',
+        redeemerExUnits: {mem: '900000', steps: '250000000'},
+        referenceScriptUtxo: {
+          txHash: '04'.repeat(32),
+          txIndex: 0,
+          langVersion: 'v3',
+          scriptSize: 3,
+          output: {
+            address,
+            lovelace: '2000000',
+            assets: [],
+            scriptCborHex: '010000',
+          },
+        },
+        datumSource: 'inline',
+      })
+      state = addCollateralInput(state, collateralUtxo)
+      state = addOutput(state, address, {[primaryTokenId]: '2000000' as Balance.Quantity})
+      state = setChangeAddress(state, address)
+      state = setValidityInterval(state, 100, 1000)
+      const plutusProtocolConfig = {
+        ...protocolConfig,
+        collateralPercentage: '150',
+        scriptExecutionPrices: {
+          memory: {numerator: '577', denominator: '10000'},
+          cpu: {numerator: '721', denominator: '10000000'},
+        },
+        plutusV3CostModel: [0],
+      }
+
+      const built = await buildTransaction(state, plutusProtocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        scriptInput: expect.objectContaining({
+          txHashHex: '02'.repeat(32),
+          inlineDatumCborHex: 'd87980',
+        }),
+        referenceScriptCborHex: '010000',
+        referenceScriptSize: '3',
+        redeemerCborHex: 'd87980',
+        redeemerMem: '900000',
+        redeemerSteps: '250000000',
+        collateralReturn: expect.objectContaining({lovelace: '4000000'}),
       }))
       bridgeBuilder.mockRestore()
     })

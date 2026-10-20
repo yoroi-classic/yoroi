@@ -23,7 +23,10 @@ import type {
   WasmModuleProxy,
 } from '@emurgo/cross-csl-core'
 import {Buffer} from 'buffer'
-import {buildSimplePaymentTransaction} from '@yoroi-classic/csl-mobile-bridge'
+import {
+  buildEscrowRedeemTransactionCml,
+  buildSimplePaymentTransaction,
+} from '@yoroi-classic/csl-mobile-bridge'
 
 import {NoOutputsError, NotEnoughMoneyToSendError} from '../errors'
 import {CardanoHaskellConfig, Datum, TransactionMetadata} from '../types'
@@ -667,6 +670,142 @@ export async function buildTransaction(
   protocolParams: CardanoHaskellConfig,
   primaryTokenId: Portfolio.Token.Id = defaultPrimaryTokenId,
 ): Promise<UnsignedTransaction> {
+  const plutusScriptInput = state.scriptInputs[0]
+  const scriptReference = plutusScriptInput?.referenceScriptUtxo
+  const scriptReferenceOutput = scriptReference?.output
+  const canBuildSinglePlutusV3WithCml = Boolean(
+    state.scriptInputs.length === 1 &&
+      plutusScriptInput?.datumSource === 'inline' &&
+      plutusScriptInput.utxo.inlineDatumCborHex &&
+      scriptReference?.langVersion === 'v3' &&
+      scriptReferenceOutput?.scriptCborHex &&
+      state.collateralInputs.length === 1 &&
+      state.referenceInputs.length === 0 &&
+      state.metadata.length === 0 &&
+      state.certificates.length === 0 &&
+      state.withdrawals.length === 0 &&
+      (state.options.mints?.length ?? 0) === 0 &&
+      !state.options.manualChangeOutput &&
+      !state.options.manualFee &&
+      state.options.changeAddress &&
+      (state.options.ttl !== undefined || state.options.validityInterval !== undefined) &&
+      state.outputs.length > 0 &&
+      state.outputs.every((output) => !output.datum || 'data' in output.datum) &&
+      protocolParams.plutusV3CostModel &&
+      protocolParams.scriptExecutionPrices &&
+      protocolParams.refScriptCoinsPerByte &&
+      protocolParams.refScriptTierStepBytes &&
+      protocolParams.refScriptMultiplier,
+  )
+
+  if (canBuildSinglePlutusV3WithCml && plutusScriptInput && scriptReference && scriptReferenceOutput) {
+    validateInputs(state)
+    const assetsFromAmounts = (amounts: Balance.Amounts) =>
+      Object.entries(amounts)
+        .filter(([tokenId, quantity]) => tokenId !== primaryTokenId && BigInt(quantity) !== 0n)
+        .map(([tokenId, quantity]) => ({
+          policyIdHex: toPolicyId(tokenId),
+          assetNameHex: toAssetNameHex(tokenId),
+          quantity: String(quantity),
+        }))
+    const collateral = state.collateralInputs[0]!.utxo
+    const collateralCoin = BigInt(collateral.balance[primaryTokenId] ?? '0')
+    const totalCollateral = 1_000_000n
+    if (protocolParams.collateralPercentage && collateralCoin < totalCollateral) {
+      throw new Error('Collateral input is below the minimum total collateral amount')
+    }
+    const collateralReturn = protocolParams.collateralPercentage
+      ? {
+          address: collateral.receiver,
+          lovelace: String(collateralCoin - totalCollateral),
+          assets: assetsFromAmounts(collateral.balance),
+        }
+      : undefined
+    const buildEscrowWithCollateralReturn = buildEscrowRedeemTransactionCml as (
+      args: Parameters<typeof buildEscrowRedeemTransactionCml>[0] & {
+        collateralReturn?: {
+          address: string
+          lovelace: string
+          assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
+        }
+      },
+    ) => {cborHex: string; fee: string}
+    const result = buildEscrowWithCollateralReturn({
+      scriptInput: {
+        txHashHex: plutusScriptInput.utxo.txHash,
+        index: String(plutusScriptInput.utxo.txIndex),
+        address: plutusScriptInput.utxo.receiver,
+        lovelace: String(plutusScriptInput.utxo.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(plutusScriptInput.utxo.balance),
+        inlineDatumCborHex: plutusScriptInput.utxo.inlineDatumCborHex,
+      },
+      referenceScriptInput: {
+        txHashHex: scriptReference.txHash,
+        index: String(scriptReference.txIndex),
+        address: scriptReferenceOutput.address,
+        lovelace: scriptReferenceOutput.lovelace,
+        assets: scriptReferenceOutput.assets,
+      },
+      referenceScriptCborHex: scriptReferenceOutput.scriptCborHex,
+      referenceScriptSize: String(scriptReference.scriptSize),
+      fundingInputs: state.inputs.map(({utxo}) => ({
+        txHashHex: utxo.txHash,
+        index: String(utxo.txIndex),
+        address: utxo.receiver,
+        lovelace: String(utxo.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(utxo.balance),
+      })),
+      collateralInput: {
+        txHashHex: collateral.txHash,
+        index: String(collateral.txIndex),
+        address: collateral.receiver,
+        lovelace: String(collateral.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(collateral.balance),
+      },
+      ...(collateralReturn ? {collateralReturn} : {}),
+      outputs: state.outputs.map((output) => ({
+        address: output.address,
+        lovelace: String(output.amounts[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(output.amounts),
+        datumCborHex: output.datum && 'data' in output.datum ? output.datum.data : undefined,
+      })),
+      changeAddress: state.options.changeAddress!,
+      scriptHashHex: plutusScriptInput.scriptHash,
+      redeemerCborHex: plutusScriptInput.redeemer,
+      redeemerMem: plutusScriptInput.redeemerExUnits.mem,
+      redeemerSteps: plutusScriptInput.redeemerExUnits.steps,
+      validityStart: state.options.validityInterval?.start === undefined
+        ? '-'
+        : String(state.options.validityInterval.start),
+      ttl: String(state.options.validityInterval?.end ?? state.options.ttl),
+      feeCoefficient: protocolParams.linearFee.coefficient,
+      feeConstant: protocolParams.linearFee.constant,
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+      keyDeposit: protocolParams.keyDeposit,
+      poolDeposit: protocolParams.poolDeposit,
+      maxValueSize: '5000',
+      maxTxSize: '16384',
+      collateralPercentage: protocolParams.collateralPercentage,
+      refScriptCoinsPerByte: protocolParams.refScriptCoinsPerByte!,
+      refScriptTierStepBytes: protocolParams.refScriptTierStepBytes!,
+      refScriptMultiplier: protocolParams.refScriptMultiplier!,
+      exUnitPricesMemory: protocolParams.scriptExecutionPrices!.memory,
+      exUnitPricesSteps: protocolParams.scriptExecutionPrices!.cpu,
+      plutusV3CostModel: protocolParams.plutusV3CostModel!,
+    })
+    return {
+      inputs: state.inputs,
+      outputs: state.outputs,
+      certificates: state.certificates,
+      withdrawals: state.withdrawals,
+      referenceInputs: state.referenceInputs,
+      collateralInputs: state.collateralInputs,
+      metadata: undefined,
+      options: state.options,
+      cbor: result.cborHex as TransactionCbor,
+    }
+  }
+
   const canBuildPaymentWithCml = Boolean(
     (state.options.mints?.every((mint) => mint.script.type === 'native') ?? true) &&
       state.scriptInputs.length === 0 &&
