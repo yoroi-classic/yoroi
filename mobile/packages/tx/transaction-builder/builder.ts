@@ -1,5 +1,6 @@
 // Functional Transaction Builder using CSL TransactionBuilder directly
 import {CardanoMobileWrapped} from '@yoroi/common'
+import {toAssetNameHex, toPolicyId} from '@yoroi/api'
 import {getLogger} from '@yoroi/logger'
 import {primaryTokenId as defaultPrimaryTokenId} from '@yoroi/portfolio'
 import {
@@ -22,6 +23,7 @@ import type {
   WasmModuleProxy,
 } from '@emurgo/cross-csl-core'
 import {Buffer} from 'buffer'
+import {buildSimplePaymentTransaction} from '@yoroi-classic/csl-mobile-bridge'
 
 import {NoOutputsError, NotEnoughMoneyToSendError} from '../errors'
 import {CardanoHaskellConfig, Datum, TransactionMetadata} from '../types'
@@ -665,6 +667,105 @@ export async function buildTransaction(
   protocolParams: CardanoHaskellConfig,
   primaryTokenId: Portfolio.Token.Id = defaultPrimaryTokenId,
 ): Promise<UnsignedTransaction> {
+  const canBuildPaymentWithCml = Boolean(
+    (state.options.mints?.every((mint) => mint.script.type === 'native') ?? true) &&
+      state.scriptInputs.length === 0 &&
+      state.certificates.every((certificate) =>
+        certificate.kind === 'StakeRegistration' ||
+        certificate.kind === 'StakeDeregistration' ||
+        certificate.kind === 'StakeDelegation',
+      ) &&
+      (state.withdrawals.length === 0 || state.certificates.length === 0) &&
+      state.referenceInputs.length === 0 &&
+      state.collateralInputs.length === 0 &&
+      !state.options.manualChangeOutput &&
+      !state.options.manualFee &&
+      !state.options.validityInterval &&
+      state.options.changeAddress &&
+      state.options.ttl !== undefined &&
+      state.inputs.length > 0 &&
+      state.outputs.length > 0,
+  )
+
+  if (canBuildPaymentWithCml) {
+    validateInputs(state)
+    const assetsFromAmounts = (amounts: Balance.Amounts) =>
+      Object.entries(amounts)
+        .filter(([tokenId, quantity]) => tokenId !== primaryTokenId && BigInt(quantity) !== 0n)
+        .map(([tokenId, quantity]) => ({
+          policyIdHex: toPolicyId(tokenId),
+          assetNameHex: toAssetNameHex(tokenId),
+          quantity: String(quantity),
+        }))
+    const result = buildSimplePaymentTransaction({
+      inputs: state.inputs.map(({utxo}) => ({
+        transactionHashHex: utxo.txHash,
+        index: String(utxo.txIndex),
+        address: utxo.receiver,
+        lovelace: String(utxo.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(utxo.balance),
+      })),
+      outputs: state.outputs.map((output) => ({
+        address: output.address,
+        lovelace: String(output.amounts[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(output.amounts),
+        datum: output.datum && 'hash' in output.datum
+          ? {kind: 'hash' as const, hex: output.datum.hash}
+          : output.datum && 'data' in output.datum
+            ? {kind: 'inline' as const, hex: output.datum.data}
+            : undefined,
+      })),
+      changeAddress: state.options.changeAddress!,
+      ttl: String(state.options.ttl),
+      feeCoefficient: protocolParams.linearFee.coefficient,
+      feeConstant: protocolParams.linearFee.constant,
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+      keyDeposit: protocolParams.keyDeposit,
+      poolDeposit: protocolParams.poolDeposit,
+      maxValueSize: '5000',
+      metadata: state.metadata,
+      nativeMints: state.options.mints?.map((mint) => ({
+        policyIdHex: mint.policyId,
+        scriptCborHex: mint.script.script,
+        assets: mint.assets.map((asset) => ({
+          assetNameHex: asset.assetName,
+          quantity: asset.amount,
+        })),
+      })) ?? [],
+      certificates: state.certificates.map((certificate) => {
+        if (
+          certificate.kind !== 'StakeRegistration' &&
+          certificate.kind !== 'StakeDeregistration' &&
+          certificate.kind !== 'StakeDelegation'
+        ) {
+          throw new Error(`Unsupported CML certificate ${certificate.kind}`)
+        }
+        return {
+          kind: certificate.kind,
+          stakeCredentialKeyHashHex: certificate.stakeCredentialKeyHashHex,
+          ...(certificate.kind === 'StakeDelegation'
+            ? {poolKeyHash: certificate.poolKeyHash}
+            : {}),
+        }
+      }),
+      withdrawals: state.withdrawals.map(({rewardAddress, amount}) => ({
+        rewardAddress,
+        amount: String(amount),
+      })),
+    })
+    return {
+      inputs: state.inputs,
+      outputs: state.outputs,
+      certificates: state.certificates,
+      withdrawals: state.withdrawals,
+      referenceInputs: state.referenceInputs,
+      collateralInputs: state.collateralInputs,
+      metadata: state.metadata.length > 0 ? state.metadata : undefined,
+      options: state.options,
+      cbor: result.cborHex as TransactionCbor,
+    }
+  }
+
   return CardanoMobileWrapped.cslScope((csl) => {
     // Validate inputs
     validateInputs(state)

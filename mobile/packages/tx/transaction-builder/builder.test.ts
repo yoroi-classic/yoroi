@@ -1,4 +1,5 @@
 import {primaryTokenId} from '@yoroi/portfolio'
+import * as cmlMobileBridge from '@yoroi-classic/csl-mobile-bridge'
 import {
   Address,
   Amount,
@@ -11,6 +12,7 @@ import {
 } from '@yoroi/types'
 
 import {NoOutputsError} from '../errors'
+import {addMint} from '../minting/mint'
 import {ModernUtxo} from '../utxo/models'
 import {
   addCertificate,
@@ -46,6 +48,10 @@ import type {
   TransactionOutput,
   TransactionWithdrawal,
 } from './types'
+
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  buildSimplePaymentTransaction: jest.fn(() => ({cborHex: '84a0a0f5', fee: '168581'})),
+}))
 
 describe('transaction builder', () => {
   const createMockUtxo = (
@@ -453,6 +459,138 @@ describe('transaction builder', () => {
       },
     }
     const protocolConfig = createCardanoHaskellConfig(protocolParams, 0)
+
+    it('routes generic Shelley payment recipes through the CML bridge and preserves the unsigned transaction contract', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      const policyId = 'ab'.repeat(28)
+      const assetName = '00ff'
+      const tokenId = `${policyId}.${assetName}` as never
+      const utxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: 'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address,
+      }
+      let state = addInput(createTransactionBuilder(), utxo)
+      state = addOutput(state, 'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam', {
+        [primaryTokenId]: '5000000' as Balance.Quantity,
+        [tokenId]: '1' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8nj8')
+      state = setTTL(state, 123456)
+      state = addMint(state, {
+        policyId,
+        assets: [{assetName, amount: '1'}],
+        script: {type: 'native', script: `8200581c${'cd'.repeat(28)}`},
+      })
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        nativeMints: [{
+          policyIdHex: policyId,
+          scriptCborHex: `8200581c${'cd'.repeat(28)}`,
+          assets: [{assetNameHex: assetName, quantity: '1'}],
+        }],
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes multiasset outputs and metadata through CML when no CSL-only recipe fields are present', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      const policyId = 'ab'.repeat(28)
+      const tokenId = `${policyId}.00ff` as never
+      let state = addInput(createTransactionBuilder(), createMockUtxo('02'.repeat(32), 1, {
+        [primaryTokenId]: '5000000' as Balance.Quantity,
+        [tokenId]: '12' as Balance.Quantity,
+      }))
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+        [tokenId]: '7' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addMetadata(state, '674', {msg: ['fixture']})
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        inputs: [expect.objectContaining({
+          transactionHashHex: '02'.repeat(32),
+          assets: [{policyIdHex: policyId, assetNameHex: '00ff', quantity: '12'}],
+        })],
+        outputs: [expect.objectContaining({
+          assets: [{policyIdHex: policyId, assetNameHex: '00ff', quantity: '7'}],
+        })],
+        metadata: [{label: '674', data: {msg: ['fixture']}}],
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes stake delegation certificates with their key-hash fields through CML', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      let state = addInput(createTransactionBuilder(), createMockUtxo('03'.repeat(32), 2, {
+        [primaryTokenId]: '10000000' as Balance.Quantity,
+      }))
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addCertificate(state, {
+        kind: 'StakeDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        poolKeyHash: 'bb'.repeat(28) as KeyHash,
+      })
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        certificates: [{
+          kind: 'StakeDelegation',
+          stakeCredentialKeyHashHex: 'aa'.repeat(28),
+          poolKeyHash: 'bb'.repeat(28),
+        }],
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes standalone key withdrawals through CML and preserves the reward-account address', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      let state = addInput(createTransactionBuilder(), createMockUtxo('04'.repeat(32), 3, {
+        [primaryTokenId]: '10000000' as Balance.Quantity,
+      }))
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addWithdrawal(state, 'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq', '3500000')
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        withdrawals: [{
+          rewardAddress: 'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+          amount: '3500000',
+        }],
+      }))
+      bridgeBuilder.mockRestore()
+    })
 
     it('should throw NoOutputsError when no outputs and no change address', async () => {
       const state = createTransactionBuilder()
