@@ -1,5 +1,4 @@
 import type {AccountStateResponse} from '@yoroi/api'
-import {isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {
   CertificateKind,
@@ -20,6 +19,7 @@ import {Address, Branded, KeyHash, Portfolio, Wallet} from '@yoroi/types'
 import type {PublicKey} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
+import {deriveRewardAddressDetails} from '../utils'
 import {CardanoMobileWrapped} from '../wrappedCsl'
 
 export type CreateWithdrawalTxParams = {
@@ -94,55 +94,9 @@ export async function createWithdrawalTx({
 
   if (BigInt(rewards) > 0n) {
     // Convert reward address to bech32 and extract stake credential
-    const result = CardanoMobileWrapped.cslScope((csl) => {
-      let address
-      if (csl.ByronAddress.isValid(rewardAddrStr)) {
-        const byronAddr = csl.ByronAddress.fromBase58(rewardAddrStr)
-        address = byronAddr.toAddress()
-      } else {
-        const isHexAddr = isHex(rewardAddrStr)
-        address = isHexAddr
-          ? csl.Address.fromHex(rewardAddrStr)
-          : csl.Address.fromBech32(rewardAddrStr)
-      }
-      if (!address || address.isMalformed()) {
-        throw new Error(`Invalid reward address: ${rewardAddrStr}`)
-      }
-
-      const rewardAddr = csl.RewardAddress.fromAddress(address)
-      if (!rewardAddr) {
-        throw new Error(
-          `Failed to create RewardAddress from address: ${rewardAddrStr}`,
-        )
-      }
-      const stakeCred = rewardAddr.paymentCred()
-      if (!stakeCred) {
-        throw new Error(
-          `Failed to extract stake credential from reward address: ${rewardAddrStr}`,
-        )
-      }
-
-      const bech32 = address.toBech32(undefined)
-      if (!bech32) {
-        throw new Error(
-          `Failed to convert reward address to bech32: ${rewardAddrStr}`,
-        )
-      }
-
-      const keyHash = stakeCred.toKeyhash()
-      if (!keyHash) {
-        throw new Error(
-          `Reward address stake credential is not a key hash: ${rewardAddressHex}`,
-        )
-      }
-
-      return {
-        rewardAddressBech32: bech32 as Address,
-        stakeCredentialKeyHashHex: Branded.asKeyHash(keyHash.toHex()),
-      }
-    })
-    rewardAddressBech32 = result.rewardAddressBech32
-    stakeCredentialKeyHashHex = result.stakeCredentialKeyHashHex
+    const result = deriveRewardAddressDetails(rewardAddrStr)
+    rewardAddressBech32 = Branded.asAddress(result.bech32)
+    stakeCredentialKeyHashHex = Branded.asKeyHash(result.keyHashHex)
   } else if (shouldDeregister) {
     // No rewards but deregistering - extract from staking key
     stakeCredentialKeyHashHex = CardanoMobileWrapped.cslScope(() => {

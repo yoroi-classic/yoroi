@@ -1,4 +1,4 @@
-import {isHex, time} from '@yoroi/common'
+import {time} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {
   Address,
@@ -9,12 +9,14 @@ import {
   WalletTransaction,
 } from '@yoroi/types'
 
-import {Buffer} from 'buffer'
 import _ from 'lodash'
 
 import * as legacyApi from '../api/api'
-import {deriveRewardAddressFromAddress, serializeAddressToHex} from '../utils'
-import {CardanoMobileWrapped} from '../wrappedCsl'
+import {
+  deriveRewardAddressFromAddress,
+  deriveStakeCredentialHex,
+  serializeAddressToHex,
+} from '../utils'
 
 /**
  * Simplified AddressChain for read-only wallets
@@ -168,31 +170,7 @@ async function discoverUsedAddressesByStakingCredential({
   const rewardAddressHex = serializeAddressToHex(rewardAddressBech32)
 
   // Step 2: Extract staking credential for filtering
-  const stakingCredentialHex = CardanoMobileWrapped.cslScope((csl) => {
-    // Handle Byron addresses (base58) - they don't have stake credentials
-    if (csl.ByronAddress.isValid(knownBaseAddress)) {
-      throw new Error(
-        'Byron addresses do not support staking credentials for address discovery',
-      )
-    }
-
-    // Parse address - supports hex or bech32
-    const isHexAddr = isHex(knownBaseAddress)
-    const wasmAddress = isHexAddr
-      ? csl.Address.fromHex(knownBaseAddress)
-      : csl.Address.fromBech32(knownBaseAddress)
-
-    if (!wasmAddress || wasmAddress.isMalformed()) {
-      throw new Error('Failed to parse base address')
-    }
-
-    const baseAddr = csl.BaseAddress.fromAddress(wasmAddress)
-    if (!baseAddr) {
-      throw new Error('Failed to parse base address')
-    }
-    const stakeCred = baseAddr.stakeCred()
-    return Buffer.from(stakeCred.toBytes()).toString('hex')
-  })
+  const stakingCredentialHex = deriveStakeCredentialHex(knownBaseAddress)
 
   // Step 3: Query transaction history for both addresses
   const {bestBlock} = await legacyApi.getTipStatus(baseApiUrl)
@@ -277,21 +255,8 @@ async function discoverUsedAddressesByStakingCredential({
   const matchingAddresses: Address[] = []
   for (const addressStr of allAddresses) {
     try {
-      const matches = CardanoMobileWrapped.cslScope((csl) => {
-        try {
-          const addr = csl.Address.fromBech32(addressStr)
-          const baseAddr = csl.BaseAddress.fromAddress(addr)
-          if (!baseAddr) return false
-
-          const stakeCred = baseAddr.stakeCred()
-          const stakeCredBytes = stakeCred.toBytes()
-          const stakeCredHex = Buffer.from(stakeCredBytes).toString('hex')
-
-          return stakeCredHex === stakingCredentialHex
-        } catch {
-          return false
-        }
-      })
+      const matches =
+        deriveStakeCredentialHex(addressStr) === stakingCredentialHex
 
       if (matches) {
         matchingAddresses.push(Branded.asAddress(addressStr))

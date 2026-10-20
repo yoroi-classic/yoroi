@@ -12,8 +12,10 @@ import {Balance, BaseAsset, Chain, Portfolio, Wallet} from '@yoroi/types'
 import {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {
   addressToHex as cmlAddressToHex,
+  rewardAddressDetailsFromAddress,
   rewardAddressFromAddress,
   rewardAddressHexFromAccountPublicKey,
+  stakeCredentialHexFromAddress,
 } from '@yoroi-classic/csl-mobile-bridge'
 import {BigNumber} from 'bignumber.js'
 import {Buffer} from 'buffer'
@@ -47,6 +49,16 @@ export const deriveRewardAddressFromAddress = (
 
 export const serializeAddressToHex = (address: string): string => {
   return cmlAddressToHex(address)
+}
+
+export const deriveStakeCredentialHex = (address: string): string => {
+  return stakeCredentialHexFromAddress(address)
+}
+
+export const deriveRewardAddressDetails = (
+  address: string,
+): {bech32: string; keyHashHex: string} => {
+  return rewardAddressDetailsFromAddress(address)
 }
 
 /**

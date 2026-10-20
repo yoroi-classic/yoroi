@@ -5,13 +5,17 @@ import {Balance, Portfolio, TokenId} from '@yoroi/types'
 
 import {
   addressToHex as nativeAddressToHex,
+  rewardAddressDetailsFromAddress as nativeRewardAddressDetailsFromAddress,
   rewardAddressFromAddress as nativeRewardAddressFromAddress,
   rewardAddressHexFromAccountPublicKey as nativeRewardAddressHexFromAccountPublicKey,
+  stakeCredentialHexFromAddress as nativeStakeCredentialHexFromAddress,
 } from '@yoroi-classic/csl-mobile-bridge'
 
 import {
   deriveRewardAddressFromAddress,
+  deriveRewardAddressDetails,
   deriveRewardAddressHex,
+  deriveStakeCredentialHex,
   serializeAddressToHex,
   toSendToken,
   toSendTokenList,
@@ -23,8 +27,15 @@ jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
       '002f8b8dd5e6f03495f9753213d0594c8be5571496128d583ad781de78e56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
   ),
   rewardAddressFromAddress: jest.fn(() => 'stake_test1fixture'),
+  rewardAddressDetailsFromAddress: jest.fn(() => ({
+    bech32: 'stake_test1fixture',
+    keyHashHex: '42d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+  })),
   rewardAddressHexFromAccountPublicKey: jest.fn(
     () => 'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+  ),
+  stakeCredentialHexFromAddress: jest.fn(
+    () => '8200581ce56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
   ),
 }))
 
@@ -35,6 +46,29 @@ describe('serializeAddressToHex', () => {
       '002f8b8dd5e6f03495f9753213d0594c8be5571496128d583ad781de78e56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
     )
     expect(nativeAddressToHex).toHaveBeenCalledWith(address)
+  })
+})
+
+describe('deriveStakeCredentialHex', () => {
+  it('delegates canonical credential extraction to the CML native bridge', () => {
+    const address =
+      'addr_test1qqhchrw4umcrf90ew5ep85zefj9724c5jcfg6kp667qau789d6z307gnggrp3hgye75yzgh5q0w6unkqnvfxjfu7vxlswtaxme'
+
+    expect(deriveStakeCredentialHex(address)).toBe(
+      '8200581ce56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
+    )
+    expect(nativeStakeCredentialHexFromAddress).toHaveBeenCalledWith(address)
+  })
+})
+
+describe('deriveRewardAddressDetails', () => {
+  it('delegates reward-address normalization and key-hash extraction to CML', () => {
+    const address = 'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40'
+    expect(deriveRewardAddressDetails(address)).toEqual({
+      bech32: 'stake_test1fixture',
+      keyHashHex: '42d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+    })
+    expect(nativeRewardAddressDetailsFromAddress).toHaveBeenCalledWith(address)
   })
 })
 
