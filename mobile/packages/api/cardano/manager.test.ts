@@ -1,6 +1,7 @@
 import {StakePoolInfoRequest, StakePoolInfosAndHistories} from '@yoroi/staking'
 import {Branded, TransactionCborBase64, WalletTransaction} from '@yoroi/types'
 
+import {CardanoWalletBackendNetworkMismatchError} from './adapters/cardano-wallet-backend/api-maker'
 import {
   AccountStateResponse,
   TipStatusResponse,
@@ -206,6 +207,44 @@ describe('cardanoApiManagerMaker', () => {
       const addresses = [Branded.asAddress('addr1')]
 
       await api.filterUsedAddresses(addresses)
+      expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
+    })
+
+    it('keeps address discovery on legacy when the CWB network does not match', async () => {
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const legacyFilter = jest.spyOn(legacyAdapter, 'filterUsedAddresses')
+      const cwbFilter = jest
+        .fn()
+        .mockRejectedValue(new CardanoWalletBackendNetworkMismatchError())
+      const cardanoWalletBackendAdapter = {
+        filterUsedAddresses: cwbFilter,
+        submitTransaction: jest.fn().mockResolvedValue(undefined),
+      }
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'cardano-wallet-backend',
+        submitTransaction: 'legacy',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        cardanoWalletBackendAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const addresses = [Branded.asAddress('addr1')]
+
+      await expect(api.filterUsedAddresses(addresses)).resolves.toEqual([
+        Branded.asAddress('legacy-used-addr'),
+      ])
+      expect(cwbFilter).toHaveBeenCalledWith(addresses, undefined)
       expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
     })
 

@@ -17,6 +17,15 @@ export type CardanoWalletBackendV1Api = {
   submitTransaction(signedTx: TransactionCborBase64): Promise<void>
 }
 
+// A distinct error lets the API manager fall back only on a confirmed network mismatch.
+// eslint-disable-next-line no-restricted-syntax -- An Error subtype distinguishes this fallback case from transport and validation failures.
+export class CardanoWalletBackendNetworkMismatchError extends Error {
+  constructor() {
+    super('cardano-wallet-backend network mismatch')
+    this.name = 'CardanoWalletBackendNetworkMismatchError'
+  }
+}
+
 const UsedAddressesSchema = z.array(z.string())
 const SubmitTransactionResponseSchema = z
   .object({txHash: z.string().regex(/^[0-9a-fA-F]{64}$/)})
@@ -82,6 +91,25 @@ export const cardanoWalletBackendV1Maker = ({
         throw new Error(
           'cardano-wallet-backend filter-used requires valid payment addresses',
         )
+      }
+
+      if (submitExpectedNetwork == null) {
+        throw new Error(
+          'cardano-wallet-backend filter-used network is not configured',
+        )
+      }
+
+      const statusResponse = await request<unknown>({
+        url: `${baseUrl}/v1/status`,
+        method: 'GET',
+        headers: {Accept: 'application/json'},
+      })
+      const status = StatusResponseSchema.safeParse(statusResponse)
+      if (!status.success) {
+        throw new Error('Invalid cardano-wallet-backend status response')
+      }
+      if (status.data.network !== submitExpectedNetwork) {
+        throw new CardanoWalletBackendNetworkMismatchError()
       }
 
       const response = await request<unknown>({

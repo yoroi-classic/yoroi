@@ -108,15 +108,26 @@ describe('cardanoWalletBackendV1Maker', () => {
   ]
 
   it('maps the filter-used contract without configuring a production host', async () => {
-    const request: Fetcher = jest.fn().mockResolvedValue([testnet])
+    const request: Fetcher = jest
+      .fn()
+      .mockResolvedValueOnce({network: 'mainnet'})
+      .mockResolvedValueOnce([testnet])
     const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://127.0.0.1:3000/'},
+      config: {
+        baseUrl: 'http://127.0.0.1:3000/',
+        submitExpectedNetwork: 'mainnet',
+      },
       request,
     })
 
     await expect(api.filterUsedAddresses([mainnet, testnet])).resolves.toEqual([
       testnet,
     ])
+    expect(request).toHaveBeenCalledWith({
+      url: 'http://127.0.0.1:3000/v1/status',
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
     expect(request).toHaveBeenCalledWith({
       url: 'http://127.0.0.1:3000/v1/addresses/filter-used',
       data: {addresses: [mainnet, testnet]},
@@ -128,9 +139,13 @@ describe('cardanoWalletBackendV1Maker', () => {
   it('preserves input order and removes duplicate response entries', async () => {
     const request: Fetcher = jest
       .fn()
-      .mockResolvedValue([testnet, mainnet, testnet])
+      .mockResolvedValueOnce({network: 'mainnet'})
+      .mockResolvedValueOnce([testnet, mainnet, testnet])
     const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://localhost:3000'},
+      config: {
+        baseUrl: 'http://localhost:3000',
+        submitExpectedNetwork: 'mainnet',
+      },
       request,
     })
 
@@ -141,9 +156,15 @@ describe('cardanoWalletBackendV1Maker', () => {
   })
 
   it('accepts a valid Byron address alongside Shelley addresses', async () => {
-    const request: Fetcher = jest.fn().mockResolvedValue([byron, byronRandom])
+    const request: Fetcher = jest
+      .fn()
+      .mockResolvedValueOnce({network: 'mainnet'})
+      .mockResolvedValueOnce([byron, byronRandom])
     const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://localhost:3000'},
+      config: {
+        baseUrl: 'http://localhost:3000',
+        submitExpectedNetwork: 'mainnet',
+      },
       request,
     })
 
@@ -153,6 +174,29 @@ describe('cardanoWalletBackendV1Maker', () => {
     await expect(
       api.filterUsedAddresses([mainnet, byron, byronRandom]),
     ).resolves.toEqual([byron, byronRandom])
+  })
+
+  it('rejects a mismatched backend network before posting used addresses', async () => {
+    const request: Fetcher = jest
+      .fn()
+      .mockResolvedValueOnce({network: 'preprod'})
+    const api = cardanoWalletBackendV1Maker({
+      config: {
+        baseUrl: 'http://localhost:3000',
+        submitExpectedNetwork: 'mainnet',
+      },
+      request,
+    })
+
+    await expect(api.filterUsedAddresses([mainnet])).rejects.toThrow(
+      'cardano-wallet-backend network mismatch',
+    )
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledWith({
+      url: 'http://localhost:3000/v1/status',
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
   })
 
   it('accepts structurally valid pointer and enterprise Shelley addresses', () => {
@@ -309,9 +353,15 @@ describe('cardanoWalletBackendV1Maker', () => {
   it.each([null, {}, [42], ['not-requested']])(
     'rejects a response outside the backend contract: %p',
     async (response) => {
-      const request: Fetcher = jest.fn().mockResolvedValue(response)
+      const request: Fetcher = jest
+        .fn()
+        .mockResolvedValueOnce({network: 'mainnet'})
+        .mockResolvedValueOnce(response)
       const api = cardanoWalletBackendV1Maker({
-        config: {baseUrl: 'http://localhost:3000'},
+        config: {
+          baseUrl: 'http://localhost:3000',
+          submitExpectedNetwork: 'mainnet',
+        },
         request,
       })
 

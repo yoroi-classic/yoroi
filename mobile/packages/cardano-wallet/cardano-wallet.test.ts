@@ -8,6 +8,7 @@ import {
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
+import * as accountManagerApi from './account-manager/account-manager'
 import {keyManager} from './key-manager/key-manager'
 import {CardanoMobileWrapped} from './wrappedCsl'
 
@@ -81,6 +82,10 @@ describe('CardanoWallet', () => {
   afterEach(() => AsyncStorage.clear())
 
   it('build', async () => {
+    const accountManagerMakerSpy = jest.spyOn(
+      accountManagerApi,
+      'accountManagerMaker',
+    )
     const ShelleyWalletPreprod = getWalletFactory({
       implementation: 'cardano-cip1852',
       network: Chain.Network.Preprod,
@@ -104,6 +109,13 @@ describe('CardanoWallet', () => {
       accountPubKeyHex,
       accountVisual,
     })
+
+    expect(accountManagerMakerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardanoWalletBackendNetwork: Chain.Network.Preprod,
+      }),
+    )
+    accountManagerMakerSpy.mockRestore()
 
     expect(wallet.publicKeyHex).toBe(
       '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',

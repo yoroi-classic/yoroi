@@ -2,6 +2,7 @@ import {TransactionCborBase64} from '@yoroi/types'
 
 import {freeze} from 'immer'
 
+import {CardanoWalletBackendNetworkMismatchError} from './adapters/cardano-wallet-backend/api-maker'
 import {
   BACKEND_ZERO_REQUIRES_CONTEXT,
   ENDPOINT_AVAILABILITY,
@@ -129,7 +130,18 @@ export const cardanoApiManagerMaker = ({
         preferences.filterUsedAddresses === 'cardano-wallet-backend'
           ? getFilterUsedAddressesAdapter()
           : getAdapter('filterUsedAddresses', walletContext)
-      return adapter.filterUsedAddresses(addresses, walletContext)
+      try {
+        return await adapter.filterUsedAddresses(addresses, walletContext)
+      } catch (error) {
+        if (
+          preferences.filterUsedAddresses !== 'cardano-wallet-backend' ||
+          !(error instanceof CardanoWalletBackendNetworkMismatchError)
+        ) {
+          throw error
+        }
+
+        return legacyAdapter.filterUsedAddresses(addresses, walletContext)
+      }
     },
 
     async submitTransaction(signedTx: TransactionCborBase64 | string) {
