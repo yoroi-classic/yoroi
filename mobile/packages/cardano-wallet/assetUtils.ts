@@ -1,6 +1,5 @@
 import {RawUtxo} from '@yoroi/api'
 import {getLogger} from '@yoroi/logger'
-import {normalizeToAddress} from '@yoroi/tx'
 import {
   Address,
   AssetName,
@@ -11,11 +10,9 @@ import {
   UtxoId,
 } from '@yoroi/types'
 
-import {Address as CSLAddress} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
-import {cardanoValueFromRemoteFormat} from './utils'
-import {wrappedCsl} from './wrappedCsl'
+import {minimumAdaForAssetsCml} from './cml/minimumAda'
 
 // Re-export from assetHelpers to maintain backward compatibility
 export {identifierToCardanoAsset} from './assetHelpers'
@@ -139,9 +136,6 @@ export async function calcOptimizedLockedDeposit({
   optimized: BigNumber
   savings: BigNumber
 }> {
-  const cslLocal = wrappedCsl()
-  const csl = cslLocal.csl
-
   try {
     // Calculate current locked deposit
     const currentLocked = await calcLockedDeposit({
@@ -185,9 +179,6 @@ export async function calcOptimizedLockedDeposit({
 
     // Try to consolidate: simulate creating fewer UTXOs with consolidated assets
     // We'll try grouping assets by policy and creating hypothetical consolidated UTXOs
-    const coinsPerUtxoByte = csl.BigNum.fromStr(coinsPerUtxoByteStr)
-    const dataCost = csl.DataCost.newCoinsPerByte(coinsPerUtxoByte)
-
     let bestOptimized = currentLocked
 
     // Try different consolidation strategies
@@ -245,19 +236,15 @@ export async function calcOptimizedLockedDeposit({
 
       for (const utxo of consolidatedUtxos) {
         try {
-          const normalizedAddress = normalizeToAddress(csl, utxo.receiver)
-          if (!normalizedAddress || normalizedAddress.isMalformed()) {
-            continue
-          }
-
-          const value = cardanoValueFromRemoteFormat(utxo, csl)
-          if (!value) continue
-
-          const txOutput = csl.TransactionOutput.new(normalizedAddress, value)
-          if (!txOutput) continue
-
-          const minAda = csl.minAdaForOutput(txOutput, dataCost)
-          consolidatedLocked = consolidatedLocked.plus(minAda.toStr())
+          const minAda = minimumAdaForAssetsCml({
+            address: utxo.receiver,
+            amounts: Object.fromEntries(
+              utxo.assets.map((asset) => [asset.tokenId, asset.amount]),
+            ),
+            primaryTokenId: '' as Portfolio.Token.Id,
+            coinsPerUtxoByte: coinsPerUtxoByteStr,
+          })
+          consolidatedLocked = consolidatedLocked.plus(minAda.toString())
         } catch (error) {
           getLogger().warn(
             'calcOptimizedLockedDeposit: Error calculating consolidated UTXO',
@@ -302,8 +289,6 @@ export async function calcOptimizedLockedDeposit({
       optimized: currentLocked,
       savings: new BigNumber(0),
     }
-  } finally {
-    cslLocal.release()
   }
 }
 
@@ -324,45 +309,26 @@ export async function calcLockedDeposit({
   rawUtxos: RawUtxo[]
   coinsPerUtxoByteStr: string
 }) {
-  const cslLocal = wrappedCsl()
-  const csl = cslLocal.csl
   const result = new BigNumber(0)
   try {
     const utxosWithAssets = rawUtxos.filter((u) => u.assets.length > 0)
-    const coinsPerUtxoByte = csl.BigNum.fromStr(coinsPerUtxoByteStr)
-    const dataCost = csl.DataCost.newCoinsPerByte(coinsPerUtxoByte)
 
     const results = utxosWithAssets.map((u, index) => {
       try {
-        // Use the actual receiver address from each UTXO, not a placeholder
-        // This is critical because address size affects UTxO size calculation
         const receiverAddress = u.receiver
         if (!receiverAddress) {
           throw new Error('UTXO missing receiver address')
         }
 
-        // Normalize address using tx package utility (supports Byron, hex, and bech32)
-        const normalizedAddress: CSLAddress | undefined = normalizeToAddress(
-          csl,
-          receiverAddress,
-        )
-
-        if (!normalizedAddress || normalizedAddress.isMalformed()) {
-          throw new Error(
-            `calcLockedDeposit::Invalid receiver address: ${receiverAddress}`,
-          )
-        }
-
-        const value = cardanoValueFromRemoteFormat(u, csl)
-        if (!value) {
-          throw new Error('cardanoValueFromRemoteFormat returned null value')
-        }
-        const txOutput = csl.TransactionOutput.new(normalizedAddress, value)
-        if (!txOutput) {
-          throw new Error('TransactionOutput.new returned null')
-        }
-        const minAda = csl.minAdaForOutput(txOutput, dataCost)
-        return minAda.toStr()
+        const minAda = minimumAdaForAssetsCml({
+          address: receiverAddress,
+          amounts: Object.fromEntries(
+            u.assets.map((asset) => [asset.tokenId, asset.amount]),
+          ),
+          primaryTokenId: '' as Portfolio.Token.Id,
+          coinsPerUtxoByte: coinsPerUtxoByteStr,
+        })
+        return minAda.toString()
       } catch (error) {
         getLogger().error(error as Error, {
           utxoIndex: index,
@@ -386,7 +352,5 @@ export async function calcLockedDeposit({
       coinsPerUtxoByteStr,
     })
     return result
-  } finally {
-    cslLocal.release()
   }
 }
