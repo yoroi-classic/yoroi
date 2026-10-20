@@ -103,6 +103,7 @@ export {
 export {signTransaction} from './utils/signing'
 export {
   calculateTxId,
+  getTransactionFee,
   getBalanceForStakingCredentials,
   hashTransaction,
 } from './utils/transactions'

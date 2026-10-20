@@ -2,6 +2,7 @@ import {BalanceQuantity} from '@yoroi/types'
 
 jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
   transactionIdHex: jest.fn((hex: string) => `id:${hex}`),
+  transactionValidationInfoJson: jest.fn(() => JSON.stringify({fee: '170000'})),
   transactionWitnessSetHex: jest.fn((hex: string) => `witnesses:${hex}`),
   stakeCredentialHexFromAddress: jest.fn(() => '8200581c' + 'ab'.repeat(28)),
 }))
@@ -9,6 +10,7 @@ jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
 import {
   calculateTxId,
   getBalanceForStakingCredentials,
+  getTransactionFee,
   getTransactionWitnessSetHex,
   hashTransaction,
 } from './transactions'
@@ -40,6 +42,24 @@ describe('transaction utils', () => {
     it('extracts the CML witness-set bytes from the signed transaction bytes', () => {
       expect(getTransactionWitnessSetHex(new Uint8Array([1, 2, 255]))).toBe(
         'witnesses:0102ff',
+      )
+    })
+  })
+
+  describe('getTransactionFee', () => {
+    it('reads the fee as an integer from the CML transaction parser', () => {
+      expect(getTransactionFee('84a0')).toBe(170000n)
+    })
+
+    it('rejects malformed CML fee output rather than rounding', () => {
+      const {transactionValidationInfoJson} = jest.requireMock(
+        '@yoroi-classic/csl-mobile-bridge',
+      )
+      transactionValidationInfoJson.mockReturnValueOnce(
+        JSON.stringify({fee: '1.5'}),
+      )
+      expect(() => getTransactionFee('84a0')).toThrow(
+        'Invalid CML transaction fee response',
       )
     })
   })

@@ -1,4 +1,3 @@
-import {isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import type {TransactionMetadata} from '@yoroi/tx'
 import {
@@ -12,6 +11,7 @@ import {
   buildTransaction,
   createCardanoHaskellConfig,
   createTransactionBuilder,
+  getTransactionFee,
   selectUtxosForAmounts,
   setChangeAddress,
   setTTLWithBuffer,
@@ -25,12 +25,12 @@ import {
   Wallet,
 } from '@yoroi/types'
 
-import type {Address as CSLAddress} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
-import {cardanoValueFromAmounts} from '../cardanoValueFromAmounts'
-import {calculateChangeOutputMinAda} from '../utxoService'
-import {CardanoMobileWrapped} from '../wrappedCsl'
+import {
+  buildSimplePaymentCml,
+  minimumAdaForAssetsCml,
+} from './createSimplePaymentCml'
 
 // Constants for fee estimation and calculations
 const CONSERVATIVE_TX_BYTE_ESTIMATE = 600 // Conservative estimate for transaction size in bytes
@@ -58,16 +58,12 @@ async function calculateMinAdaForChange(
   }
 
   try {
-    const minAdaForChange = await calculateChangeOutputMinAda(
-      changeAddress,
-      changeOutputTokens,
-      {
-        coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
-        linearFee: protocolParams.linearFee,
-        minimumUtxoVal: minUtxoValue.toString(),
-      },
+    const minAdaForChange = minimumAdaForAssetsCml({
+      address: changeAddress,
+      amounts: changeOutputTokens,
       primaryTokenId,
-    )
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+    })
     getLogger().debug('createSendTx: Calculated accurate minAdaForChange', {
       minAdaForChange: minAdaForChange.toString(),
       tokenCount: Object.keys(changeOutputTokens).length,
@@ -163,118 +159,13 @@ export async function createSendTx({
       // If output has tokens, we must verify the minimum ADA requirement
       // The default minUtxoValue (e.g. 1 ADA) might not be enough for a token bundle
       if (hasTokens) {
-        // Calculate actual minimum ADA required for this output using CSL
-        const actualMinAda = await CardanoMobileWrapped.cslScope(
-          async (csl) => {
-            // Create address within this cslScope to avoid pointer issues
-            let normalizedAddress: CSLAddress | null = null
-            if (csl.ByronAddress.isValid(entry.address)) {
-              const byronAddr = csl.ByronAddress.fromBase58(entry.address)
-              normalizedAddress = byronAddr.toAddress()
-            } else {
-              const isHexAddr = isHex(entry.address)
-              normalizedAddress = isHexAddr
-                ? csl.Address.fromHex(entry.address)
-                : csl.Address.fromBech32(entry.address)
-            }
-
-            if (!normalizedAddress || normalizedAddress.isMalformed()) {
-              getLogger().error(
-                'createSendTx: Failed to normalize address for minAda calculation',
-                {
-                  address: entry.address,
-                  entryIndex: i,
-                },
-              )
-              throw new Error(`Invalid address: ${entry.address}`)
-            }
-
-            // Create value with tokens (using 0 ADA initially to calculate minimum)
-            const tempAmounts: Balance.Amounts = {
-              ...entry.amounts,
-              [primaryTokenId]: '0',
-            }
-
-            let value
-            try {
-              value = cardanoValueFromAmounts(csl, tempAmounts, primaryTokenId)
-              if (!value) {
-                getLogger().error(
-                  'createSendTx: cardanoValueFromAmounts returned null',
-                  {
-                    address: entry.address,
-                    amounts: entry.amounts,
-                    entryIndex: i,
-                  },
-                )
-                throw new Error(
-                  'Failed to create Value for minAda calculation: cardanoValueFromAmounts returned null',
-                )
-              }
-            } catch (error) {
-              getLogger().error(
-                'createSendTx: Error creating Value for minAda calculation',
-                {
-                  address: entry.address,
-                  amounts: entry.amounts,
-                  entryIndex: i,
-                  error: error instanceof Error ? error.message : String(error),
-                  errorStack: error instanceof Error ? error.stack : undefined,
-                },
-              )
-              throw error
-            }
-
-            const txOutput = csl.TransactionOutput.new(normalizedAddress, value)
-            if (!txOutput) {
-              const errorValueCoin = value.coin()
-              const errorMultiasset = value.multiasset()
-              getLogger().error(
-                'createSendTx: Failed to create TransactionOutput for minAda calculation',
-                {
-                  address: entry.address,
-                  entryIndex: i,
-                  valueCoin: errorValueCoin ? errorValueCoin.toStr() : '0',
-                  hasMultiasset: errorMultiasset
-                    ? errorMultiasset.len() > 0
-                    : false,
-                },
-              )
-              throw new Error(
-                `Failed to create TransactionOutput for minAda calculation: Pointer is NULL for address ${entry.address}`,
-              )
-            }
-
-            const dataCost = csl.DataCost.newCoinsPerByte(
-              csl.BigNum.fromStr(protocolParams.coinsPerUtxoByte),
-            )
-            if (!dataCost) {
-              getLogger().error(
-                'createSendTx: Failed to create DataCost for minAda calculation',
-                {
-                  entryIndex: i,
-                },
-              )
-              throw new Error(
-                'Failed to create DataCost for minAda calculation',
-              )
-            }
-
-            const minAda = csl.minAdaForOutput(txOutput, dataCost)
-            if (!minAda) {
-              getLogger().error(
-                'createSendTx: Failed to calculate minAdaForOutput',
-                {
-                  address: entry.address,
-                  entryIndex: i,
-                },
-              )
-              throw new Error('Failed to calculate minAdaForOutput')
-            }
-
-            return BigInt(minAda.toStr())
-          },
-        )
+        // Calculate actual minimum ADA required for this output using CML.
+        const actualMinAda = minimumAdaForAssetsCml({
+          address: entry.address,
+          amounts: entry.amounts,
+          primaryTokenId,
+          coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+        })
 
         // Store the calculated minAda for this entry
         entryMinAda.set(i, actualMinAda)
@@ -418,6 +309,23 @@ export async function createSendTx({
     const buildTxWithEntries = async (
       txEntries: TransactionOutput[],
     ): Promise<{cbor: string; fee: bigint}> => {
+      if (
+        selectedUtxos.length > 0 &&
+        txEntries.length > 0 &&
+        absSlotNumber
+      ) {
+        const cmlResult = buildSimplePaymentCml({
+          inputs: selectedUtxos,
+          outputs: txEntries,
+          changeAddress,
+          ttl: absSlotNumber.toNumber(),
+          protocolParams: protocolParamsConfig,
+          primaryTokenId,
+          metadata,
+        })
+        if (cmlResult) return cmlResult
+      }
+
       // Build transaction using functional TransactionBuilder
       let builderState = createTransactionBuilder()
 
@@ -484,18 +392,10 @@ export async function createSendTx({
       )
 
       // Extract fee from transaction CBOR
-      const fee = await CardanoMobileWrapped.cslScope(async (csl) => {
-        if (!unsignedTx.cbor) {
-          throw new Error('Transaction CBOR not available')
-        }
-        const tx = csl.Transaction.fromHex(unsignedTx.cbor)
-        if (!tx) {
-          throw new Error('Failed to parse transaction from CBOR')
-        }
-        const body = tx.body()
-        const feeBigNum = body.fee()
-        return BigInt(feeBigNum.toStr())
-      })
+      if (!unsignedTx.cbor) {
+        throw new Error('Transaction CBOR not available')
+      }
+      const fee = getTransactionFee(unsignedTx.cbor)
 
       return {cbor: unsignedTx.cbor || '', fee}
     }

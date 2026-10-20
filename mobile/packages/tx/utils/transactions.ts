@@ -3,6 +3,7 @@
 import {
   stakeCredentialHexFromAddress,
   transactionIdHex,
+  transactionValidationInfoJson,
   transactionWitnessSetHex,
 } from '@yoroi-classic/csl-mobile-bridge'
 
@@ -34,6 +35,21 @@ export function getTransactionWitnessSetHex(
   transactionBytes: Uint8Array,
 ): string {
   return transactionWitnessSetHex(Buffer.from(transactionBytes).toString('hex'))
+}
+
+/** Read the transaction body's fee with the CML transaction parser. */
+export function getTransactionFee(transactionHex: string): bigint {
+  const parsed: unknown = JSON.parse(transactionValidationInfoJson(transactionHex))
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('fee' in parsed) ||
+    typeof parsed.fee !== 'string' ||
+    !/^(0|[1-9][0-9]*)$/.test(parsed.fee)
+  ) {
+    throw new Error('Invalid CML transaction fee response')
+  }
+  return BigInt(parsed.fee)
 }
 
 /**
