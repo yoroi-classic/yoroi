@@ -573,7 +573,7 @@ describe('transaction builder', () => {
       let state = addInput(createTransactionBuilder(), fundingUtxo)
       state = addScriptInput(state, {
         utxo: scriptUtxo,
-        scriptHash: 'ab'.repeat(28),
+        scriptHash: 'cd'.repeat(28),
         redeemer: 'd87980',
         redeemerExUnits: {mem: '900000', steps: '250000000'},
         referenceScriptUtxo: {
@@ -676,12 +676,12 @@ describe('transaction builder', () => {
           ...createMockUtxo('16'.repeat(32), 0, {[primaryTokenId]: '5000000' as Balance.Quantity}),
           receiver: address,
         },
-        scriptHash: 'ab'.repeat(28),
+        scriptHash: 'cd'.repeat(28),
         redeemer: '80',
         redeemerExUnits: {mem: '100', steps: '200'},
         referenceScriptUtxo: {
-          txHash: '14'.repeat(32), txIndex: 0, langVersion: 'v3', scriptSize: 3,
-          output: {address, lovelace: '2000000', assets: [], scriptCborHex: '010000'},
+          txHash: '17'.repeat(32), txIndex: 1, langVersion: 'v2', scriptSize: 3,
+          output: {address, lovelace: '2000000', assets: [], scriptCborHex: '020000'},
         },
         datumSource: {data: 'd87980'},
       })
@@ -697,6 +697,7 @@ describe('transaction builder', () => {
           cpu: {numerator: '721', denominator: '10000000'},
         },
         plutusV3CostModel: [0],
+        plutusV2CostModel: [0],
       }
 
       await buildTransaction(state, plutusProtocolConfig)
@@ -718,7 +719,17 @@ describe('transaction builder', () => {
             txHashHex: '16'.repeat(32),
             datumCborHex: 'd87980',
           }),
-          scriptHashHex: 'ab'.repeat(28),
+          scriptHashHex: 'cd'.repeat(28),
+          plutusVersion: 'V2',
+          referenceScriptInput: {
+            txHashHex: '17'.repeat(32),
+            index: '1',
+            address,
+            lovelace: '2000000',
+            assets: [],
+          },
+          referenceScriptCborHex: '020000',
+          referenceScriptSize: '3',
           redeemerCborHex: '80',
           redeemerMem: '100',
           redeemerSteps: '200',

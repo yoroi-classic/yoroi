@@ -679,15 +679,16 @@ export async function buildTransaction(
     : plutusVersion === 'v2'
       ? protocolParams.plutusV2CostModel
       : protocolParams.plutusV3CostModel
+  const hasCostModel = (version: 'v1' | 'v2' | 'v3' | undefined) =>
+    version === 'v1' ? Boolean(protocolParams.plutusV1CostModel)
+      : version === 'v2' ? Boolean(protocolParams.plutusV2CostModel)
+        : version === 'v3' ? Boolean(protocolParams.plutusV3CostModel) : false
   const canBuildPlutusWithCml = Boolean(
     state.scriptInputs.length > 0 &&
       state.scriptInputs.every((input) =>
-        input.referenceScriptUtxo?.langVersion === plutusVersion &&
-        input.referenceScriptUtxo?.txHash === scriptReference?.txHash &&
-        input.referenceScriptUtxo?.txIndex === scriptReference?.txIndex &&
-        input.referenceScriptUtxo?.scriptSize === scriptReference?.scriptSize &&
-        input.referenceScriptUtxo?.output?.scriptCborHex === scriptReferenceOutput?.scriptCborHex &&
-        input.scriptHash === plutusScriptInput?.scriptHash &&
+        (input.referenceScriptUtxo?.langVersion === 'v1' || input.referenceScriptUtxo?.langVersion === 'v2' || input.referenceScriptUtxo?.langVersion === 'v3') &&
+        input.referenceScriptUtxo?.output?.scriptCborHex &&
+        input.scriptHash && hasCostModel(input.referenceScriptUtxo.langVersion) &&
         (input.datumSource === 'inline' ? Boolean(input.utxo.inlineDatumCborHex) : Boolean(input.datumSource.data)),
       ) &&
       ((plutusScriptInput?.datumSource === 'inline' && plutusScriptInput.utxo.inlineDatumCborHex) ||
@@ -757,6 +758,15 @@ export async function buildTransaction(
           }
           scriptHashHex: string
           plutusVersion?: 'V1' | 'V2' | 'V3'
+          referenceScriptInput?: {
+            txHashHex: string
+            index: string
+            address: string
+            lovelace: string
+            assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
+          }
+          referenceScriptCborHex?: string
+          referenceScriptSize?: string
           redeemerCborHex: string
           redeemerMem: string
           redeemerSteps: string
@@ -805,6 +815,16 @@ export async function buildTransaction(
             : {datumCborHex: scriptInput.datumSource.data}),
         },
         scriptHashHex: scriptInput.scriptHash,
+        plutusVersion: scriptInput.referenceScriptUtxo!.langVersion.toUpperCase() as 'V1' | 'V2' | 'V3',
+        referenceScriptInput: {
+          txHashHex: scriptInput.referenceScriptUtxo!.txHash,
+          index: String(scriptInput.referenceScriptUtxo!.txIndex),
+          address: scriptInput.referenceScriptUtxo!.output!.address,
+          lovelace: scriptInput.referenceScriptUtxo!.output!.lovelace,
+          assets: scriptInput.referenceScriptUtxo!.output!.assets,
+        },
+        referenceScriptCborHex: scriptInput.referenceScriptUtxo!.output!.scriptCborHex,
+        referenceScriptSize: String(scriptInput.referenceScriptUtxo!.scriptSize),
         redeemerCborHex: scriptInput.redeemer,
         redeemerMem: scriptInput.redeemerExUnits.mem,
         redeemerSteps: scriptInput.redeemerExUnits.steps,
