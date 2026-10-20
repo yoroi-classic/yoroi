@@ -694,7 +694,7 @@ export async function buildTransaction(
         (typeof plutusScriptInput?.datumSource === 'object' && plutusScriptInput.datumSource.data)) &&
       (plutusVersion === 'v1' || plutusVersion === 'v2' || plutusVersion === 'v3') &&
       scriptReferenceOutput?.scriptCborHex &&
-      state.collateralInputs.length === 1 &&
+      state.collateralInputs.length > 0 && state.collateralInputs.length <= 3 &&
       state.metadata.length === 0 &&
       state.certificates.length === 0 &&
       state.withdrawals.length === 0 &&
@@ -722,17 +722,25 @@ export async function buildTransaction(
           assetNameHex: toAssetNameHex(tokenId),
           quantity: String(quantity),
         }))
-    const collateral = state.collateralInputs[0]!.utxo
-    const collateralCoin = BigInt(collateral.balance[primaryTokenId] ?? '0')
+    const collateralAmounts = new Map<string, bigint>()
+    for (const {utxo} of state.collateralInputs) {
+      for (const [tokenId, quantity] of Object.entries(utxo.balance)) {
+        collateralAmounts.set(tokenId, (collateralAmounts.get(tokenId) ?? 0n) + BigInt(quantity))
+      }
+    }
+    const collateralBalance = Object.fromEntries(
+      [...collateralAmounts].map(([tokenId, quantity]) => [tokenId, quantity.toString()]),
+    ) as Balance.Amounts
+    const collateralCoin = collateralAmounts.get(primaryTokenId) ?? 0n
     const totalCollateral = 1_000_000n
     if (protocolParams.collateralPercentage && collateralCoin < totalCollateral) {
       throw new Error('Collateral input is below the minimum total collateral amount')
     }
     const collateralReturn = protocolParams.collateralPercentage
       ? {
-          address: collateral.receiver,
+          address: state.collateralInputs[0]!.utxo.receiver,
           lovelace: String(collateralCoin - totalCollateral),
-          assets: assetsFromAmounts(collateral.balance),
+          assets: assetsFromAmounts(collateralBalance),
         }
       : undefined
     const buildEscrowWithCollateralReturn = buildEscrowRedeemTransactionCml as (
@@ -752,6 +760,13 @@ export async function buildTransaction(
           redeemerCborHex: string
           redeemerMem: string
           redeemerSteps: string
+        }>
+        additionalCollateralInputs: Array<{
+          txHashHex: string
+          index: string
+          address: string
+          lovelace: string
+          assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
         }>
         referenceInputs: Array<{
           txHashHex: string
@@ -818,12 +833,19 @@ export async function buildTransaction(
         assets: assetsFromAmounts(utxo.balance),
       })),
       collateralInput: {
-        txHashHex: collateral.txHash,
-        index: String(collateral.txIndex),
-        address: collateral.receiver,
-        lovelace: String(collateral.balance[primaryTokenId] ?? '0'),
-        assets: assetsFromAmounts(collateral.balance),
+        txHashHex: state.collateralInputs[0]!.utxo.txHash,
+        index: String(state.collateralInputs[0]!.utxo.txIndex),
+        address: state.collateralInputs[0]!.utxo.receiver,
+        lovelace: String(state.collateralInputs[0]!.utxo.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(state.collateralInputs[0]!.utxo.balance),
       },
+      additionalCollateralInputs: state.collateralInputs.slice(1).map(({utxo}) => ({
+        txHashHex: utxo.txHash,
+        index: String(utxo.txIndex),
+        address: utxo.receiver,
+        lovelace: String(utxo.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(utxo.balance),
+      })),
       ...(collateralReturn ? {collateralReturn} : {}),
       outputs: state.outputs.map((output) => ({
         address: output.address,

@@ -546,6 +546,7 @@ describe('transaction builder', () => {
         fee: '168581',
       })
       const address = 'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const collateralTokenId = `${'aa'.repeat(28)}.01` as never
       const fundingUtxo = {
         ...createMockUtxo('01'.repeat(32), 0, {[primaryTokenId]: '10000000' as Balance.Quantity}),
         receiver: address,
@@ -556,7 +557,17 @@ describe('transaction builder', () => {
         inlineDatumCborHex: 'd87980',
       }
       const collateralUtxo = {
-        ...createMockUtxo('03'.repeat(32), 0, {[primaryTokenId]: '5000000' as Balance.Quantity}),
+        ...createMockUtxo('03'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+          [collateralTokenId]: '2' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const secondCollateralUtxo = {
+        ...createMockUtxo('05'.repeat(32), 1, {
+          [primaryTokenId]: '4000000' as Balance.Quantity,
+          [collateralTokenId]: '3' as Balance.Quantity,
+        }),
         receiver: address,
       }
       let state = addInput(createTransactionBuilder(), fundingUtxo)
@@ -580,6 +591,7 @@ describe('transaction builder', () => {
         datumSource: 'inline',
       })
       state = addCollateralInput(state, collateralUtxo)
+      state = addCollateralInput(state, secondCollateralUtxo)
       state = addOutput(state, address, {[primaryTokenId]: '2000000' as Balance.Quantity})
       state = setChangeAddress(state, address)
       state = setValidityInterval(state, 100, 1000)
@@ -606,7 +618,20 @@ describe('transaction builder', () => {
         redeemerCborHex: 'd87980',
         redeemerMem: '900000',
         redeemerSteps: '250000000',
-        collateralReturn: expect.objectContaining({lovelace: '4000000'}),
+        collateralInput: expect.objectContaining({
+          assets: [{policyIdHex: 'aa'.repeat(28), assetNameHex: '01', quantity: '2'}],
+        }),
+        additionalCollateralInputs: [{
+          txHashHex: '05'.repeat(32),
+          index: '1',
+          address,
+          lovelace: '4000000',
+          assets: [{policyIdHex: 'aa'.repeat(28), assetNameHex: '01', quantity: '3'}],
+        }],
+        collateralReturn: expect.objectContaining({
+          lovelace: '8000000',
+          assets: [{policyIdHex: 'aa'.repeat(28), assetNameHex: '01', quantity: '5'}],
+        }),
       }))
       bridgeBuilder.mockRestore()
     })
