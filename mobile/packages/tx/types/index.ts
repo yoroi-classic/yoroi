@@ -137,6 +137,17 @@ export type CardanoHaskellConfig = {
   networkId: number
   collateralPercentage?: string
   refScriptCoinsPerByte?: {numerator: string; denominator: string}
+  refScriptTierStepBytes?: string
+  refScriptMultiplier?: string
+  /** Protocol parameter ratios used to price Plutus execution units. */
+  scriptExecutionPrices?: {
+    memory: {numerator: string; denominator: string}
+    cpu: {numerator: string; denominator: string}
+  }
+  /** Plutus V1 cost model values, needed for V1 reference-script spends. */
+  plutusV1CostModel?: number[]
+  /** Plutus V2 cost model values, needed for V2 reference-script spends. */
+  plutusV2CostModel?: number[]
   /** PlutusV3 cost model values (array of integers). Required for Plutus script transactions. */
   plutusV3CostModel?: number[]
 }

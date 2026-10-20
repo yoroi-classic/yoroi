@@ -673,20 +673,26 @@ export async function buildTransaction(
   const plutusScriptInput = state.scriptInputs[0]
   const scriptReference = plutusScriptInput?.referenceScriptUtxo
   const scriptReferenceOutput = scriptReference?.output
-  const canBuildPlutusV3WithCml = Boolean(
+  const plutusVersion = scriptReference?.langVersion
+  const plutusCostModel = plutusVersion === 'v1'
+    ? protocolParams.plutusV1CostModel
+    : plutusVersion === 'v2'
+      ? protocolParams.plutusV2CostModel
+      : protocolParams.plutusV3CostModel
+  const canBuildPlutusWithCml = Boolean(
     state.scriptInputs.length > 0 &&
       state.scriptInputs.every((input) =>
-        input.referenceScriptUtxo?.langVersion === 'v3' &&
-        input.referenceScriptUtxo.txHash === scriptReference?.txHash &&
-        input.referenceScriptUtxo.txIndex === scriptReference?.txIndex &&
-        input.referenceScriptUtxo.scriptSize === scriptReference?.scriptSize &&
-        input.referenceScriptUtxo.output?.scriptCborHex === scriptReferenceOutput?.scriptCborHex &&
+        input.referenceScriptUtxo?.langVersion === plutusVersion &&
+        input.referenceScriptUtxo?.txHash === scriptReference?.txHash &&
+        input.referenceScriptUtxo?.txIndex === scriptReference?.txIndex &&
+        input.referenceScriptUtxo?.scriptSize === scriptReference?.scriptSize &&
+        input.referenceScriptUtxo?.output?.scriptCborHex === scriptReferenceOutput?.scriptCborHex &&
         input.scriptHash === plutusScriptInput?.scriptHash &&
         (input.datumSource === 'inline' ? Boolean(input.utxo.inlineDatumCborHex) : Boolean(input.datumSource.data)),
       ) &&
       ((plutusScriptInput?.datumSource === 'inline' && plutusScriptInput.utxo.inlineDatumCborHex) ||
         (typeof plutusScriptInput?.datumSource === 'object' && plutusScriptInput.datumSource.data)) &&
-      scriptReference?.langVersion === 'v3' &&
+      (plutusVersion === 'v1' || plutusVersion === 'v2' || plutusVersion === 'v3') &&
       scriptReferenceOutput?.scriptCborHex &&
       state.collateralInputs.length === 1 &&
       state.metadata.length === 0 &&
@@ -699,14 +705,14 @@ export async function buildTransaction(
       (state.options.ttl !== undefined || state.options.validityInterval !== undefined) &&
       state.outputs.length > 0 &&
       state.outputs.every((output) => !output.datum || 'data' in output.datum) &&
-      protocolParams.plutusV3CostModel &&
+      plutusCostModel &&
       protocolParams.scriptExecutionPrices &&
       protocolParams.refScriptCoinsPerByte &&
       protocolParams.refScriptTierStepBytes &&
       protocolParams.refScriptMultiplier,
   )
 
-  if (canBuildPlutusV3WithCml && plutusScriptInput && scriptReference && scriptReferenceOutput) {
+  if (canBuildPlutusWithCml && plutusScriptInput && scriptReference && scriptReferenceOutput && plutusVersion) {
     validateInputs(state)
     const assetsFromAmounts = (amounts: Balance.Amounts) =>
       Object.entries(amounts)
@@ -742,6 +748,7 @@ export async function buildTransaction(
             datumCborHex?: string
           }
           scriptHashHex: string
+          plutusVersion?: 'V1' | 'V2' | 'V3'
           redeemerCborHex: string
           redeemerMem: string
           redeemerSteps: string
@@ -846,6 +853,9 @@ export async function buildTransaction(
       refScriptMultiplier: protocolParams.refScriptMultiplier!,
       exUnitPricesMemory: protocolParams.scriptExecutionPrices!.memory,
       exUnitPricesSteps: protocolParams.scriptExecutionPrices!.cpu,
+      plutusVersion: plutusVersion.toUpperCase() as 'V1' | 'V2' | 'V3',
+      plutusV1CostModel: protocolParams.plutusV1CostModel,
+      plutusV2CostModel: protocolParams.plutusV2CostModel,
       plutusV3CostModel: protocolParams.plutusV3CostModel!,
     })
     return {
