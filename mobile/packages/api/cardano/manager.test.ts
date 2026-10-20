@@ -1,3 +1,4 @@
+import {getLogger} from '@yoroi/logger'
 import {StakePoolInfoRequest, StakePoolInfosAndHistories} from '@yoroi/staking'
 import {Branded, TransactionCborBase64, WalletTransaction} from '@yoroi/types'
 
@@ -211,6 +212,7 @@ describe('cardanoApiManagerMaker', () => {
     })
 
     it('keeps address discovery on legacy when the CWB network does not match', async () => {
+      const loggerWarn = jest.spyOn(getLogger(), 'warn')
       const backendZeroAdapter = createMockAdapter('backend-zero')
       const legacyAdapter = createMockAdapter('legacy')
       const legacyFilter = jest.spyOn(legacyAdapter, 'filterUsedAddresses')
@@ -246,6 +248,10 @@ describe('cardanoApiManagerMaker', () => {
       ])
       expect(cwbFilter).toHaveBeenCalledWith(addresses, undefined)
       expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
+      expect(loggerWarn).toHaveBeenCalledWith(
+        'cardano-wallet-backend network mismatch; using legacy used-address filtering',
+      )
+      loggerWarn.mockRestore()
     })
 
     it('should keep transaction submission on legacy without a backend preference', async () => {

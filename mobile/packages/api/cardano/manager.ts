@@ -1,3 +1,4 @@
+import {getLogger} from '@yoroi/logger'
 import {TransactionCborBase64} from '@yoroi/types'
 
 import {freeze} from 'immer'
@@ -13,6 +14,8 @@ import {
   ManagedCardanoApi,
   WalletContext,
 } from './types'
+
+const logger = getLogger()
 
 export const cardanoApiManagerMaker = ({
   backendZeroAdapter,
@@ -140,6 +143,9 @@ export const cardanoApiManagerMaker = ({
           throw error
         }
 
+        logger.warn(
+          'cardano-wallet-backend network mismatch; using legacy used-address filtering',
+        )
         return legacyAdapter.filterUsedAddresses(addresses, walletContext)
       }
     },
