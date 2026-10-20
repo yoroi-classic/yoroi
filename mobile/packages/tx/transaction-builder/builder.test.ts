@@ -500,6 +500,44 @@ describe('transaction builder', () => {
       bridgeBuilder.mockRestore()
     })
 
+    it('routes ordinary reference inputs through the CML payment recipe', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      const address = 'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const paymentUtxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const referenceUtxo = {
+        ...createMockUtxo('02'.repeat(32), 1, {
+          [primaryTokenId]: '1000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), paymentUtxo)
+      state = addReferenceInput(state, referenceUtxo)
+      state = addOutput(state, address, {[primaryTokenId]: '5000000' as Balance.Quantity})
+      state = setChangeAddress(state, address)
+      state = setTTL(state, 123456)
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        referenceInputs: [{
+          transactionHashHex: '02'.repeat(32),
+          index: '1',
+          address,
+          lovelace: '1000000',
+          assets: [],
+        }],
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
     it('routes multiasset outputs and metadata through CML when no CSL-only recipe fields are present', async () => {
       const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
         cborHex: '84a0a0f5',

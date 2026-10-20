@@ -681,7 +681,6 @@ export async function buildTransaction(
         certificate.kind === 'VoteRegistrationAndDelegation',
       ) &&
       (state.withdrawals.length === 0 || state.certificates.length === 0) &&
-      state.referenceInputs.length === 0 &&
       state.collateralInputs.length === 0 &&
       !state.options.manualChangeOutput &&
       !state.options.manualFee &&
@@ -767,6 +766,13 @@ export async function buildTransaction(
       validityStart: state.options.validityInterval?.start === undefined
         ? undefined
         : String(state.options.validityInterval.start),
+      referenceInputs: state.referenceInputs.map(({utxo}) => ({
+        transactionHashHex: utxo.txHash,
+        index: String(utxo.txIndex),
+        address: utxo.receiver,
+        lovelace: String(utxo.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(utxo.balance),
+      })),
     })
     return {
       inputs: state.inputs,
