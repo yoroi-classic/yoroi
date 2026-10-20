@@ -1,5 +1,4 @@
 import {RawUtxo} from '@yoroi/api'
-import {getLogger} from '@yoroi/logger'
 import {primaryTokenId as defaultPrimaryTokenId} from '@yoroi/portfolio'
 import {
   SendToken,
@@ -9,7 +8,6 @@ import {
 } from '@yoroi/tx'
 import {Balance, BaseAsset, Chain, Portfolio, Wallet} from '@yoroi/types'
 
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {
   addressToHex as cmlAddressToHex,
   rewardAddressDetailsFromAddress,
@@ -20,7 +18,6 @@ import {
 import {BigNumber} from 'bignumber.js'
 import {Buffer} from 'buffer'
 
-import {identifierToCardanoAsset} from './assetHelpers'
 import {withMinAmounts} from './getMinAmounts'
 import {CardanoTypes, YoroiWallet} from './types'
 import {Amounts} from './utils/utils'
@@ -61,110 +58,6 @@ export const deriveRewardAddressDetails = (
   return rewardAddressDetailsFromAddress(address)
 }
 
-/**
- * Multi-asset related
- */
-
-export const cardanoValueFromRemoteFormat = (
-  utxo: RawUtxo,
-  csl: WasmModuleProxy,
-) => {
-  // Validate amount
-  if (
-    !utxo.amount ||
-    typeof utxo.amount !== 'string' ||
-    utxo.amount.trim() === ''
-  ) {
-    throw new Error(
-      `cardanoValueFromRemoteFormat: Invalid amount for UTXO. Expected non-empty string, got: ${utxo.amount}`,
-    )
-  }
-
-  const amountBigNum = csl.BigNum.fromStr(utxo.amount)
-  if (!amountBigNum) {
-    throw new Error(
-      `cardanoValueFromRemoteFormat: Failed to create BigNum from amount: ${utxo.amount}`,
-    )
-  }
-
-  const value = csl.Value.new(amountBigNum)
-  if (!value) {
-    throw new Error(
-      `cardanoValueFromRemoteFormat: Failed to create Value from amount: ${utxo.amount}`,
-    )
-  }
-
-  if (utxo.assets.length === 0) return value
-  const assets = csl.MultiAsset.new()
-
-  for (const remoteAsset of utxo.assets) {
-    // Validate asset data
-    if (!remoteAsset.tokenId || !remoteAsset.amount) {
-      getLogger().warn('cardanoValueFromRemoteFormat: Skipping invalid asset', {
-        tokenId: remoteAsset.tokenId,
-        amount: remoteAsset.amount,
-      })
-      continue
-    }
-
-    try {
-      const {policyId, name} = identifierToCardanoAsset(
-        csl,
-        remoteAsset.tokenId,
-      )
-      if (!policyId || !name) {
-        getLogger().warn(
-          'cardanoValueFromRemoteFormat: Invalid asset identifier',
-          {
-            tokenId: remoteAsset.tokenId,
-          },
-        )
-        continue
-      }
-
-      let policyContent = assets.get(policyId)
-      policyContent = policyContent?.hasValue()
-        ? policyContent
-        : csl.Assets.new()
-
-      // Validate asset amount
-      if (!remoteAsset.amount || typeof remoteAsset.amount !== 'string') {
-        getLogger().warn('cardanoValueFromRemoteFormat: Invalid asset amount', {
-          tokenId: remoteAsset.tokenId,
-          amount: remoteAsset.amount,
-        })
-        continue
-      }
-
-      const assetAmountBigNum = csl.BigNum.fromStr(remoteAsset.amount)
-      if (!assetAmountBigNum) {
-        getLogger().warn(
-          'cardanoValueFromRemoteFormat: Failed to create BigNum for asset amount',
-          {
-            tokenId: remoteAsset.tokenId,
-            amount: remoteAsset.amount,
-          },
-        )
-        continue
-      }
-
-      policyContent.insert(name, assetAmountBigNum)
-      assets.insert(policyId, policyContent)
-    } catch (error) {
-      getLogger().warn('cardanoValueFromRemoteFormat: Error processing asset', {
-        tokenId: remoteAsset.tokenId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      // Continue processing other assets
-    }
-  }
-
-  if (assets.len() > 0) {
-    value.setMultiasset(assets)
-  }
-
-  return value
-}
 // matches RawUtxo and a tx input/output
 type RemoteValue = {
   readonly amount: string
@@ -282,28 +175,6 @@ export const generateCIP30UtxoCbor = (utxo: RawUtxo) => {
 
     return transactionUnspentOutput.toHex()
   })
-}
-
-export const createRawTxSigningKey = (
-  rootKey: string,
-  derivationPath: number[],
-  csl: WasmModuleProxy,
-) => {
-  if (derivationPath.length !== 5) throw new Error('Invalid derivation path')
-  const masterKey = csl.Bip32PrivateKey.fromBytes(Buffer.from(rootKey, 'hex'))
-  const accountPrivateKey = masterKey
-    .derive(derivationPath[0]!)
-    .derive(derivationPath[1]!)
-    .derive(derivationPath[2]!)
-    .derive(derivationPath[3]!)
-    .derive(derivationPath[4]!)
-
-  const rawKey = accountPrivateKey.toRawKey()
-  const bech32 = rawKey.toBech32()
-
-  const pkey = csl.PrivateKey.fromBech32(bech32)
-  if (!pkey) throw new Error('Invalid private key')
-  return pkey
 }
 
 export const copyFromCSL = <T extends {toHex: () => string}>(
