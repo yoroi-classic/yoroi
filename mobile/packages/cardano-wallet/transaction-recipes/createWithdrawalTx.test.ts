@@ -1,5 +1,3 @@
-import {Branded} from '@yoroi/types'
-
 import {
   addCertificate,
   addInputs,
@@ -12,8 +10,9 @@ import {
   setChangeAddress,
   setTTLWithBuffer,
 } from '@yoroi/tx'
+import {Branded} from '@yoroi/types'
 
-import {deriveRewardAddressDetails} from '../utils'
+import {deriveRewardAddressDetails, deriveStakeCredentialHex} from '../utils'
 import {createWithdrawalTx} from './createWithdrawalTx'
 
 jest.mock('@yoroi/tx', () => ({
@@ -35,6 +34,9 @@ jest.mock('../utils', () => ({
     bech32: 'stake_test1uppdvs5uwtqdc8y88y37rtlywkkkzn8k6whvv8wmemh0usqdl9tqk',
     keyHashHex: '42d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
   })),
+  deriveStakeCredentialHex: jest.fn(
+    () => '42d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+  ),
 }))
 
 describe('createWithdrawalTx', () => {
@@ -55,12 +57,13 @@ describe('createWithdrawalTx', () => {
       poolDeposit: '500000000',
     },
     networkId: 0,
-    getAbsoluteSlotNumber: async () => ({toNumber: () => 123} as never),
+    getAbsoluteSlotNumber: async () => ({toNumber: () => 123}) as never,
     getChangeAddress: () => 'addr_test1change' as never,
     getStakingKey: jest.fn(() => ({hash: jest.fn()})) as never,
-    getAccountState: async () => ({
-      [rewardAddressHex]: {remainingAmount: '1234567'},
-    }) as never,
+    getAccountState: async () =>
+      ({
+        [rewardAddressHex]: {remainingAmount: '1234567'},
+      }) as never,
     shouldDeregister: false,
     addressMode: 'single' as never,
   }
@@ -86,9 +89,10 @@ describe('createWithdrawalTx', () => {
   it('builds without a withdrawal when there are no withdrawable rewards', async () => {
     const result = await createWithdrawalTx({
       ...commonParams,
-      getAccountState: async () => ({
-        [rewardAddressHex]: {remainingAmount: Branded.ZERO_QUANTITY},
-      }) as never,
+      getAccountState: async () =>
+        ({
+          [rewardAddressHex]: {remainingAmount: Branded.ZERO_QUANTITY},
+        }) as never,
     })
 
     expect(deriveRewardAddressDetails).not.toHaveBeenCalled()
@@ -107,5 +111,28 @@ describe('createWithdrawalTx', () => {
     )
     expect(setTTLWithBuffer).toHaveBeenCalledWith(expect.anything(), 123)
     expect(filterPureAdaUtxos).toHaveBeenCalledWith([utxo], primaryTokenId)
+  })
+
+  it('uses CML stake-credential extraction when deregistering with no rewards', async () => {
+    const {addCertificate} = jest.requireMock('@yoroi/tx')
+
+    await createWithdrawalTx({
+      ...commonParams,
+      shouldDeregister: true,
+      getAccountState: async () =>
+        ({
+          [rewardAddressHex]: {remainingAmount: Branded.ZERO_QUANTITY},
+        }) as never,
+    })
+
+    expect(deriveStakeCredentialHex).toHaveBeenCalledWith(rewardAddressHex)
+    expect(addCertificate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: 'StakeDeregistration',
+        stakeCredentialKeyHashHex:
+          '42d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+      }),
+    )
   })
 })

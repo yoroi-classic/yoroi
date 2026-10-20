@@ -19,8 +19,7 @@ import {Address, Branded, KeyHash, Portfolio, Wallet} from '@yoroi/types'
 import type {PublicKey} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
-import {deriveRewardAddressDetails} from '../utils'
-import {CardanoMobileWrapped} from '../wrappedCsl'
+import {deriveRewardAddressDetails, deriveStakeCredentialHex} from '../utils'
 
 export type CreateWithdrawalTxParams = {
   utxos: ModernUtxo[]
@@ -49,7 +48,6 @@ export async function createWithdrawalTx({
   networkId,
   getAbsoluteSlotNumber,
   getChangeAddress,
-  getStakingKey,
   getAccountState,
   shouldDeregister,
   addressMode,
@@ -99,10 +97,9 @@ export async function createWithdrawalTx({
     stakeCredentialKeyHashHex = Branded.asKeyHash(result.keyHashHex)
   } else if (shouldDeregister) {
     // No rewards but deregistering - extract from staking key
-    stakeCredentialKeyHashHex = CardanoMobileWrapped.cslScope(() => {
-      const keyHash = getStakingKey().hash()
-      return Branded.asKeyHash(keyHash.toHex())
-    })
+    stakeCredentialKeyHashHex = Branded.asKeyHash(
+      deriveStakeCredentialHex(rewardAddrStr),
+    )
   }
 
   // Helper function to calculate required ADA based on fee estimate
