@@ -1,6 +1,5 @@
-import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
-
 import {getDatumHash} from './parsing'
+import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import type {Datum} from './types'
 
 /**
@@ -65,7 +64,6 @@ export function validatePlutusData(
  * Check if datum hash matches datum data
  */
 export function validateDatumHash(
-  csl: WasmModuleProxy,
   datum: Datum,
 ): {valid: boolean; error?: string} {
   if (datum.type === 'hash') {
@@ -74,7 +72,7 @@ export function validateDatumHash(
   }
 
   try {
-    getDatumHash(csl, datum)
+    getDatumHash(datum)
     // Hash calculation succeeded
     return {valid: true}
   } catch (error) {

@@ -5,6 +5,10 @@ import {
   validatePlutusData,
 } from './validation'
 
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  hashPlutusDataCborHex: jest.fn(() => 'hash123'),
+}))
+
 describe('datum validation', () => {
   describe('validateDatum', () => {
     it('should validate hash datum with valid hash', () => {
@@ -165,8 +169,7 @@ describe('datum validation', () => {
         type: 'hash',
         hash: 'a'.repeat(64),
       }
-      const mockCsl = {} as any
-      const result = validateDatumHash(mockCsl, datum)
+      const result = validateDatumHash(datum)
 
       expect(result.valid).toBe(true)
     })
@@ -176,16 +179,7 @@ describe('datum validation', () => {
         type: 'inline',
         data: 'data123',
       }
-      const mockPlutusData = {}
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => mockPlutusData),
-        },
-        hashPlutusData: jest.fn(() => ({
-          toHex: () => 'hash123',
-        })),
-      }
-      const result = validateDatumHash(mockCsl as any, datum)
+      const result = validateDatumHash(datum)
 
       expect(result.valid).toBe(true)
     })
@@ -195,14 +189,9 @@ describe('datum validation', () => {
         type: 'inline',
         data: 'invalid',
       }
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => {
-            throw new Error('Invalid data')
-          }),
-        },
-      }
-      const result = validateDatumHash(mockCsl as any, datum)
+      const {hashPlutusDataCborHex} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+      hashPlutusDataCborHex.mockImplementationOnce(() => { throw new Error('Invalid data') })
+      const result = validateDatumHash(datum)
 
       expect(result.valid).toBe(false)
       expect(result.error).toBe('Invalid data')

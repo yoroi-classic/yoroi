@@ -1,6 +1,10 @@
 import {datumFromInfo, getDatumHash} from './parsing'
 import type {Datum, DatumInfo} from './types'
 
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  hashPlutusDataCborHex: jest.fn(() => 'computed_hash'),
+}))
+
 describe('datum parsing', () => {
   describe('datumFromInfo', () => {
     it('should create inline datum from info', () => {
@@ -83,17 +87,7 @@ describe('datum parsing', () => {
         type: 'hash',
         hash: 'hash123',
       }
-      // Mock CSL
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(),
-        },
-        hashPlutusData: jest.fn(() => ({
-          toHex: () => 'computed_hash',
-        })),
-      }
-
-      const result = getDatumHash(mockCsl as any, datum)
+      const result = getDatumHash(datum)
       expect(result).toBe('hash123')
     })
 
@@ -102,22 +96,10 @@ describe('datum parsing', () => {
         type: 'inline',
         data: 'data123',
       }
-      const mockPlutusData = {
-        toHex: () => 'data123',
-      }
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => mockPlutusData),
-        },
-        hashPlutusData: jest.fn(() => ({
-          toHex: () => 'computed_hash',
-        })),
-      }
-
-      const result = getDatumHash(mockCsl as any, datum)
+      const {hashPlutusDataCborHex} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+      const result = getDatumHash(datum)
       expect(result).toBe('computed_hash')
-      expect(mockCsl.PlutusData.fromHex).toHaveBeenCalledWith('data123')
-      expect(mockCsl.hashPlutusData).toHaveBeenCalledWith(mockPlutusData)
+      expect(hashPlutusDataCborHex).toHaveBeenCalledWith('data123')
     })
 
     it('should compute hash for embedded datum', () => {
@@ -125,27 +107,13 @@ describe('datum parsing', () => {
         type: 'embedded',
         data: 'data123',
       }
-      const mockPlutusData = {
-        toHex: () => 'data123',
-      }
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => mockPlutusData),
-        },
-        hashPlutusData: jest.fn(() => ({
-          toHex: () => 'computed_hash',
-        })),
-      }
-
-      const result = getDatumHash(mockCsl as any, datum)
+      const result = getDatumHash(datum)
       expect(result).toBe('computed_hash')
     })
 
     it('should throw error for invalid datum type', () => {
       const datum = {type: 'invalid'} as any
-      const mockCsl = {} as any
-
-      expect(() => getDatumHash(mockCsl, datum)).toThrow('Invalid datum type')
+      expect(() => getDatumHash(datum)).toThrow('Invalid datum type')
     })
   })
 })

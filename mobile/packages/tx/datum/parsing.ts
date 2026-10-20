@@ -1,4 +1,5 @@
 import type {TransactionOutput, WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {hashPlutusDataCborHex} from '@yoroi-classic/csl-mobile-bridge'
 
 import type {Datum, DatumInfo} from './types'
 
@@ -87,14 +88,13 @@ export function convertLegacyDatum(datum: {
 /**
  * Get datum hash from Datum
  */
-export function getDatumHash(csl: WasmModuleProxy, datum: Datum): string {
+export function getDatumHash(datum: Datum): string {
   if (datum.type === 'hash') {
     return datum.hash
   }
 
   if (datum.type === 'inline' || datum.type === 'embedded') {
-    const plutusData = csl.PlutusData.fromHex(datum.data)
-    return csl.hashPlutusData(plutusData).toHex()
+    return hashPlutusDataCborHex(datum.data)
   }
 
   throw new Error('Invalid datum type')
