@@ -13,7 +13,7 @@ import {Buffer} from 'buffer'
 import _ from 'lodash'
 
 import * as legacyApi from '../api/api'
-import {deriveRewardAddressFromAddress} from '../utils'
+import {deriveRewardAddressFromAddress, serializeAddressToHex} from '../utils'
 import {CardanoMobileWrapped} from '../wrappedCsl'
 
 /**
@@ -165,10 +165,7 @@ async function discoverUsedAddressesByStakingCredential({
     chainId,
   )
 
-  const rewardAddressHex = CardanoMobileWrapped.cslScope((csl) => {
-    const addr = csl.Address.fromBech32(rewardAddressBech32)
-    return Buffer.from(addr.toBytes()).toString('hex')
-  })
+  const rewardAddressHex = serializeAddressToHex(rewardAddressBech32)
 
   // Step 2: Extract staking credential for filtering
   const stakingCredentialHex = CardanoMobileWrapped.cslScope((csl) => {
@@ -402,10 +399,7 @@ export const readOnlyAccountManagerMaker = async ({
         knownAddress,
         chainId,
       )
-      finalRewardAddressHex = CardanoMobileWrapped.cslScope((csl) => {
-        const addr = csl.Address.fromBech32(rewardAddressBech32)
-        return Buffer.from(addr.toBytes()).toString('hex')
-      })
+      finalRewardAddressHex = serializeAddressToHex(rewardAddressBech32)
       getLogger().debug('Successfully derived reward address', {
         rewardAddressHex: finalRewardAddressHex.substring(0, 20) + '...',
       })

@@ -3,7 +3,69 @@ import {createUnknownTokenInfo} from '@yoroi/portfolio'
 import {SendToken} from '@yoroi/tx'
 import {Balance, Portfolio, TokenId} from '@yoroi/types'
 
-import {toSendToken, toSendTokenList} from './utils'
+import {
+  addressToHex as nativeAddressToHex,
+  rewardAddressFromAddress as nativeRewardAddressFromAddress,
+  rewardAddressHexFromAccountPublicKey as nativeRewardAddressHexFromAccountPublicKey,
+} from '@yoroi-classic/csl-mobile-bridge'
+
+import {
+  deriveRewardAddressFromAddress,
+  deriveRewardAddressHex,
+  serializeAddressToHex,
+  toSendToken,
+  toSendTokenList,
+} from './utils'
+
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  addressToHex: jest.fn(
+    () =>
+      '002f8b8dd5e6f03495f9753213d0594c8be5571496128d583ad781de78e56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
+  ),
+  rewardAddressFromAddress: jest.fn(() => 'stake_test1fixture'),
+  rewardAddressHexFromAccountPublicKey: jest.fn(
+    () => 'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+  ),
+}))
+
+describe('serializeAddressToHex', () => {
+  it('delegates address serialization to the CML native bridge', () => {
+    const address = 'addr_test1fixture'
+    expect(serializeAddressToHex(address)).toBe(
+      '002f8b8dd5e6f03495f9753213d0594c8be5571496128d583ad781de78e56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
+    )
+    expect(nativeAddressToHex).toHaveBeenCalledWith(address)
+  })
+})
+
+describe('deriveRewardAddressFromAddress', () => {
+  it('delegates address conversion to the CML native bridge', () => {
+    const baseAddress =
+      'addr_test1qqhchrw4umcrf90ew5ep85zefj9724c5jcfg6kp667qau789d6z307gnggrp3hgye75yzgh5q0w6unkqnvfxjfu7vxlswtaxme'
+
+    expect(deriveRewardAddressFromAddress(baseAddress, 0)).toBe(
+      'stake_test1fixture',
+    )
+    expect(nativeRewardAddressFromAddress).toHaveBeenCalledWith(baseAddress, 0)
+  })
+})
+
+describe('deriveRewardAddressHex', () => {
+  it('delegates account xpub derivation to the CML native bridge', () => {
+    const accountPublicKeyHex =
+      '7cc9d816f272eb78a2db936a839d3bf53fa960dd470ddbaadabb6a7bf2019b837d20b2cd13cbb22b6f6938abea40d425f5539b6bb1fe0813ccb4c21676a7fd6b'
+
+    expect(deriveRewardAddressHex(accountPublicKeyHex, 0, 2, 0)).toBe(
+      'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+    )
+    expect(nativeRewardAddressHexFromAccountPublicKey).toHaveBeenCalledWith(
+      accountPublicKeyHex,
+      0,
+      2,
+      0,
+    )
+  })
+})
 
 describe('toSendTokenList', () => {
   const asSendToken = toSendToken(primaryTokenInfoMainnet)

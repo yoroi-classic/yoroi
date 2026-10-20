@@ -108,6 +108,7 @@ import {
   deriveRewardAddressHex,
   getHexAddressingMap,
   getStakeAddressMap,
+  serializeAddressToHex,
 } from './utils'
 import {UtxoManager, makeUtxoManager} from './utxoManager/utxoManager'
 import {utxosMaker} from './utxoManager/utxos'
@@ -296,10 +297,7 @@ export const makeCardanoWallet = (
               externalAddr,
               chainId,
             )
-            finalRewardAddressHex = CardanoMobileWrapped.cslScope((csl) => {
-              const addr = csl.Address.fromBech32(rewardAddressBech32)
-              return Buffer.from(addr.toBytes()).toString('hex')
-            })
+            finalRewardAddressHex = serializeAddressToHex(rewardAddressBech32)
           } catch (error) {
             getLogger().warn(
               'Failed to derive reward address for read-only wallet',
@@ -334,10 +332,7 @@ export const makeCardanoWallet = (
               knownAddr,
               chainId,
             )
-            finalRewardAddressHex = CardanoMobileWrapped.cslScope((csl) => {
-              const addr = csl.Address.fromBech32(rewardAddressBech32)
-              return Buffer.from(addr.toBytes()).toString('hex')
-            })
+            finalRewardAddressHex = serializeAddressToHex(rewardAddressBech32)
           } catch (error) {
             getLogger().warn(
               'Failed to derive reward address for read-only wallet',

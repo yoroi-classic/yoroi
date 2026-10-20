@@ -1,5 +1,4 @@
 import {RawUtxo} from '@yoroi/api'
-import {isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {primaryTokenId as defaultPrimaryTokenId} from '@yoroi/portfolio'
 import {
@@ -11,6 +10,11 @@ import {
 import {Balance, BaseAsset, Chain, Portfolio, Wallet} from '@yoroi/types'
 
 import {WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {
+  addressToHex as cmlAddressToHex,
+  rewardAddressFromAddress,
+  rewardAddressHexFromAccountPublicKey,
+} from '@yoroi-classic/csl-mobile-bridge'
 import {BigNumber} from 'bignumber.js'
 import {Buffer} from 'buffer'
 
@@ -26,78 +30,23 @@ export const deriveRewardAddressHex = (
   role: number,
   index: number,
 ): string => {
-  return CardanoMobileWrapped.cslScope((csl) => {
-    const accountPubKeyPtr = csl.Bip32PublicKey.fromBytes(
-      Buffer.from(accountPubKeyHex, 'hex'),
-    )
-    const stakingKey = accountPubKeyPtr.derive(role).derive(index).toRawKey()
-    const credential = csl.Credential.fromKeyhash(stakingKey.hash())
-    const rewardAddr = csl.RewardAddress.new(chainId, credential)
-    const rewardAddrAsAddr = rewardAddr.toAddress()
-
-    const result = Buffer.from(rewardAddrAsAddr.toBytes()).toString('hex')
-    return result
-  })
+  return rewardAddressHexFromAccountPublicKey(
+    accountPubKeyHex,
+    chainId,
+    role,
+    index,
+  )
 }
 
 export const deriveRewardAddressFromAddress = (
   address: string,
   chainId: number,
 ): string => {
-  return CardanoMobileWrapped.cslScope((csl) => {
-    // Handle Byron addresses (base58) - they don't have stake credentials
-    if (csl.ByronAddress.isValid(address)) {
-      throw new Error(
-        `deriveRewardAddressFromAddress: Byron addresses do not support staking/reward addresses: ${address}`,
-      )
-    }
+  return rewardAddressFromAddress(address, chainId)
+}
 
-    // Parse address - supports hex or bech32
-    const isHexAddr = isHex(address)
-    const wasmAddress = isHexAddr
-      ? csl.Address.fromHex(address)
-      : csl.Address.fromBech32(address)
-
-    if (!wasmAddress || wasmAddress.isMalformed()) {
-      throw new Error(
-        `deriveRewardAddressFromAddress: Invalid address format: ${address}`,
-      )
-    }
-
-    const baseAddress = csl.BaseAddress.fromAddress(wasmAddress)
-    if (!baseAddress) {
-      throw new Error(
-        `deriveRewardAddressFromAddress: Address is not a base address: ${address}`,
-      )
-    }
-
-    const stakeCred = baseAddress.stakeCred()
-    if (!stakeCred) {
-      throw new Error(
-        `deriveRewardAddressFromAddress: Failed to get stake credential from address: ${address}`,
-      )
-    }
-
-    const rewardAddress = csl.RewardAddress.new(chainId, stakeCred)
-    if (!rewardAddress) {
-      throw new Error(
-        `deriveRewardAddressFromAddress: Failed to create reward address`,
-      )
-    }
-
-    const rewardAddressObj = rewardAddress.toAddress()
-    if (!rewardAddressObj) {
-      throw new Error(
-        `deriveRewardAddressFromAddress: Failed to convert reward address to Address`,
-      )
-    }
-
-    const result = rewardAddressObj.toBech32(undefined)
-    if (typeof result !== 'string') {
-      throw new Error('Its not possible to derive reward address')
-    }
-    return result
-  })
+export const serializeAddressToHex = (address: string): string => {
+  return cmlAddressToHex(address)
 }
 
 /**
