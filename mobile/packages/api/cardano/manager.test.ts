@@ -243,15 +243,18 @@ describe('cardanoApiManagerMaker', () => {
       })
       const addresses = [Branded.asAddress('addr1')]
 
-      await expect(api.filterUsedAddresses(addresses)).resolves.toEqual([
-        Branded.asAddress('legacy-used-addr'),
-      ])
-      expect(cwbFilter).toHaveBeenCalledWith(addresses, undefined)
-      expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
-      expect(loggerWarn).toHaveBeenCalledWith(
-        'cardano-wallet-backend network mismatch; using legacy used-address filtering',
-      )
-      loggerWarn.mockRestore()
+      try {
+        await expect(api.filterUsedAddresses(addresses)).resolves.toEqual([
+          Branded.asAddress('legacy-used-addr'),
+        ])
+        expect(cwbFilter).toHaveBeenCalledWith(addresses, undefined)
+        expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
+        expect(loggerWarn).toHaveBeenCalledWith(
+          'cardano-wallet-backend network mismatch; using legacy used-address filtering',
+        )
+      } finally {
+        loggerWarn.mockRestore()
+      }
     })
 
     it('should keep transaction submission on legacy without a backend preference', async () => {
