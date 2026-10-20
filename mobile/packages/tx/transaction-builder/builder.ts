@@ -673,7 +673,8 @@ export async function buildTransaction(
       state.certificates.every((certificate) =>
         certificate.kind === 'StakeRegistration' ||
         certificate.kind === 'StakeDeregistration' ||
-        certificate.kind === 'StakeDelegation',
+        certificate.kind === 'StakeDelegation' ||
+        certificate.kind === 'VoteDelegation',
       ) &&
       (state.withdrawals.length === 0 || state.certificates.length === 0) &&
       state.referenceInputs.length === 0 &&
@@ -736,7 +737,8 @@ export async function buildTransaction(
         if (
           certificate.kind !== 'StakeRegistration' &&
           certificate.kind !== 'StakeDeregistration' &&
-          certificate.kind !== 'StakeDelegation'
+          certificate.kind !== 'StakeDelegation' &&
+          certificate.kind !== 'VoteDelegation'
         ) {
           throw new Error(`Unsupported CML certificate ${certificate.kind}`)
         }
@@ -745,6 +747,9 @@ export async function buildTransaction(
           stakeCredentialKeyHashHex: certificate.stakeCredentialKeyHashHex,
           ...(certificate.kind === 'StakeDelegation'
             ? {poolKeyHash: certificate.poolKeyHash}
+            : {}),
+          ...(certificate.kind === 'VoteDelegation'
+            ? {drep: certificate.drep}
             : {}),
         }
       }),
