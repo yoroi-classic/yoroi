@@ -1,4 +1,3 @@
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
 import {validateTransactionCbor} from '@yoroi/tx'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
@@ -173,9 +172,7 @@ export const ReviewTxScreen = () => {
     // Defer validation to avoid blocking initial render
     const timeoutId = setTimeout(() => {
       try {
-        const result = CardanoMobileWrapped.cslScope((csl) => {
-          return validateTransactionCbor(csl, params.cbor!)
-        })
+        const result = validateTransactionCbor(params.cbor!)
         setValidationResult(result)
       } catch {
         setValidationResult(undefined)

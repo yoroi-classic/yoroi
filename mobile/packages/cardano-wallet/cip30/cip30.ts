@@ -3,12 +3,15 @@ import {cardanoConfig} from '@yoroi/blockchains'
 import {isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {
+  deriveWalletPublicKeyHex,
+  signWalletData,
+} from '@yoroi-classic/csl-mobile-bridge'
+import {
   CIP30TransactionError,
   RemoteUnspentOutput,
   calculateTxId,
   normalizeToAddress,
   parseTokenList,
-  signRawTransaction,
   validateTransactionCbor,
 } from '@yoroi/tx'
 import {Balance, BaseAsset, Branded, Portfolio, Wallet} from '@yoroi/types'
@@ -28,7 +31,7 @@ import {
 import {CardanoWalletDependencies} from '../dependencies'
 import {createSendTxFromWallet} from '../transaction-recipes'
 import {Pagination, YoroiWallet} from '../types'
-import {copyFromCSL, copyMultipleFromCSL, createRawTxSigningKey} from '../utils'
+import {copyFromCSL, copyMultipleFromCSL} from '../utils'
 import {Utxos, asQuantity} from '../utils/utils'
 import {
   collateralConfig,
@@ -200,9 +203,7 @@ export const cip30ExtensionMaker = (
       const base64 = Branded.asTransactionCborBase64(
         Buffer.from(cbor, 'hex').toString('base64'),
       )
-      const txId = await CardanoMobileWrapped.cslScope(async (csl) => {
-        return await calculateTxId(csl, cbor, 'hex')
-      })
+      const txId = await calculateTxId(cbor, 'hex')
       await wallet.submitTransaction(base64)
       return txId
     },
@@ -244,11 +245,28 @@ export const cip30ExtensionMaker = (
             ? stakingSigningPath
             : getDerivationPathForAddress(bech32Address, wallet, meta, true)
 
-        const signingKey = createRawTxSigningKey(rootKey, signingPath, csl)
-        const publicKeyBytes = signingKey.toPublic().asBytes()
-        const coseSign1 = await cip8.sign(
-          Buffer.from(normalisedAddress.toHex(), 'hex'),
-          signingKey,
+        const addressBytes = Buffer.from(normalisedAddress.toHex(), 'hex')
+        const publicKeyHex = deriveWalletPublicKeyHex({
+          masterKeyHex: rootKey,
+          signerPath: signingPath,
+        })
+        const publicKeyBytes = Buffer.from(publicKeyHex, 'hex')
+        const dataToSign = cip8.makeCip8DataToSign(
+          addressBytes,
+          payloadInBytes,
+          publicKeyBytes,
+        )
+        const {signatureHex, publicKeyHex: signedPublicKeyHex} = signWalletData({
+          messageHex: dataToSign.toString('hex'),
+          masterKeyHex: rootKey,
+          signerPath: signingPath,
+        })
+        if (signedPublicKeyHex !== publicKeyHex) {
+          throw new Error('CML signing key changed during CIP-8 signing')
+        }
+        const coseSign1 = await cip8.buildCoseSign1FromSignature(
+          addressBytes,
+          Buffer.from(signatureHex, 'hex'),
           payloadInBytes,
           publicKeyBytes,
         )
@@ -262,9 +280,9 @@ export const cip30ExtensionMaker = (
     },
 
     async signTx(rootKey: string, cbor: string, partial = false) {
-      return CardanoMobileWrapped.cslScope(async (csl) => {
+      return CardanoMobileWrapped.cslScope(async (_csl) => {
         // Validate transaction CBOR before signing
-        const validation = validateTransactionCbor(csl, cbor)
+        const validation = validateTransactionCbor(cbor)
         if (!validation.valid) {
           throw new CIP30TransactionError(
             `Transaction validation failed: ${validation.errors.join(', ')}`,
@@ -281,12 +299,9 @@ export const cip30ExtensionMaker = (
 
         // Get transaction signers
         const signers = await getTransactionSigners(cbor, wallet, meta, partial)
-        const keys = signers.map((signer) =>
-          createRawTxSigningKey(rootKey, signer, csl),
-        )
-
-        // Sign the transaction
-        const signedTxBytes = await signRawTransaction(cbor, keys)
+        // Derivation and witness construction run in the CML native bridge.
+        const signedTxBytes = await wallet.signRawTx(cbor, rootKey, signers)
+        if (!signedTxBytes) throw new Error('Unable to sign transaction')
 
         // Return signed transaction CBOR hex string (CIP-30 spec requirement)
         return Buffer.from(signedTxBytes).toString('hex')

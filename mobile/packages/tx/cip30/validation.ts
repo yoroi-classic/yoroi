@@ -1,80 +1,46 @@
-import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {transactionValidationInfoJson} from '@yoroi-classic/csl-mobile-bridge'
 
-/**
- * Transaction validation result
- */
+/** Transaction validation result. */
 export type TransactionValidationResult = {
   valid: boolean
   errors: string[]
   warnings: string[]
 }
 
-/**
- * Validate transaction CBOR before signing
- */
-export function validateTransactionCbor(
-  csl: WasmModuleProxy,
-  cborHex: string,
-): TransactionValidationResult {
+type TransactionValidationInfo = {
+  inputsCount: number
+  outputsCount: number
+  fee: string
+  ttl: number | null
+}
+
+/** Validate transaction CBOR before signing using the native CML parser. */
+export function validateTransactionCbor(cborHex: string): TransactionValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
 
-  // Check if CBOR is valid hex
   if (!/^[0-9a-fA-F]+$/.test(cborHex)) {
     errors.push('Transaction CBOR must be valid hex string')
     return {valid: false, errors, warnings}
   }
 
-  // Try to parse transaction
   try {
-    const tx = csl.Transaction.fromHex(cborHex)
-    if (!tx) {
-      errors.push('Failed to parse transaction')
-      return {valid: false, errors, warnings}
-    }
-
-    const txBody = tx.body()
-    if (!txBody) {
-      errors.push('Transaction body is missing')
-      return {valid: false, errors, warnings}
-    }
-
-    // Validate inputs
-    const inputs = txBody.inputs()
-    if (!inputs || inputs.len() === 0) {
-      errors.push('Transaction has no inputs')
-    }
-
-    // Validate outputs
-    const outputs = txBody.outputs()
-    if (!outputs || outputs.len() === 0) {
-      warnings.push('Transaction has no outputs')
-    }
-
-    // Check fee
-    const fee = txBody.fee()
-    if (!fee || fee.toStr() === '0') {
-      warnings.push('Transaction fee is zero')
-    }
-
-    // Check TTL
-    const ttl = txBody.ttl()
-    if (!ttl || ttl === 0) {
-      warnings.push('Transaction TTL is not set')
-    }
-
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings,
-    }
+    const info = JSON.parse(transactionValidationInfoJson(cborHex)) as TransactionValidationInfo
+    if (info.inputsCount === 0) errors.push('Transaction has no inputs')
+    if (info.outputsCount === 0) warnings.push('Transaction has no outputs')
+    if (info.fee === '0') warnings.push('Transaction fee is zero')
+    if (info.ttl == null || info.ttl === 0) warnings.push('Transaction TTL is not set')
   } catch (error) {
-    errors.push(
-      `Failed to parse transaction: ${error instanceof Error ? error.message : String(error)}`,
-    )
-    return {valid: false, errors, warnings}
+    errors.push(`Failed to parse transaction: ${error instanceof Error ? error.message : String(error)}`)
   }
+
+  return {valid: errors.length === 0, errors, warnings}
 }
 
-// Re-export from centralized error location
-export {CIP30TransactionError} from '@yoroi/types'
+/** CIP-30 transaction error with structured validation results. */
+export class CIP30TransactionError extends Error {
+  constructor(message: string, public readonly validation: TransactionValidationResult) {
+    super(message)
+    this.name = 'CIP30TransactionError'
+  }
+}

@@ -1,4 +1,25 @@
 import {createCollateralEntry} from '~/features/Settings/ui/screens/ChangeWalletSettingsScreen/ManageCollateralScreen/helpers'
+import {CardanoMobileWrapped} from '../wrappedCsl'
+import {
+  deriveWalletPublicKeyHex,
+  signWalletData,
+} from '@yoroi-classic/csl-mobile-bridge'
+
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  transactionIdHex: jest.fn(() => '1a6205dc7a5a0493ef64487ca7033d12ba8f85a7d4a6e62d3c8eaa570d74eb53'),
+  transactionValidationInfoJson: jest.fn(() => JSON.stringify({inputsCount: 1, outputsCount: 1, fee: '1000000', ttl: 10})),
+  buildSimplePaymentTransaction: jest.fn(),
+  buildEscrowRedeemTransactionCml: jest.fn(),
+  minimumCoinForAssets: jest.fn(),
+  walletRootKeyHexFromEntropy: jest.fn(() =>
+    '9053adfb225e91c0bf2db38e1978907cfeff6e66b9a9c3d8945aa686a9d29851bf83c8e2e556464605afeb9651fab3ef3f0aa205685c8f1e6f818629f843bde9a7e129fd35d072ce79b40a49cefcbc8526a3cb8d4bfa7a47afddaddc31dbb728',
+  ),
+  deriveAccountPublicKeyHex: jest.fn(() => 'cd'.repeat(64)),
+  signWalletTransactionHex: jest.fn(() => '0102'),
+  signWalletTransactionPathsHex: jest.fn(() => '0102'),
+  deriveWalletPublicKeyHex: jest.fn(),
+  signWalletData: jest.fn(),
+}))
 
 import {getMasterKeyFromMnemonic} from '../mnemonic/mnemonic'
 import {mocks} from '../mocks/mocks/wallet'
@@ -115,8 +136,15 @@ describe('cip30ExtensionMaker', () => {
   })
 
   it('should support signTx', async () => {
+    const signRawTx = jest.fn(
+      async (_tx: string, _root: string, _paths: Array<Array<number>>) =>
+        new Uint8Array([1, 2]),
+    )
     const cip30 = cip30ExtensionMaker(
-      mocks.wallet,
+      {
+        ...mocks.wallet,
+        signRawTx,
+      },
       mocks.walletMeta,
       mockDependencies,
     )
@@ -126,6 +154,9 @@ describe('cip30ExtensionMaker', () => {
     expect(result).toBeDefined()
     expect(typeof result).toBe('string')
     expect(result.length).toBeGreaterThan(0)
+    expect(signRawTx).toHaveBeenCalledWith(txCbor, rootKeyHex, expect.any(Array))
+    const signerPaths = signRawTx.mock.calls[0]?.[2]
+    expect(signerPaths?.every((path) => path.length === 5)).toBe(true)
   })
 
   it('should support signData', async () => {
@@ -134,6 +165,37 @@ describe('cip30ExtensionMaker', () => {
     const message = '48656C6C6F'
     const addressBech32 =
       'addr1qynqc23tpx4dqps6xgqy9s2l3xz5fxu734wwmzj9uddn0h2z6epfcukqmswgwwfruxh7gaddv9x0d5awccwahnhwleqqc4zkh4'
+
+    ;(deriveWalletPublicKeyHex as jest.Mock).mockImplementation(
+      ({masterKeyHex, signerPath}) =>
+        CardanoMobileWrapped.cslScope((csl) => {
+          let key = csl.Bip32PrivateKey.fromBytes(
+            Buffer.from(masterKeyHex, 'hex'),
+          )
+          signerPath.forEach((index: number) => {
+            key = key.derive(index)
+          })
+          return Buffer.from(key.toRawKey().toPublic().asBytes()).toString('hex')
+        }),
+    )
+    ;(signWalletData as jest.Mock).mockImplementation(
+      ({messageHex, masterKeyHex, signerPath}) =>
+        CardanoMobileWrapped.cslScope((csl) => {
+          let key = csl.Bip32PrivateKey.fromBytes(
+            Buffer.from(masterKeyHex, 'hex'),
+          )
+          signerPath.forEach((index: number) => {
+            key = key.derive(index)
+          })
+          const rawKey = key.toRawKey()
+          return {
+            signatureHex: Buffer.from(
+              rawKey.sign(Buffer.from(messageHex, 'hex')).toBytes(),
+            ).toString('hex'),
+            publicKeyHex: Buffer.from(rawKey.toPublic().asBytes()).toString('hex'),
+          }
+        }),
+    )
 
     const cip30 = cip30ExtensionMaker(
       mocks.wallet,

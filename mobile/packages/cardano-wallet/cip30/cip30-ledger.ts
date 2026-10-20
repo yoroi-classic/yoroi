@@ -117,7 +117,7 @@ export const cip30LedgerExtensionMaker = (
     ) {
       return CardanoMobileWrapped.cslScope(async (csl) => {
         // Validate transaction CBOR before signing
-        const validation = validateTransactionCbor(csl, cbor)
+        const validation = validateTransactionCbor(cbor)
         if (!validation.valid) {
           throw new CIP30TransactionError(
             `Transaction validation failed: ${validation.errors.join(', ')}`,
