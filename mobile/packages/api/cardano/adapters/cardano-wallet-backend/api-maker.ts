@@ -165,7 +165,7 @@ export const cardanoWalletBackendV1Maker = ({
       }
       const response = await request<unknown>({
         url: `${baseUrl}/v1/addresses/utxos`,
-        data: {address},
+        data: {addresses: [address]},
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
       })
