@@ -623,6 +623,39 @@ describe('transaction builder', () => {
       bridgeBuilder.mockRestore()
     })
 
+    it('routes combined stake/vote registration with the configured deposit through CML', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      let state = addInput(createTransactionBuilder(), createMockUtxo('06'.repeat(32), 5, {
+        [primaryTokenId]: '10000000' as Balance.Quantity,
+      }))
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addCertificate(state, {
+        kind: 'StakeVoteRegistrationAndDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        poolKeyHash: 'bb'.repeat(28) as KeyHash,
+        drep: 'AlwaysAbstain',
+      })
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        certificates: [{
+          kind: 'StakeVoteRegistrationAndDelegation',
+          stakeCredentialKeyHashHex: 'aa'.repeat(28),
+          poolKeyHash: 'bb'.repeat(28),
+          drep: 'AlwaysAbstain',
+        }],
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
     it('should throw NoOutputsError when no outputs and no change address', async () => {
       const state = createTransactionBuilder()
       const utxo = createMockUtxo('hash1', 0, {

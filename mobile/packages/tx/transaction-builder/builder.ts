@@ -674,7 +674,11 @@ export async function buildTransaction(
         certificate.kind === 'StakeRegistration' ||
         certificate.kind === 'StakeDeregistration' ||
         certificate.kind === 'StakeDelegation' ||
-        certificate.kind === 'VoteDelegation',
+        certificate.kind === 'VoteDelegation' ||
+        certificate.kind === 'StakeAndVoteDelegation' ||
+        certificate.kind === 'StakeRegistrationAndDelegation' ||
+        certificate.kind === 'StakeVoteRegistrationAndDelegation' ||
+        certificate.kind === 'VoteRegistrationAndDelegation',
       ) &&
       (state.withdrawals.length === 0 || state.certificates.length === 0) &&
       state.referenceInputs.length === 0 &&
@@ -738,18 +742,22 @@ export async function buildTransaction(
           certificate.kind !== 'StakeRegistration' &&
           certificate.kind !== 'StakeDeregistration' &&
           certificate.kind !== 'StakeDelegation' &&
-          certificate.kind !== 'VoteDelegation'
+          certificate.kind !== 'VoteDelegation' &&
+          certificate.kind !== 'StakeAndVoteDelegation' &&
+          certificate.kind !== 'StakeRegistrationAndDelegation' &&
+          certificate.kind !== 'StakeVoteRegistrationAndDelegation' &&
+          certificate.kind !== 'VoteRegistrationAndDelegation'
         ) {
           throw new Error(`Unsupported CML certificate ${certificate.kind}`)
         }
         return {
           kind: certificate.kind,
           stakeCredentialKeyHashHex: certificate.stakeCredentialKeyHashHex,
-          ...(certificate.kind === 'StakeDelegation'
+          ...('poolKeyHash' in certificate
             ? {poolKeyHash: certificate.poolKeyHash}
             : {}),
-          ...(certificate.kind === 'VoteDelegation'
-            ? {drep: certificate.drep}
+          ...('drep' in certificate
+            ? {drep: certificate.drep ?? undefined}
             : {}),
         }
       }),
