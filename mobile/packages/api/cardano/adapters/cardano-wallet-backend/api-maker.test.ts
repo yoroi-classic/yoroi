@@ -654,6 +654,21 @@ describe('cardanoWalletBackendV1Maker', () => {
     },
   )
 
+  it('rejects a malformed address inside a mixed batch before calling the backend', async () => {
+    const request: Fetcher = jest.fn()
+    const api = cardanoWalletBackendV1Maker({
+      config: {baseUrl: 'http://localhost:3000'},
+      request,
+    })
+    const addresses = [mainnet, makeShelleyAddress(0x01, []), byron]
+
+    expect(canUseCardanoWalletBackendV1FilterUsed(addresses)).toBe(false)
+    await expect(api.filterUsedAddresses(addresses)).rejects.toThrow(
+      'requires valid payment addresses',
+    )
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('marks real Shelley and Byron vectors as eligible', () => {
     expect(
       canUseCardanoWalletBackendV1FilterUsed([
