@@ -3,6 +3,9 @@ import {StakePoolInfoRequest, StakePoolInfosAndHistories} from '@yoroi/staking'
 import {Branded, TransactionCborBase64, WalletTransaction} from '@yoroi/types'
 
 import {CardanoWalletBackendNetworkMismatchError} from './adapters/cardano-wallet-backend/api-maker'
+import {cardanoWalletBackendV1Maker} from './adapters/cardano-wallet-backend/api-maker'
+import * as legacyFetch from './utils/fetch'
+import {legacyApiMaker} from './adapters/legacy/api-maker'
 import {
   AccountStateResponse,
   TipStatusResponse,
@@ -254,6 +257,63 @@ describe('cardanoApiManagerMaker', () => {
         )
       } finally {
         loggerWarn.mockRestore()
+      }
+    })
+
+    it('falls back to legacy v2 POST when mainnet wallet sees preprod CWB status', async () => {
+      const mainnetAddress = Branded.asAddress(
+        'addr1qxxvt9rzpdxxysmqp50d7f5a3gdescgrejsu7zsdxqjy8yun4cngaq46gr8c9qyz4td9ddajzqhjnrqvfh0gspzv9xnsmq6nqx',
+      )
+      const cwbRequest = jest.fn().mockResolvedValue({network: 'preprod'})
+      const cwbAdapter = cardanoWalletBackendV1Maker({
+        config: {
+          baseUrl: 'https://wallet-backend.example.com',
+          submitExpectedNetwork: 'mainnet',
+        },
+        request: cwbRequest,
+      })
+      const fetchDefault = jest
+        .spyOn(legacyFetch, 'fetchDefault')
+        .mockResolvedValue([mainnetAddress] as never)
+      const legacyAdapter = legacyApiMaker({
+        baseApiUrl: 'https://legacy.example.com/api',
+      })
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter: createMockAdapter('backend-zero'),
+        cardanoWalletBackendAdapter: cwbAdapter,
+        legacyAdapter,
+        preferences: {
+          getTipStatus: 'legacy',
+          fetchNewTxHistory: 'legacy',
+          filterUsedAddresses: 'cardano-wallet-backend',
+          submitTransaction: 'legacy',
+          getAccountState: 'legacy',
+          bulkGetAccountState: 'legacy',
+          getPoolInfo: 'legacy',
+          fetchTxStatus: 'legacy',
+          checkServerStatus: 'legacy',
+          getFundInfo: 'legacy',
+        },
+      })
+
+      try {
+        await expect(api.filterUsedAddresses([mainnetAddress])).resolves.toEqual([
+          mainnetAddress,
+        ])
+        expect(cwbRequest).toHaveBeenCalledTimes(1)
+        expect(cwbRequest).toHaveBeenCalledWith({
+          url: 'https://wallet-backend.example.com/v1/status',
+          method: 'GET',
+          headers: {Accept: 'application/json'},
+        })
+        expect(fetchDefault).toHaveBeenCalledTimes(1)
+        expect(fetchDefault).toHaveBeenCalledWith(
+          'v2/addresses/filterUsed',
+          {addresses: [mainnetAddress]},
+          'https://legacy.example.com/api',
+        )
+      } finally {
+        fetchDefault.mockRestore()
       }
     })
 
