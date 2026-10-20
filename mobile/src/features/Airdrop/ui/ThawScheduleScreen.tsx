@@ -213,7 +213,7 @@ export const ThawScheduleScreen = () => {
         preventSubmit: true,
         context: 'airdrop',
         onSuccessWithoutFeedback: async (args) => {
-          if (!args?.signedTx) {
+          if (!args?.signedTxBytes) {
             logger.error('handleRedeem: No signed transaction in callback', {
               destAddress: allocation.address,
             })
@@ -225,7 +225,7 @@ export const ThawScheduleScreen = () => {
             // Submit signed transaction to redemption API
             await submitTransaction({
               destAddress: allocation.address,
-              signedTx: args.signedTx,
+              signedTxBytes: args.signedTxBytes,
               isEscrowRedeem: lastBuildWasEscrow.current,
             })
             setIsRedeeming(false)

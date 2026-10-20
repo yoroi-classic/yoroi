@@ -19,7 +19,6 @@ import {
   buildVotingLedgerPayloadV5,
   createSignedLedgerTxFromCbor,
   modernUtxosToCardanoAddressedUtxos,
-  signRawTransaction,
 } from '@yoroi/tx'
 import {
   Address,
@@ -38,7 +37,6 @@ import {
 
 import type {SignedTransactionData} from '@cardano-foundation/ledgerjs-hw-app-cardano'
 import {walletChecksum} from '@emurgo/cip4-js'
-import * as CSL from '@emurgo/cross-csl-core'
 import {Buffer} from 'buffer'
 import {freeze} from 'immer'
 import {lruMemoize} from 'reselect'
@@ -113,6 +111,7 @@ import {
 import {UtxoManager, makeUtxoManager} from './utxoManager/utxoManager'
 import {utxosMaker} from './utxoManager/utxos'
 import {CardanoMobileWrapped} from './wrappedCsl'
+import {signWalletTransactionWithPaths} from './operations/signing-operations'
 
 const logger = getLogger()
 
@@ -761,8 +760,12 @@ function createWalletObject(
   }
   // end sync
 
-  const signRawTx = async (txHex: string, pKeys: CSL.PrivateKey[]) => {
-    return signRawTransaction(txHex, pKeys)
+  const signRawTx = async (
+    txHex: string,
+    rootKeyHex: string,
+    signerPaths: number[][],
+  ) => {
+    return signWalletTransactionWithPaths(txHex, rootKeyHex, signerPaths)
   }
 
   const getAddressedUtxos = (): ModernUtxo[] => {
@@ -866,7 +869,7 @@ function createWalletObject(
     unsignedTx: UnsignedTransaction,
     useUSB: boolean,
     hwDeviceInfo: HW.DeviceInfo,
-  ): Promise<CSL.Transaction> => {
+  ): Promise<Uint8Array> => {
     if (!unsignedTx.cbor) {
       throw new Error('UnsignedTransaction must have CBOR to sign with Ledger')
     }
@@ -937,12 +940,7 @@ function createWalletObject(
             false,
           )
 
-          // Convert signed transaction bytes to Transaction object
-          const signedTx = await CardanoMobileWrapped.cslScope(async (csl) => {
-            return await csl.Transaction.fromBytes(signedTxResult.encodedTx)
-          })
-
-          return signedTx
+          return signedTxResult.encodedTx
         })
       }
 
@@ -1018,12 +1016,7 @@ function createWalletObject(
         datumDatas.length > 0 ? datumDatas : undefined,
       )
 
-      // Convert signed transaction bytes to Transaction object
-      const signedTx = await CardanoMobileWrapped.cslScope(async (csl) => {
-        return await csl.Transaction.fromBytes(signedTxResult.encodedTx)
-      })
-
-      return signedTx
+      return signedTxResult.encodedTx
     })
   }
 

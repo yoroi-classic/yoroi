@@ -466,23 +466,23 @@ const createVotingRegTx = {
 
 const signTx = {
   success: async (..._args: Array<never>) => {
-    return mocks.signedTransaction
+    return new Uint8Array()
   },
   error: async (..._args: Array<never>) => {
     return Promise.reject(new Error('Mock error'))
   },
   loading: async (..._args: Array<never>) => {
-    return new Promise<CSL.Transaction>(() => null)
+    return new Promise<Uint8Array>(() => null)
   },
 }
 const signTxWithLedger = {
   success: async (..._args: Array<never>) => {
-    return mocks.signedTransaction
+    return new Uint8Array()
   },
   error: async (..._args: Array<never>) => {
     return Promise.reject(new Error('Mock error'))
   },
-  loading: async (..._args: Array<never>): Promise<CSL.Transaction> => {
+  loading: async (..._args: Array<never>): Promise<Uint8Array> => {
     return new Promise(() => null)
   },
 }

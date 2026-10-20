@@ -3,7 +3,6 @@ import {createTypeGuardFromSchema, isKeyOf, isRecord} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {Chain} from '@yoroi/types'
 
-import {Address, TransactionUnspentOutput, Value} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 import {z} from 'zod'
 
@@ -579,16 +578,16 @@ export type ResolverWallet = {
   networkId: number
   network: Chain.SupportedNetworks
   confirmConnection: (dappOrigin: string) => Promise<boolean>
-  getBalance: (tokenId?: string) => Value
-  getUnusedAddresses: () => Address[]
-  getUsedAddresses: (pagination?: Pagination) => Address[]
-  getChangeAddress: () => Address
-  getRewardAddresses: () => Address[]
+  getBalance: (tokenId?: string) => HexBalance
+  getUnusedAddresses: () => HexSerializable[]
+  getUsedAddresses: (pagination?: Pagination) => HexSerializable[]
+  getChangeAddress: () => HexSerializable
+  getRewardAddresses: () => HexSerializable[]
   getUtxos: (
     value?: string,
     pagination?: Pagination,
-  ) => Promise<TransactionUnspentOutput[] | null>
-  getCollateral: (value?: string) => Promise<TransactionUnspentOutput[] | null>
+  ) => Promise<HexSerializable[] | null>
+  getCollateral: (value?: string) => Promise<HexSerializable[] | null>
   getCollateralInfo: () => {
     collateralId: string
     isConfirmed: boolean
@@ -603,6 +602,10 @@ export type ResolverWallet = {
   cip95?: CIP95ResolverWallet
   cip103?: CIP103ResolverWallet
 }
+
+/** CIP-30 resolver consumes serialized hex, not the underlying ledger objects. */
+type HexSerializable = {toHex: () => string}
+type HexBalance = HexSerializable & {coin: () => {toStr: () => string}}
 
 type CIP95ResolverWallet = {
   getPubDRepKey: () => Promise<string>

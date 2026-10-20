@@ -13,7 +13,6 @@ import {
 import {Balance, Chain} from '@yoroi/types'
 import {useWalletManager} from '@yoroi/wallet-manager'
 
-import type {Transaction, WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {useMutation, useQueryClient} from '@tanstack/react-query'
 import {Buffer} from 'buffer'
 
@@ -199,21 +198,16 @@ export const useEscrowRedeem = () => {
 
   const submitTransactionMutation = useMutation({
     mutationFn: async ({
-      signedTx,
+      signedTxBytes,
     }: {
-      signedTx: Transaction | ((csl: WasmModuleProxy) => Transaction)
+      signedTxBytes: Uint8Array
     }): Promise<void> => {
       if (!wallet) {
         throw new Error('Wallet not available')
       }
 
       // Submit directly to Cardano network (NOT via Midnight API)
-      const txBytes = await CardanoMobileWrapped.cslScope((csl) => {
-        const tx = typeof signedTx === 'function' ? signedTx(csl) : signedTx
-        return tx.toBytes()
-      })
-
-      const base64 = Buffer.from(txBytes).toString('base64')
+      const base64 = Buffer.from(signedTxBytes).toString('base64')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await wallet.submitTransaction(base64 as any)
 

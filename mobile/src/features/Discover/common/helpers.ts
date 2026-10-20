@@ -13,7 +13,6 @@ import {
 } from '@yoroi/dapp-connector'
 import {App, Wallet} from '@yoroi/types'
 
-import {Transaction} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
 function hasProtocol(url: string) {
@@ -151,7 +150,7 @@ type CreateDappConnectorOptions = {
   signTxWithHW: (options: {
     cbor: string
     partial?: boolean
-  }) => Promise<Transaction>
+  }) => Promise<Uint8Array>
   signDataWithHW: (
     address: string,
     payload: string,
@@ -224,10 +223,8 @@ export const createDappConnector = (options: CreateDappConnectorOptions) => {
     },
     signTx: async (cbor: string, partial?: boolean) => {
       if (meta.isHW) {
-        const tx = await options.signTxWithHW({cbor, partial})
-        // Convert Transaction to signed transaction CBOR hex
-        // Transaction is already copied via copyFromCSL, so toBytes() can be called outside scope
-        return Buffer.from(tx.toBytes()).toString('hex')
+        const signedTxBytes = await options.signTxWithHW({cbor, partial})
+        return Buffer.from(signedTxBytes).toString('hex')
       }
 
       const rootKey = await signTx({cbor, manager})

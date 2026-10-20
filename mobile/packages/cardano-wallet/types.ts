@@ -37,7 +37,6 @@ import {
 
 import {WalletChecksum as WalletChecksumType} from '@emurgo/cip4-js'
 import * as CoreTypes from '@emurgo/cross-csl-core'
-import * as CSL from '@emurgo/cross-csl-core'
 
 import {AddressChain} from './account-manager/account-manager'
 import {ReadOnlyAddressChain} from './account-manager/read-only-account-manager'
@@ -117,7 +116,8 @@ export type YoroiWallet = {
 
   signRawTx(
     txHex: string,
-    pKeys: CoreTypes.PrivateKey[],
+    rootKeyHex: string,
+    signerPaths: number[][],
   ): Promise<Uint8Array | undefined>
 
   getAddressing(address: string): {path: number[]; startLevel: number}
@@ -127,7 +127,7 @@ export type YoroiWallet = {
   signTx(
     signRequest: UnsignedTransaction,
     rootKey: string,
-  ): Promise<CSL.Transaction>
+  ): Promise<Uint8Array>
   submitTransaction(signedTx: TransactionCborBase64): Promise<void>
 
   // Ledger
@@ -135,7 +135,7 @@ export type YoroiWallet = {
     request: UnsignedTransaction,
     useUSB: boolean,
     hwDeviceInfo: HW.DeviceInfo,
-  ): Promise<CSL.Transaction>
+  ): Promise<Uint8Array>
   ledgerSupportsCIP36(
     useUSB: boolean,
     hwDeviceInfo: HW.DeviceInfo,

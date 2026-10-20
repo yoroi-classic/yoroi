@@ -1,64 +1,53 @@
 // Cardano transaction utilities
 // Functions for transaction hashing, ID calculation, etc.
-import {bech32ToHex, isHex} from '@yoroi/common'
+import {
+  stakeCredentialHexFromAddress,
+  transactionIdHex,
+  transactionWitnessSetHex,
+} from '@yoroi-classic/csl-mobile-bridge'
 
-import {TransactionHash, WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {BigNumber} from 'bignumber.js'
 
 /**
  * Hash a transaction to get its transaction hash
  */
 export async function hashTransaction(
-  csl: WasmModuleProxy,
   transactionBytes: Uint8Array,
-): Promise<TransactionHash> {
-  const fixed = csl.FixedTransaction.fromBytes(transactionBytes)
-  return fixed.transactionHash()
+): Promise<string> {
+  return transactionIdHex(Buffer.from(transactionBytes).toString('hex'))
 }
 
 /**
  * Calculate transaction ID from encoded transaction
  *
- * NOTE: This function expects to be called within a cslScope.
  */
 export async function calculateTxId(
-  csl: WasmModuleProxy,
   encodedTx: string,
   encoding: 'base64' | 'hex',
 ): Promise<string> {
-  const txBuffer = Buffer.from(encodedTx, encoding)
-  const hash = await hashTransaction(csl, txBuffer)
-  return hash.toHex()
+  const txHex = Buffer.from(encodedTx, encoding).toString('hex')
+  return transactionIdHex(txHex)
+}
+
+/** Extract the serialized witness set from a signed transaction using CML. */
+export function getTransactionWitnessSetHex(
+  transactionBytes: Uint8Array,
+): string {
+  return transactionWitnessSetHex(Buffer.from(transactionBytes).toString('hex'))
 }
 
 /**
  * Get balance for staking credentials from UTXOs
  *
- * NOTE: This function expects to be called within a cslScope.
  */
 export async function getBalanceForStakingCredentials(
-  csl: WasmModuleProxy,
   utxos: Array<{receiver: string; amount: string}>,
 ): Promise<Record<string, string>> {
   const balances = await utxos.reduce(
     async (prevPromise, curr) => {
       const prev = await prevPromise
-      const hex = isHex(curr.receiver)
-        ? curr.receiver
-        : bech32ToHex(curr.receiver)
-
-      if (!hex) return prev
-      if (!hex.match(/^[0-3]/)) return prev
-
       try {
-        const baseAddress = csl.BaseAddress.fromAddress(
-          csl.Address.fromBytes(Buffer.from(hex, 'hex')),
-        )
-        if (!baseAddress) {
-          throw new Error('getBalanceForStakingCredentials: invalid address')
-        }
-        const stakeCred = baseAddress.stakeCred()
-        const stakeCredHex = Buffer.from(stakeCred.toBytes()).toString('hex')
+        const stakeCredHex = stakeCredentialHexFromAddress(curr.receiver)
         if (!prev[stakeCredHex]) {
           prev[stakeCredHex] = '0'
         }

@@ -5,11 +5,14 @@ import {
   utxosMaker,
 } from '@yoroi/cardano-wallet'
 import type {SelectionStrategy} from '@yoroi/tx'
-import {rawUtxoToModernUtxo, selectUtxos} from '@yoroi/tx'
+import {
+  getTransactionWitnessSetHex,
+  rawUtxoToModernUtxo,
+  selectUtxos,
+} from '@yoroi/tx'
 import {Balance} from '@yoroi/types'
 import {useWalletManager} from '@yoroi/wallet-manager'
 
-import type {Transaction, WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {useMutation, useQueryClient} from '@tanstack/react-query'
 import {Buffer} from 'buffer'
 import React from 'react'
@@ -231,11 +234,11 @@ export const useRedeemThaw = (allocation?: AddressAllocation) => {
   const submitTransactionMutation = useMutation({
     mutationFn: async ({
       destAddress,
-      signedTx,
+      signedTxBytes,
       isEscrowRedeem,
     }: {
       destAddress: string
-      signedTx: Transaction | ((csl: WasmModuleProxy) => Transaction)
+      signedTxBytes: Uint8Array
       isEscrowRedeem?: boolean
     }): Promise<string> => {
       if (!wallet) {
@@ -243,42 +246,20 @@ export const useRedeemThaw = (allocation?: AddressAllocation) => {
         throw new Error('Wallet not available')
       }
 
-      // Get signed transaction bytes
-      const signedTxBytes = await CardanoMobileWrapped.cslScope((csl) => {
-        const tx = typeof signedTx === 'function' ? signedTx(csl) : signedTx
-        return tx.toBytes()
-      })
-
       // Client-side escrow: submit directly to Cardano network
       if (isEscrowRedeem) {
         logger.info(
           'useRedeemThaw.submitTransaction: Submitting escrow redeem directly to Cardano network',
           {destAddress},
         )
-        await submitEscrowTransaction({signedTx})
+        await submitEscrowTransaction({signedTxBytes})
         return 'escrow-direct-submit'
       }
 
       const signedTxHex = Buffer.from(signedTxBytes).toString('hex')
 
       // Extract witness set from signed transaction
-      const witnessSetHex = CardanoMobileWrapped.cslScope((csl) => {
-        const tx = csl.Transaction.fromBytes(signedTxBytes)
-        const witnessSet = tx.witnessSet()
-        if (!witnessSet) {
-          logger.error(
-            'useRedeemThaw.submitTransaction: Failed to extract witness set',
-            {
-              destAddress,
-            },
-          )
-          throw new Error(
-            'Failed to extract witness set from signed transaction',
-          )
-        }
-        const witnessSetBytes = witnessSet.toBytes()
-        return Buffer.from(witnessSetBytes).toString('hex')
-      })
+      const witnessSetHex = getTransactionWitnessSetHex(signedTxBytes)
 
       // Submit transaction to redemption API
       const submitResponse = await redemptionApi.submitTransaction(

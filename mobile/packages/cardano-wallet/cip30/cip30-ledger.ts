@@ -11,7 +11,7 @@ import {
   MessageAddressFieldType,
   MessageData,
 } from '@cardano-foundation/ledgerjs-hw-app-cardano'
-import {Address, Transaction} from '@emurgo/cross-csl-core'
+import {Address} from '@emurgo/cross-csl-core'
 
 import {buildCoseSign1FromSignature, makeCip8Key} from '../cip8/cip8'
 import {assertHasAllSigners} from '../common/signatureUtils'
@@ -19,12 +19,11 @@ import {CardanoWalletDependencies} from '../dependencies'
 import {signMessageWithLedger, signTxWithLedger} from '../hw/hw'
 import {YoroiWallet} from '../types'
 import {
-  copyFromCSL,
   getAddressedUtxos,
   getHexAddressingMap,
   getStakeAddressMap,
 } from '../utils'
-import {CardanoMobile, CardanoMobileWrapped} from '../wrappedCsl'
+import {CardanoMobileWrapped} from '../wrappedCsl'
 
 export type CIP30LedgerExtension = {
   signData(
@@ -38,7 +37,7 @@ export type CIP30LedgerExtension = {
     partial: boolean,
     hwDeviceInfo: HW.DeviceInfo,
     useUSB: boolean,
-  ): Promise<Transaction>
+  ): Promise<Uint8Array>
 }
 
 export const cip30LedgerExtensionMaker = (
@@ -165,8 +164,7 @@ export const cip30LedgerExtensionMaker = (
           implementationConfig.derivations.base.harden.purpose,
           wallet.publicKeyHex,
         )
-        const tx = csl.Transaction.fromBytes(bytes)
-        return copyFromCSL(CardanoMobile.Transaction, tx)
+        return bytes
       })
     },
   }

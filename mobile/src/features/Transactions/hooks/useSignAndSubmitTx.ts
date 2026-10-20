@@ -2,7 +2,6 @@ import {TxSubmissionStatus} from '@yoroi/api'
 import {YoroiWallet} from '@yoroi/cardano-wallet'
 import {UnsignedTransaction} from '@yoroi/tx'
 
-import * as CSL from '@emurgo/cross-csl-core'
 import {UseMutationOptions} from '@tanstack/react-query'
 
 import {useSubmitTx} from '~/features/Transactions/hooks/useSubmitTx'
@@ -13,11 +12,15 @@ export const useSignAndSubmitTx = (
   {wallet}: {wallet: YoroiWallet},
   options?: {
     signTx?: UseMutationOptions<
-      CSL.Transaction,
+      Uint8Array,
       Error,
       {unsignedTx: UnsignedTransaction; rootKey: string}
     >
-    submitTx?: UseMutationOptions<TxSubmissionStatus, Error, CSL.Transaction>
+    submitTx?: UseMutationOptions<
+      TxSubmissionStatus,
+      Error,
+      Uint8Array
+    >
   },
 ) => {
   const signTx = useSignTx(
