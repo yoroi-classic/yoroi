@@ -401,7 +401,7 @@ const formatOutputs = (
       // Parse datum from output
       let datumInfo = null
       if (cslOutput) {
-        const datumInfoRaw = parseDatumFromOutput(csl, cslOutput)
+        const datumInfoRaw = parseDatumFromOutput(cslOutput.toHex())
         if (datumInfoRaw) {
           let decoded: DecodedDatum | null = null
           let json: unknown | null = null

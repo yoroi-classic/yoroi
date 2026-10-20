@@ -1,11 +1,22 @@
-import {datumFromInfo, getDatumHash} from './parsing'
+import {datumFromInfo, getDatumHash, parseDatumFromOutput} from './parsing'
 import type {Datum, DatumInfo} from './types'
 
 jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
   hashPlutusDataCborHex: jest.fn(() => 'computed_hash'),
+  datumInfoFromOutputCborHex: jest.fn(() => JSON.stringify({type: 'inline', hash: 'datum-hash', data: 'd87980'})),
 }))
 
 describe('datum parsing', () => {
+  it('extracts datum information from output CBOR through CML', () => {
+    const {datumInfoFromOutputCborHex} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+    expect(parseDatumFromOutput('aabb')).toEqual({
+      type: 'inline',
+      hash: 'datum-hash',
+      data: 'd87980',
+    })
+    expect(datumInfoFromOutputCborHex).toHaveBeenCalledWith('aabb')
+  })
+
   describe('datumFromInfo', () => {
     it('should create inline datum from info', () => {
       const info: DatumInfo = {

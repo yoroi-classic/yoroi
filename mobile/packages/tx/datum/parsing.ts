@@ -1,40 +1,18 @@
-import type {TransactionOutput, WasmModuleProxy} from '@emurgo/cross-csl-core'
-import {hashPlutusDataCborHex} from '@yoroi-classic/csl-mobile-bridge'
+import {datumInfoFromOutputCborHex, hashPlutusDataCborHex} from '@yoroi-classic/csl-mobile-bridge'
 
 import type {Datum, DatumInfo} from './types'
 
 /**
- * Parse datum from CSL TransactionOutput
+ * Parse datum from serialized transaction-output CBOR using CML.
  *
- * @param csl - CSL module proxy
- * @param output - CSL TransactionOutput
+ * @param outputCborHex - serialized transaction output CBOR
  * @returns DatumInfo if datum is present, null otherwise
  */
 export function parseDatumFromOutput(
-  csl: WasmModuleProxy,
-  output: TransactionOutput,
+  outputCborHex: string,
 ): DatumInfo | null {
-  const plutusData = output.plutusData()
-  const dataHash = output.dataHash()
-
-  if (plutusData) {
-    // Inline datum
-    return {
-      type: 'inline',
-      hash: csl.hashPlutusData(plutusData).toHex(),
-      data: plutusData.toHex(),
-    }
-  }
-
-  if (dataHash) {
-    // Datum hash
-    return {
-      type: 'hash',
-      hash: dataHash.toHex(),
-    }
-  }
-
-  return null
+  const result = JSON.parse(datumInfoFromOutputCborHex(outputCborHex)) as DatumInfo | null
+  return result
 }
 
 /**
