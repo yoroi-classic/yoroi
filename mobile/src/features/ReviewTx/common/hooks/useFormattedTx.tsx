@@ -408,9 +408,9 @@ const formatOutputs = (
 
           // Try to decode if we have the data
           if (datumInfoRaw.data) {
-            decoded = decodeDatum(csl, datumInfoRaw.data)
+            decoded = decodeDatum(datumInfoRaw.data)
             if (decoded) {
-              json = decodeDatumToJson(csl, {
+              json = decodeDatumToJson({
                 type: datumInfoRaw.type,
                 hash: datumInfoRaw.hash,
                 data: datumInfoRaw.data,

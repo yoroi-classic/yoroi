@@ -1,5 +1,5 @@
 import {getDatumHash} from './parsing'
-import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {hashPlutusDataCborHex} from '@yoroi-classic/csl-mobile-bridge'
 import type {Datum} from './types'
 
 /**
@@ -33,7 +33,6 @@ export function validateDatum(datum: Datum): {valid: boolean; error?: string} {
  * Validate datum can be parsed as PlutusData
  */
 export function validatePlutusData(
-  csl: WasmModuleProxy,
   datum: Datum,
 ): {valid: boolean; error?: string} {
   const validation = validateDatum(datum)
@@ -47,10 +46,7 @@ export function validatePlutusData(
   }
 
   try {
-    const plutusData = csl.PlutusData.fromHex(datum.data)
-    if (!plutusData) {
-      return {valid: false, error: 'Failed to parse PlutusData'}
-    }
+    hashPlutusDataCborHex(datum.data)
     return {valid: true}
   } catch (error) {
     return {

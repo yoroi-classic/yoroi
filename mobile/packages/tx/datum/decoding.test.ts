@@ -2,40 +2,27 @@ import {decodeDatum, decodeDatumToJson, formatDecodedDatum} from './decoding'
 import type {DecodedDatum} from './decoding'
 import type {Datum} from './types'
 
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  decodePlutusDataCborHex: jest.fn(() => JSON.stringify({type: 'integer', value: '42'})),
+}))
+
 describe('datum decoding', () => {
   describe('decodeDatum', () => {
     it('should decode valid PlutusData hex', () => {
-      const mockPlutusData = {
-        kind: jest.fn(() => 3), // Integer
-        asInteger: jest.fn(() => ({
-          toStr: () => '42',
-        })),
-        toHex: () => 'd8799f',
-      }
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => mockPlutusData),
-        },
-      }
-
-      const result = decodeDatum(mockCsl as any, 'd8799f')
+      const {decodePlutusDataCborHex} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+      const result = decodeDatum('d8799f')
 
       expect(result).toEqual({
         type: 'integer',
         value: '42',
       })
+      expect(decodePlutusDataCborHex).toHaveBeenCalledWith('d8799f')
     })
 
     it('should return null for invalid hex', () => {
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => {
-            throw new Error('Invalid hex')
-          }),
-        },
-      }
-
-      const result = decodeDatum(mockCsl as any, 'invalid')
+      const {decodePlutusDataCborHex} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+      decodePlutusDataCborHex.mockImplementationOnce(() => { throw new Error('Invalid hex') })
+      const result = decodeDatum('invalid')
 
       expect(result).toBeNull()
     })
@@ -47,9 +34,7 @@ describe('datum decoding', () => {
         type: 'hash',
         hash: 'hash123',
       }
-      const mockCsl = {} as any
-
-      const result = decodeDatumToJson(mockCsl, datum)
+      const result = decodeDatumToJson(datum)
 
       expect(result).toBeNull()
     })
@@ -59,20 +44,7 @@ describe('datum decoding', () => {
         type: 'inline',
         data: 'd8799f',
       }
-      const mockPlutusData = {
-        kind: jest.fn(() => 3), // Integer
-        asInteger: jest.fn(() => ({
-          toStr: () => '42',
-        })),
-        toHex: () => 'd8799f',
-      }
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => mockPlutusData),
-        },
-      }
-
-      const result = decodeDatumToJson(mockCsl as any, datum)
+      const result = decodeDatumToJson(datum)
 
       expect(result).toBe('42')
     })
@@ -82,15 +54,9 @@ describe('datum decoding', () => {
         type: 'inline',
         data: 'invalid',
       }
-      const mockCsl = {
-        PlutusData: {
-          fromHex: jest.fn(() => {
-            throw new Error('Invalid')
-          }),
-        },
-      }
-
-      const result = decodeDatumToJson(mockCsl as any, datum)
+      const {decodePlutusDataCborHex} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+      decodePlutusDataCborHex.mockImplementationOnce(() => { throw new Error('Invalid') })
+      const result = decodeDatumToJson(datum)
 
       expect(result).toBeNull()
     })
