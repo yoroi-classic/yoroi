@@ -630,6 +630,11 @@ describe('transaction builder', () => {
         receiver: address,
       }
       let state = addInput(createTransactionBuilder(), fundingUtxo)
+      const extraReference = {
+        ...createMockUtxo('15'.repeat(32), 1, {[primaryTokenId]: '3000000' as Balance.Quantity}),
+        receiver: address,
+      }
+      state = addReferenceInput(state, extraReference)
       state = addScriptInput(state, {
         utxo: scriptUtxo,
         scriptHash: 'ab'.repeat(28),
@@ -662,6 +667,13 @@ describe('transaction builder', () => {
           txHashHex: '12'.repeat(32),
           datumCborHex: 'd87980',
         }),
+        referenceInputs: [{
+          txHashHex: '15'.repeat(32),
+          index: '1',
+          address,
+          lovelace: '3000000',
+          assets: [],
+        }],
       }))
       expect(bridgeBuilder.mock.calls[0]?.[0].scriptInput).not.toHaveProperty('inlineDatumCborHex')
       bridgeBuilder.mockRestore()

@@ -680,7 +680,6 @@ export async function buildTransaction(
       scriptReference?.langVersion === 'v3' &&
       scriptReferenceOutput?.scriptCborHex &&
       state.collateralInputs.length === 1 &&
-      state.referenceInputs.length === 0 &&
       state.metadata.length === 0 &&
       state.certificates.length === 0 &&
       state.withdrawals.length === 0 &&
@@ -723,6 +722,13 @@ export async function buildTransaction(
       : undefined
     const buildEscrowWithCollateralReturn = buildEscrowRedeemTransactionCml as (
       args: Parameters<typeof buildEscrowRedeemTransactionCml>[0] & {
+        referenceInputs: Array<{
+          txHashHex: string
+          index: string
+          address: string
+          lovelace: string
+          assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
+        }>
         collateralReturn?: {
           address: string
           lovelace: string
@@ -748,6 +754,13 @@ export async function buildTransaction(
         lovelace: scriptReferenceOutput.lovelace,
         assets: scriptReferenceOutput.assets,
       },
+      referenceInputs: state.referenceInputs.map(({utxo}) => ({
+        txHashHex: utxo.txHash,
+        index: String(utxo.txIndex),
+        address: utxo.receiver,
+        lovelace: String(utxo.balance[primaryTokenId] ?? '0'),
+        assets: assetsFromAmounts(utxo.balance),
+      })),
       referenceScriptCborHex: scriptReferenceOutput.scriptCborHex,
       referenceScriptSize: String(scriptReference.scriptSize),
       fundingInputs: state.inputs.map(({utxo}) => ({
