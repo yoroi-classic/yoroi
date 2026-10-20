@@ -12,6 +12,16 @@ import * as accountManagerApi from './account-manager/account-manager'
 import {keyManager} from './key-manager/key-manager'
 import {CardanoMobileWrapped} from './wrappedCsl'
 
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  addressToHex: jest.fn(
+    () => 'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+  ),
+  rewardAddressFromAddress: jest.fn(() => 'stake_test1fixture'),
+  rewardAddressHexFromAccountPublicKey: jest.fn(
+    () => 'e0c11ef08c44f3610b7e56d46e086b90186c12e9a68f0521b7c4c72e4b',
+  ),
+}))
+
 // Setup network managers and initialize wallet factories before tests
 const mockTokenManagers = {
   [Chain.Network.Mainnet]: createTokenManagerMock(),
