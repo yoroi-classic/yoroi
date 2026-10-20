@@ -98,6 +98,32 @@ export const submitTransaction = async (
   return getApi(baseApiUrl, network).submitTransaction(signedTx)
 }
 
+/** Resolve transaction outputs by reference through the configured CWB. */
+export const getUtxosByRef = async (
+  refs: string[],
+  baseApiUrl: string,
+  network: Chain.SupportedNetworks,
+) => {
+  const api = getApi(baseApiUrl, network)
+  if (!api.getUtxosByRef) {
+    throw new Error('cardano-wallet-backend getUtxosByRef is unavailable')
+  }
+  return api.getUtxosByRef(refs)
+}
+
+/** Fetch current unspent UTxOs at a payment/script address through CWB. */
+export const getAddressUtxos = async (
+  address: string,
+  baseApiUrl: string,
+  network: Chain.SupportedNetworks,
+) => {
+  const api = getApi(baseApiUrl, network)
+  if (!api.getAddressUtxos) {
+    throw new Error('cardano-wallet-backend getAddressUtxos is unavailable')
+  }
+  return api.getAddressUtxos(address)
+}
+
 /**
  * Get account state (rewards)
  * @param request - Account state request

@@ -37,6 +37,31 @@ export type RawUtxo = {
   readonly assets: ReadonlyArray<RemoteAsset>
 }
 
+/** UTxO resolved by a transaction reference through CWB. */
+export type ResolvedUtxo = {
+  readonly txHash: string
+  readonly outputIndex: number
+  readonly address: string
+  readonly value: string
+  readonly assets: ReadonlyArray<{
+    readonly policyId: string
+    readonly assetName: string
+    readonly quantity: string
+  }>
+  readonly datumHash?: string
+  readonly inlineDatum?: string
+  readonly referenceScriptHash?: string
+  readonly referenceScript?: {
+    readonly hash: string
+    readonly size?: number
+    readonly type?: string
+    readonly bytes?: string
+  }
+  readonly spent: boolean
+}
+
+export type AddressUtxo = Omit<ResolvedUtxo, 'spent'>
+
 /**
  * Account state request
  */

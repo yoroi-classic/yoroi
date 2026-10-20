@@ -10,7 +10,7 @@ import {
   rawUtxoToModernUtxo,
   selectUtxos,
 } from '@yoroi/tx'
-import {Balance} from '@yoroi/types'
+import {Balance, Chain} from '@yoroi/types'
 import {useWalletManager} from '@yoroi/wallet-manager'
 
 import type {Transaction, WasmModuleProxy} from '@emurgo/cross-csl-core'
@@ -65,7 +65,11 @@ export const useEscrowRedeem = () => {
 
       // Discover escrow UTxO
       const apiBaseUrl = wallet.networkManager.legacyApiBaseUrl
-      const escrowUtxo = await discoverEscrowUtxo(escrowAddress, apiBaseUrl)
+      const escrowUtxo = await discoverEscrowUtxo(
+        escrowAddress,
+        apiBaseUrl,
+        wallet.isMainnet ? Chain.Network.Mainnet : Chain.Network.Preprod,
+      )
       logger.info('useEscrowRedeem: Found escrow UTxO', {
         txHash: escrowUtxo.txHash,
         txIndex: escrowUtxo.txIndex,

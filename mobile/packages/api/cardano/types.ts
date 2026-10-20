@@ -14,6 +14,8 @@ import {
   TxHistoryRequest,
   TxStatusRequest,
   TxStatusResponse,
+  ResolvedUtxo,
+  AddressUtxo,
 } from './api-types'
 
 export type CardanoBackend =
@@ -119,6 +121,10 @@ export type ManagedCardanoApi = {
   ): Promise<Addresses>
 
   submitTransaction(signedTx: TransactionCborBase64): Promise<void>
+
+  /** Resolve outputs by tx hash and index through the configured CWB. */
+  getUtxosByRef?(refs: string[]): Promise<ResolvedUtxo[]>
+  getAddressUtxos?(address: string): Promise<AddressUtxo[]>
 
   getAccountState(
     request: AccountStateRequest,

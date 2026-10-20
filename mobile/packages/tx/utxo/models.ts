@@ -26,6 +26,8 @@ export type ModernUtxo = {
   txHash: TransactionHash
   txIndex: number
   balance: Balance.Amounts // Record<TokenId, Quantity>
+  /** Inline Plutus datum from the authoritative UTxO source, in CBOR hex. */
+  inlineDatumCborHex?: string
   derivationPath?: string // For display (BIP32 path string, e.g., "m/1852'/1815'/0'/0/0")
   addressing?: Addressing // For signing (path array + startLevel)
   toTransactionUnspentOutputHex: () => string

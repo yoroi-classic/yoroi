@@ -74,11 +74,8 @@ const ResolvedUtxoSchema = z
       .object({
         hash: z.string().regex(/^[0-9a-fA-F]{56}$/),
         size: z.number().int().nonnegative().optional(),
-        type: z.string().optional(),
-        bytes: z
-          .string()
-          .regex(/^(?:[0-9a-fA-F]{2})+$/)
-          .optional(),
+        type: z.string().min(1).optional(),
+        bytes: z.string().regex(/^(?:[0-9a-fA-F]{2})+$/).optional(),
       })
       .strict()
       .optional(),
@@ -86,6 +83,21 @@ const ResolvedUtxoSchema = z
   })
   .strict()
 const AddressUtxoSchema = ResolvedUtxoSchema.omit({spent: true})
+
+const hasConsistentReferenceScript = (utxo: {
+  referenceScriptHash?: string
+  referenceScript?: {hash: string; size?: number; bytes?: string}
+}): boolean => {
+  const referenceScript = utxo.referenceScript
+  if (!referenceScript) return true
+  return (
+    (utxo.referenceScriptHash == null ||
+      utxo.referenceScriptHash.toLowerCase() === referenceScript.hash.toLowerCase()) &&
+    (referenceScript.bytes == null ||
+      (referenceScript.size != null &&
+        referenceScript.size === referenceScript.bytes.length / 2))
+  )
+}
 
 const transactionCborHex = (signedTx: TransactionCborBase64): string => {
   const encoded = String(signedTx)
@@ -161,12 +173,7 @@ export const cardanoWalletBackendV1Maker = ({
       if (
         !parsed.success ||
         parsed.data.some(
-          (utxo) =>
-            utxo.address !== address ||
-            (utxo.referenceScriptHash != null &&
-              utxo.referenceScript != null &&
-              utxo.referenceScriptHash.toLowerCase() !==
-                utxo.referenceScript.hash.toLowerCase()),
+          (utxo) => utxo.address !== address || !hasConsistentReferenceScript(utxo),
         )
       ) {
         throw new Error('Invalid cardano-wallet-backend address UTxO response')
@@ -207,7 +214,10 @@ export const cardanoWalletBackendV1Maker = ({
         headers: {'Content-Type': 'application/json'},
       })
       const parsed = z.array(ResolvedUtxoSchema).safeParse(response)
-      if (!parsed.success) {
+      if (
+        !parsed.success ||
+        parsed.data.some((utxo) => !hasConsistentReferenceScript(utxo))
+      ) {
         throw new Error(
           'Invalid cardano-wallet-backend transaction UTxO response',
         )

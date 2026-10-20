@@ -1,5 +1,6 @@
 import {getLogger} from '@yoroi/logger'
 import {TransactionCborBase64} from '@yoroi/types'
+import type {AddressUtxo, ResolvedUtxo} from './api-types'
 
 import {freeze} from 'immer'
 
@@ -27,7 +28,10 @@ export const cardanoApiManagerMaker = ({
   cardanoWalletBackendAdapter?: Pick<
     CardanoApiAdapter,
     'filterUsedAddresses' | 'submitTransaction'
-  >
+  > & {
+    getUtxosByRef?: (refs: string[]) => Promise<ResolvedUtxo[]>
+    getAddressUtxos?: (address: string) => Promise<AddressUtxo[]>
+  }
   legacyAdapter: CardanoApiAdapter
   preferences: EndpointPreference
 }): ManagedCardanoApi => {
@@ -118,6 +122,24 @@ export const cardanoApiManagerMaker = ({
   }
 
   return freeze({
+    async getAddressUtxos(address) {
+      if (!cardanoWalletBackendAdapter?.getAddressUtxos) {
+        throw new Error(
+          'cardano-wallet-backend getAddressUtxos adapter is not configured',
+        )
+      }
+      return cardanoWalletBackendAdapter.getAddressUtxos(address)
+    },
+
+    async getUtxosByRef(refs) {
+      if (!cardanoWalletBackendAdapter?.getUtxosByRef) {
+        throw new Error(
+          'cardano-wallet-backend getUtxosByRef adapter is not configured',
+        )
+      }
+      return cardanoWalletBackendAdapter.getUtxosByRef(refs)
+    },
+
     async getTipStatus() {
       const adapter = getAdapter('getTipStatus')
       return adapter.getTipStatus()

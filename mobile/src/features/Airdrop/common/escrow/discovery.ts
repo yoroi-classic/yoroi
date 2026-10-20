@@ -1,67 +1,39 @@
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
+import {getAddressUtxos, getUtxosByRef} from '@yoroi/cardano-wallet'
+import {Chain} from '@yoroi/types'
 
 import {logger} from '~/kernel/logger/logger'
 
-import {NIGHT_ASSET_NAME_HEX, NIGHT_POLICY_ID} from './constants'
+import {
+  ESCROW_SCRIPT_HASH,
+  KNOWN_REFERENCE_SCRIPT_UTXOS,
+  NIGHT_ASSET_NAME_HEX,
+  NIGHT_POLICY_ID,
+} from './constants'
 import {parseEscrowDatum} from './datumParser'
 import type {EscrowUtxo} from './types'
 
-type UtxoForAddressesResponse = Array<{
-  tx_hash: string
-  tx_index: number
-  receiver: string
-  amount: string
-  assets: Array<{
-    assetId: string
-    policyId: string
-    name: string
-    amount: string
-  }>
-  // The API may return inline_datum as either:
-  // - a CBOR hex string (e.g. "d87999f...")
-  // - an object with plutus_data (e.g. {plutus_data: {constructor: 0, fields: [...]}})
-  inline_datum?: string | {plutus_data?: Record<string, unknown>}
-}>
-
 /**
  * Discover the current escrow UTxO at the given escrow address.
- * Uses the Yoroi API `utxoForAddresses` endpoint.
+ * Uses CWB for both the script-address UTxO and its reference-script output.
  */
 export async function discoverEscrowUtxo(
   escrowAddress: string,
   apiBaseUrl: string,
+  network: Chain.SupportedNetworks,
 ): Promise<EscrowUtxo> {
   const nightTokenId = `${NIGHT_POLICY_ID}.${NIGHT_ASSET_NAME_HEX}`
-
-  const response = await fetch(`${apiBaseUrl}/api/txs/utxoForAddresses`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      addresses: [escrowAddress],
-      asset: {policy: NIGHT_POLICY_ID, name: NIGHT_ASSET_NAME_HEX},
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch escrow UTxOs: ${response.status} ${response.statusText}`,
-    )
-  }
-
-  const utxos = (await response.json()) as UtxoForAddressesResponse
+  const utxos = await getAddressUtxos(escrowAddress, apiBaseUrl, network)
 
   // Find UTxO with NIGHT tokens and an inline datum
   const escrowUtxo = utxos.find((utxo) => {
     const hasNight = utxo.assets?.some(
-      (a) =>
-        a.assetId === nightTokenId ||
-        (a.policyId === NIGHT_POLICY_ID && a.name === NIGHT_ASSET_NAME_HEX),
+      (a) => `${a.policyId}.${a.assetName}` === nightTokenId,
     )
-    const hasDatum = !!utxo.inline_datum
+    const hasDatum = !!utxo.inlineDatum
     return hasNight && hasDatum
   })
 
-  if (!escrowUtxo || !escrowUtxo.inline_datum) {
+  if (!escrowUtxo || !escrowUtxo.inlineDatum) {
     logger.error('discoverEscrowUtxo: No escrow UTxO found', {
       escrowAddress,
       utxoCount: utxos.length,
@@ -70,38 +42,66 @@ export async function discoverEscrowUtxo(
   }
 
   const nightAsset = escrowUtxo.assets.find(
-    (a) =>
-      a.assetId === nightTokenId ||
-      (a.policyId === NIGHT_POLICY_ID && a.name === NIGHT_ASSET_NAME_HEX),
+    (a) => `${a.policyId}.${a.assetName}` === nightTokenId,
   )
 
   if (!nightAsset) {
     throw new Error('No NIGHT asset found in escrow UTxO')
   }
 
-  // Extract datum CBOR hex — API may return either a CBOR hex string or a JSON object
-  let datumHex: string
-  if (typeof escrowUtxo.inline_datum === 'string') {
-    datumHex = escrowUtxo.inline_datum
-  } else if (escrowUtxo.inline_datum.plutus_data) {
-    const plutusDataJson = JSON.stringify(escrowUtxo.inline_datum.plutus_data)
-    datumHex = await CardanoMobileWrapped.cslScope(async (csl) => {
-      const plutusData = csl.PlutusData.fromJson(plutusDataJson, 1)
-      return plutusData.toHex()
-    })
-  } else {
-    throw new Error('Unrecognized inline_datum format')
-  }
+  const datumHex = escrowUtxo.inlineDatum
+  if (!datumHex) throw new Error('Escrow UTxO has no inline datum CBOR')
 
   const datum = parseEscrowDatum(datumHex)
 
+  const referenceOutputs = await getUtxosByRef(
+    KNOWN_REFERENCE_SCRIPT_UTXOS.map(
+      ({txHash, txIndex}) => `${txHash}#${txIndex}`,
+    ),
+    apiBaseUrl,
+    network,
+  )
+  const referenceOutput = referenceOutputs.find(
+    (utxo) =>
+      !utxo.spent &&
+      utxo.referenceScript?.hash === ESCROW_SCRIPT_HASH &&
+      typeof utxo.referenceScript.bytes === 'string' &&
+      typeof utxo.referenceScript.size === 'number' &&
+      utxo.referenceScript.size === utxo.referenceScript.bytes.length / 2 &&
+      typeof utxo.referenceScript.type === 'string',
+  )
+  if (
+    !referenceOutput?.referenceScript?.bytes ||
+    referenceOutput.referenceScript.size == null ||
+    referenceOutput.referenceScript.type == null
+  ) {
+    throw new Error(
+      'No live escrow reference-script UTxO with script CBOR was returned by CWB',
+    )
+  }
+
   return {
-    txHash: escrowUtxo.tx_hash,
-    txIndex: escrowUtxo.tx_index,
-    address: escrowUtxo.receiver,
-    nightAmount: nightAsset.amount,
-    adaAmount: escrowUtxo.amount,
+    txHash: escrowUtxo.txHash,
+    txIndex: escrowUtxo.outputIndex,
+    address: escrowUtxo.address,
+    nightAmount: nightAsset.quantity,
+    adaAmount: escrowUtxo.value,
     datumHex,
     datum,
+    referenceScriptOutput: {
+      txHash: referenceOutput.txHash,
+      txIndex: referenceOutput.outputIndex,
+      address: referenceOutput.address,
+      value: referenceOutput.value,
+      referenceScriptHash: referenceOutput.referenceScript.hash,
+      referenceScriptSize: referenceOutput.referenceScript.size,
+      referenceScriptType: referenceOutput.referenceScript.type,
+      referenceScriptCborHex: referenceOutput.referenceScript.bytes,
+      assets: referenceOutput.assets.map(({policyId, assetName, quantity}) => ({
+        policyIdHex: policyId,
+        assetNameHex: assetName,
+        quantity,
+      })),
+    },
   }
 }
