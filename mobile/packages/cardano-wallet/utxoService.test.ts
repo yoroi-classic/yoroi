@@ -9,10 +9,70 @@ import {Portfolio} from '@yoroi/types'
 
 import {describe, expect, it} from '@jest/globals'
 
-import {calculateLockedAda} from './utxoService'
+import {calculateChangeOutputMinAda, calculateLockedAda} from './utxoService'
 import type {CalculateLockedAdaParams} from './utxoServiceTypes'
 
+jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+  addressInfoFromAddress: jest.fn((address: string) => ({bech32: address})),
+  minimumCoinForAssets: jest.fn(() => '1500000'),
+}))
+
 describe('utxoService', () => {
+  describe('calculateChangeOutputMinAda', () => {
+    it('keeps the configured base minimum for ADA-only change', async () => {
+      const {minimumCoinForAssets} = jest.requireMock(
+        '@yoroi-classic/csl-mobile-bridge',
+      )
+      minimumCoinForAssets.mockClear()
+
+      await expect(
+        calculateChangeOutputMinAda(
+          'addr_test_change',
+          {},
+          {
+            coinsPerUtxoByte: '4310',
+            linearFee: {constant: '155381', coefficient: '44'},
+            minimumUtxoVal: '1000000',
+          },
+          '.' as Portfolio.Token.Id,
+        ),
+      ).resolves.toBe(1000000n)
+
+      expect(minimumCoinForAssets).not.toHaveBeenCalled()
+    })
+
+    it('uses CML and preserves exact token quantities for change', async () => {
+      const {minimumCoinForAssets} = jest.requireMock(
+        '@yoroi-classic/csl-mobile-bridge',
+      )
+      const tokenId = `${'ab'.repeat(28)}.00ff`
+
+      await expect(
+        calculateChangeOutputMinAda(
+          'addr_test_change',
+          {[tokenId as never]: 9007199254740993n},
+          {
+            coinsPerUtxoByte: '4310',
+            linearFee: {constant: '155381', coefficient: '44'},
+          },
+          '.' as Portfolio.Token.Id,
+        ),
+      ).resolves.toBe(1500000n)
+
+      expect(minimumCoinForAssets).toHaveBeenCalledWith(
+        'addr_test_change',
+        [
+          {
+            policyIdHex: 'ab'.repeat(28),
+            assetNameHex: '00ff',
+            quantity: '9007199254740993',
+          },
+        ],
+        '4310',
+      )
+    })
+  })
+
   describe('calculateLockedAda', () => {
     it('should handle empty UTXO list', async () => {
       const params: CalculateLockedAdaParams = {

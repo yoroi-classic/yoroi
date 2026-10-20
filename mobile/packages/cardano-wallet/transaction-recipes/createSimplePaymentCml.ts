@@ -1,8 +1,15 @@
-import {buildSimplePaymentTransaction, minimumCoinForAssets} from '@yoroi-classic/csl-mobile-bridge'
 import {toAssetNameHex, toPolicyId} from '@yoroi/api'
+import {
+  CardanoHaskellConfig,
+  ModernUtxo,
+  TransactionMetadata,
+  TransactionOutput,
+} from '@yoroi/tx'
 import {Balance, Portfolio} from '@yoroi/types'
 
-import {CardanoHaskellConfig, ModernUtxo, TransactionMetadata, TransactionOutput} from '@yoroi/tx'
+import {buildSimplePaymentTransaction} from '@yoroi-classic/csl-mobile-bridge'
+
+import {minimumAdaForAssetsCml} from '../cml/minimumAda'
 
 export const buildSimplePaymentCml = ({
   inputs,
@@ -23,7 +30,10 @@ export const buildSimplePaymentCml = ({
 }): {cbor: string; fee: bigint} | undefined => {
   const assetsFromAmounts = (amounts: Balance.Amounts) =>
     Object.entries(amounts)
-      .filter(([tokenId, quantity]) => tokenId !== primaryTokenId && BigInt(quantity) !== 0n)
+      .filter(
+        ([tokenId, quantity]) =>
+          tokenId !== primaryTokenId && BigInt(quantity) !== 0n,
+      )
       .map(([tokenId, quantity]) => ({
         policyIdHex: toPolicyId(tokenId),
         assetNameHex: toAssetNameHex(tokenId),
@@ -31,7 +41,12 @@ export const buildSimplePaymentCml = ({
       }))
   // Byron source inputs require bootstrap witnesses. Keep those on the current
   // signing path until CML signing receives the source UTxO addressing path.
-  if (inputs.some((input) => input.receiver.startsWith('Ae2') || input.receiver.startsWith('DdzFF'))) {
+  if (
+    inputs.some(
+      (input) =>
+        input.receiver.startsWith('Ae2') || input.receiver.startsWith('DdzFF'),
+    )
+  ) {
     return undefined
   }
 
@@ -66,23 +81,4 @@ export const buildSimplePaymentCml = ({
   return {cbor: result.cborHex, fee: BigInt(result.fee)}
 }
 
-export const minimumAdaForAssetsCml = ({
-  address,
-  amounts,
-  primaryTokenId,
-  coinsPerUtxoByte,
-}: {
-  address: string
-  amounts: Readonly<Record<string, string | bigint>>
-  primaryTokenId: Portfolio.Token.Id
-  coinsPerUtxoByte: string
-}): bigint => {
-  const assets = Object.entries(amounts)
-    .filter(([tokenId, quantity]) => tokenId !== primaryTokenId && BigInt(quantity) > 0n)
-    .map(([tokenId, quantity]) => ({
-      policyIdHex: toPolicyId(tokenId),
-      assetNameHex: toAssetNameHex(tokenId),
-      quantity: String(quantity),
-    }))
-  return BigInt(minimumCoinForAssets(address, assets, coinsPerUtxoByte))
-}
+export {minimumAdaForAssetsCml}
