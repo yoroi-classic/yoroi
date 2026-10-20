@@ -685,9 +685,8 @@ export async function buildTransaction(
       state.collateralInputs.length === 0 &&
       !state.options.manualChangeOutput &&
       !state.options.manualFee &&
-      !state.options.validityInterval &&
       state.options.changeAddress &&
-      state.options.ttl !== undefined &&
+      (state.options.ttl !== undefined || state.options.validityInterval !== undefined) &&
       state.inputs.length > 0 &&
       state.outputs.length > 0,
   )
@@ -721,7 +720,7 @@ export async function buildTransaction(
             : undefined,
       })),
       changeAddress: state.options.changeAddress!,
-      ttl: String(state.options.ttl),
+      ttl: String(state.options.validityInterval?.end ?? state.options.ttl),
       feeCoefficient: protocolParams.linearFee.coefficient,
       feeConstant: protocolParams.linearFee.constant,
       coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
@@ -765,6 +764,9 @@ export async function buildTransaction(
         rewardAddress,
         amount: String(amount),
       })),
+      validityStart: state.options.validityInterval?.start === undefined
+        ? undefined
+        : String(state.options.validityInterval.start),
     })
     return {
       inputs: state.inputs,

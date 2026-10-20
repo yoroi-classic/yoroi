@@ -656,6 +656,29 @@ describe('transaction builder', () => {
       bridgeBuilder.mockRestore()
     })
 
+    it('routes the validity interval start and end through CML', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      let state = addInput(createTransactionBuilder(), createMockUtxo('07'.repeat(32), 6, {
+        [primaryTokenId]: '10000000' as Balance.Quantity,
+      }))
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setValidityInterval(state, 120000, 123456)
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        ttl: '123456',
+        validityStart: '120000',
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
     it('should throw NoOutputsError when no outputs and no change address', async () => {
       const state = createTransactionBuilder()
       const utxo = createMockUtxo('hash1', 0, {
