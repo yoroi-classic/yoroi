@@ -5,6 +5,7 @@ import {
   Address,
   App,
   Branded,
+  Chain,
   KeyHash,
   PublicKeyHex,
   Wallet,
@@ -13,7 +14,7 @@ import {
 import _ from 'lodash'
 import {lruMemoize} from 'reselect'
 
-import * as legacyApi from '../api/api'
+import * as cardanoApi from '../api/api'
 import {CardanoTypes} from '../types'
 import {CardanoMobile} from '../wrappedCsl'
 
@@ -353,6 +354,7 @@ export const accountManagerMaker = async ({
   accountPubKeyHex,
   storage,
   baseApiUrl,
+  cardanoWalletBackendNetwork,
   walletContext,
 }: {
   chainId: number
@@ -361,6 +363,7 @@ export const accountManagerMaker = async ({
   accountPubKeyHex: string
   storage: App.Storage
   baseApiUrl: string
+  cardanoWalletBackendNetwork?: Chain.SupportedNetworks
   walletContext?: {
     walletId: string
     publicKeyHex?: PublicKeyHex
@@ -449,7 +452,12 @@ export const accountManagerMaker = async ({
         }
       : undefined
     const filterFn = (addrs: Address[]) =>
-      legacyApi.filterUsedAddresses(addrs, baseApiUrl, effectiveContext)
+      cardanoApi.filterUsedAddresses(
+        addrs,
+        baseApiUrl,
+        effectiveContext,
+        cardanoWalletBackendNetwork,
+      )
     await Promise.all([
       internalChain.sync(filterFn),
       externalChain.sync(filterFn),

@@ -76,8 +76,12 @@ export const filterUsedAddresses = async (
   addresses: Address[],
   baseApiUrl: string,
   walletContext?: WalletContext,
+  cardanoWalletBackendNetwork?: Chain.SupportedNetworks,
 ): Promise<Address[]> => {
-  return getApi(baseApiUrl).filterUsedAddresses(addresses, walletContext)
+  return getApi(baseApiUrl, cardanoWalletBackendNetwork).filterUsedAddresses(
+    addresses,
+    walletContext,
+  )
 }
 
 /**

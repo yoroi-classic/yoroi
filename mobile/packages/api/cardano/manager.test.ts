@@ -115,6 +115,7 @@ describe('cardanoApiManagerMaker', () => {
       const backendZeroAdapter = createMockAdapter('backend-zero')
       const legacyAdapter = createMockAdapter('legacy')
       const cardanoWalletBackendAdapter = {
+        filterUsedAddresses: jest.fn().mockResolvedValue([]),
         submitTransaction: jest.fn().mockResolvedValue(undefined),
       }
       const preferences: EndpointPreference = {
@@ -141,6 +142,71 @@ describe('cardanoApiManagerMaker', () => {
       expect(
         cardanoWalletBackendAdapter.submitTransaction,
       ).toHaveBeenCalledWith(signedTx)
+    })
+
+    it('uses cardano-wallet-backend for used-address filtering when configured', async () => {
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const legacyFilter = jest.spyOn(legacyAdapter, 'filterUsedAddresses')
+      const cwbFilter = jest
+        .fn()
+        .mockResolvedValue([Branded.asAddress('cwb-used-addr')])
+      const cardanoWalletBackendAdapter = {
+        filterUsedAddresses: cwbFilter,
+        submitTransaction: jest.fn().mockResolvedValue(undefined),
+      }
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'cardano-wallet-backend',
+        submitTransaction: 'legacy',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        cardanoWalletBackendAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const addresses = [Branded.asAddress('addr1')]
+
+      await expect(api.filterUsedAddresses(addresses)).resolves.toEqual([
+        Branded.asAddress('cwb-used-addr'),
+      ])
+      expect(cwbFilter).toHaveBeenCalledWith(addresses, undefined)
+      expect(legacyFilter).not.toHaveBeenCalled()
+    })
+
+    it('keeps used-address filtering on legacy without a CWB preference', async () => {
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const legacyFilter = jest.spyOn(legacyAdapter, 'filterUsedAddresses')
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'legacy',
+        submitTransaction: 'legacy',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const addresses = [Branded.asAddress('addr1')]
+
+      await api.filterUsedAddresses(addresses)
+      expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
     })
 
     it('should keep transaction submission on legacy without a backend preference', async () => {

@@ -128,6 +128,24 @@ describe('cardanoWalletApiMaker', () => {
     )
   })
 
+  it('routes used-address filtering through a configured cardano-wallet-backend', () => {
+    cardanoWalletApiMaker({
+      baseApiUrl: 'https://api.yoroiwallet.com/api',
+      cardanoWalletBackendNetwork: 'mainnet',
+      cardanoWalletBackendUrl: 'https://wallet-backend.example.com',
+      getSpendingKey: mockGetSpendingKey,
+    })
+
+    expect(cardanoApiManagerMaker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardanoWalletBackendAdapter: expect.any(Object),
+        preferences: expect.objectContaining({
+          filterUsedAddresses: 'cardano-wallet-backend',
+        }),
+      }),
+    )
+  })
+
   it.each([undefined, '', '   '])(
     'keeps legacy transaction submission without a backend URL: %p',
     (cardanoWalletBackendUrl) => {
@@ -163,6 +181,7 @@ describe('cardanoWalletApiMaker', () => {
         cardanoWalletBackendAdapter: undefined,
         preferences: expect.objectContaining({
           submitTransaction: 'legacy',
+          filterUsedAddresses: 'legacy',
         }),
       }),
     )

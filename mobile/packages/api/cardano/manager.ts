@@ -20,7 +20,10 @@ export const cardanoApiManagerMaker = ({
   preferences,
 }: {
   backendZeroAdapter: CardanoApiAdapter
-  cardanoWalletBackendAdapter?: Pick<CardanoApiAdapter, 'submitTransaction'>
+  cardanoWalletBackendAdapter?: Pick<
+    CardanoApiAdapter,
+    'filterUsedAddresses' | 'submitTransaction'
+  >
   legacyAdapter: CardanoApiAdapter
   preferences: EndpointPreference
 }): ManagedCardanoApi => {
@@ -85,6 +88,31 @@ export const cardanoApiManagerMaker = ({
     return preference === 'backend-zero' ? backendZeroAdapter : legacyAdapter
   }
 
+  const getFilterUsedAddressesAdapter = (): Pick<
+    CardanoApiAdapter,
+    'filterUsedAddresses'
+  > => {
+    const preference = preferences.filterUsedAddresses
+    const availableBackends = ENDPOINT_AVAILABILITY.filterUsedAddresses
+
+    if (!availableBackends?.includes(preference)) {
+      throw new Error(
+        `Backend ${preference} does not support endpoint filterUsedAddresses. Available: ${availableBackends?.join(', ') ?? ''}`,
+      )
+    }
+
+    if (preference === 'cardano-wallet-backend') {
+      if (cardanoWalletBackendAdapter == null) {
+        throw new Error(
+          'cardano-wallet-backend filterUsedAddresses adapter is not configured',
+        )
+      }
+      return cardanoWalletBackendAdapter
+    }
+
+    return preference === 'backend-zero' ? backendZeroAdapter : legacyAdapter
+  }
+
   return freeze({
     async getTipStatus() {
       const adapter = getAdapter('getTipStatus')
@@ -97,7 +125,10 @@ export const cardanoApiManagerMaker = ({
     },
 
     async filterUsedAddresses(addresses, walletContext?: WalletContext) {
-      const adapter = getAdapter('filterUsedAddresses', walletContext)
+      const adapter =
+        preferences.filterUsedAddresses === 'cardano-wallet-backend'
+          ? getFilterUsedAddressesAdapter()
+          : getAdapter('filterUsedAddresses', walletContext)
       return adapter.filterUsedAddresses(addresses, walletContext)
     },
 

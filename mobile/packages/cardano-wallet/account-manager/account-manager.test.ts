@@ -1,11 +1,17 @@
 import {Address} from '@yoroi/types'
 
+import * as cardanoApi from '../api/api'
 import {
   AddressChain,
   type AddressGenerator,
+  accountManagerMaker,
   createAddressChain,
   createAddressGenerator,
 } from './account-manager'
+
+jest.mock('../api/api', () => ({
+  filterUsedAddresses: jest.fn().mockResolvedValue([]),
+}))
 
 const getAddr = (i: number) => `Addr${i}` as Address
 
@@ -103,5 +109,36 @@ describe('AddressChain', () => {
     await chain2.sync(filter)
     expect(chain.size()).toBe(10)
     expect(chain2.addresses).toEqual(chain.addresses)
+  })
+})
+
+describe('accountManagerMaker', () => {
+  it('routes address discovery through the cardano API with the wallet network', async () => {
+    const storage = {
+      join: jest.fn(() => storage),
+      getItem: jest.fn(async () => null),
+      setItem: jest.fn(async () => undefined),
+      removeItem: jest.fn(async () => undefined),
+    } as any
+
+    const manager = await accountManagerMaker({
+      chainId: 1,
+      implementation: 'cardano-bip44',
+      accountPubKeyHex:
+        '7f53efa3c08093db3824235769079e96ef96b6680fc254f6c021ec420e4d1555' +
+        'b5bafb0b1fc6c8040cc8f69f7c1948dfb4dcadec4acd09730c0efb39c6159362',
+      storage,
+      baseApiUrl: 'https://api.yoroiwallet.com/api',
+      cardanoWalletBackendNetwork: 'mainnet',
+    })
+
+    await manager.discoverAddresses()
+
+    expect(cardanoApi.filterUsedAddresses).toHaveBeenCalledWith(
+      expect.any(Array),
+      'https://api.yoroiwallet.com/api',
+      undefined,
+      'mainnet',
+    )
   })
 })

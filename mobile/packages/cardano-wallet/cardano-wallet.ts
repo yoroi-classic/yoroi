@@ -365,6 +365,7 @@ export const makeCardanoWallet = (
         chainId,
         implementation,
         baseApiUrl: legacyApiBaseUrl,
+        cardanoWalletBackendNetwork: network,
       })
 
       finalRewardAddressHex = implementationConfig.features.staking

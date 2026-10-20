@@ -56,6 +56,12 @@ describe('ENDPOINT_AVAILABILITY', () => {
     )
   })
 
+  it('should expose used-address filtering through cardano-wallet-backend', () => {
+    expect(ENDPOINT_AVAILABILITY.filterUsedAddresses).toContain(
+      'cardano-wallet-backend',
+    )
+  })
+
   it('should have valid backend values', () => {
     Object.values(ENDPOINT_AVAILABILITY).forEach((backends) => {
       backends.forEach((backend) => {
