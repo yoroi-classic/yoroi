@@ -876,6 +876,47 @@ describe('transaction builder', () => {
       bridgeBuilder.mockRestore()
     })
 
+    it('routes a stake certificate and reward withdrawal together through CML', async () => {
+      const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
+        cborHex: '84a0a0f5',
+        fee: '168581',
+      })
+      let state = addInput(createTransactionBuilder(), createMockUtxo('07'.repeat(32), 6, {
+        [primaryTokenId]: '10000000' as Balance.Quantity,
+      }))
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addCertificate(state, {
+        kind: 'StakeDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        poolKeyHash: 'bb'.repeat(28) as KeyHash,
+      })
+      state = addWithdrawal(
+        state,
+        'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq' as Address,
+        '3500000' as Amount,
+      )
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(expect.objectContaining({
+        certificates: [{
+          kind: 'StakeDelegation',
+          stakeCredentialKeyHashHex: 'aa'.repeat(28),
+          poolKeyHash: 'bb'.repeat(28),
+        }],
+        withdrawals: [{
+          rewardAddress: 'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+          amount: '3500000',
+        }],
+      }))
+      bridgeBuilder.mockRestore()
+    })
+
     it('routes vote delegation and DRep data through CML', async () => {
       const bridgeBuilder = jest.spyOn(cmlMobileBridge, 'buildSimplePaymentTransaction').mockReturnValue({
         cborHex: '84a0a0f5',

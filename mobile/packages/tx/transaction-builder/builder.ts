@@ -926,7 +926,6 @@ export async function buildTransaction(
         certificate.kind === 'StakeVoteRegistrationAndDelegation' ||
         certificate.kind === 'VoteRegistrationAndDelegation',
       ) &&
-      (state.withdrawals.length === 0 || state.certificates.length === 0) &&
       state.collateralInputs.length === 0 &&
       !state.options.manualChangeOutput &&
       !state.options.manualFee &&
