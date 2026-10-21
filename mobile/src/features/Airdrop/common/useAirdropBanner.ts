@@ -4,6 +4,7 @@ import {Notifications} from '@yoroi/types'
 import {useWalletEvent, useWalletManager} from '@yoroi/wallet-manager'
 
 import {useQuery, useQueryClient} from '@tanstack/react-query'
+import * as React from 'react'
 
 import {useRemoteConfig} from '~/common/hooks/useRemoteConfig'
 import {BannerIds, showBanner} from '~/features/Notifications/common/banners'
@@ -33,6 +34,24 @@ export const useAirdropBanner = () => {
   const queryClient = useQueryClient()
 
   const queryKey = ['airdropBanner', wallet?.id, network] as const
+
+  // The query is disabled when the feature flag or backend endpoint is absent,
+  // so cleanup cannot live only in its queryFn. Remove persisted banners when
+  // the feature becomes unavailable to avoid showing stale entry points.
+  React.useEffect(() => {
+    if (isAirdropEnabled && wallet?.isMainnet === true && wallet) return
+
+    void manager.events
+      .remove(BannerIds.Airdrop)
+      .then(() =>
+        queryClient.invalidateQueries({
+          queryKey: ['receivedNotificationEvents'],
+        }),
+      )
+      .catch((error) => {
+        logger.warn('Failed to remove unavailable airdrop banner', {error})
+      })
+  }, [isAirdropEnabled, manager.events, queryClient, wallet])
 
   useWalletEvent(wallet ?? null, 'utxos', () => {
     if (wallet) {

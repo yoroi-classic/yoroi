@@ -135,7 +135,6 @@ include_directories(
 )
 
 include(${RN_PATH}/ReactAndroid/cmake-utils/ReactNative-application.cmake)
-add_subdirectory(${CML_BRIDGE_PATH}/android ${CMAKE_CURRENT_BINARY_DIR}/cml_mobile_bridge)
 include(${MSL_BRIDGE_PATH}/emurgo-msl-mobile-bridge.cmake)
 
 target_include_directories(cxx_modules_loader PRIVATE
