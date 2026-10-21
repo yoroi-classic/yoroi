@@ -31,9 +31,9 @@ rustup target add \
 echo "📋 Rust configuration:"
 rustup show
 
-# Build CSL mobile bridge
-echo "🔨 Building CSL mobile bridge..."
-cd node_modules/@emurgo/csl-mobile-bridge-jsi/rust
+# Build CML mobile bridge
+echo "🔨 Building CML mobile bridge..."
+cd node_modules/@yoroi-classic/cml-mobile-bridge/rust
 cargo build --release --target aarch64-apple-darwin
 cargo build --release --target aarch64-apple-ios
 cargo build --release --target aarch64-apple-ios-sim

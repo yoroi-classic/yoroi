@@ -1,13 +1,12 @@
-import {cardanoConfig, derivationConfig} from '@yoroi/blockchains'
-import {isNonNullable} from '@yoroi/common'
-import type {Datum, UnsignedTransaction} from '@yoroi/tx'
-import {signTransaction} from '@yoroi/tx'
+import {cardanoConfig} from '@yoroi/blockchains'
+import type {UnsignedTransaction} from '@yoroi/tx'
 import {Wallet} from '@yoroi/types'
 
-import * as CSL from '@emurgo/cross-csl-core'
+import {
+  signWalletTransactionHex,
+  signWalletTransactionPathsHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {Buffer} from 'buffer'
-
-import {CardanoMobile, CardanoMobileWrapped} from '../wrappedCsl'
 
 /**
  * Sign a transaction with a decrypted master key
@@ -17,7 +16,7 @@ export const signWalletTransaction = (
   decryptedMasterKey: string,
   accountVisual: number,
   implementation: Wallet.Implementation,
-): CSL.Transaction => {
+): Uint8Array => {
   if (!unsignedTx.cbor) {
     throw new Error('UnsignedTransaction must have CBOR to sign')
   }
@@ -27,25 +26,12 @@ export const signWalletTransaction = (
       implementation as keyof typeof cardanoConfig.implementations
     ]
 
-  const masterKey = CardanoMobile.Bip32PrivateKey.fromBytes(
-    new Uint8Array(Buffer.from(decryptedMasterKey, 'hex')),
-  )
-  const accountPrivateKey = masterKey
-    .derive(implementationConfig.derivations.base.harden.purpose)
-    .derive(implementationConfig.derivations.base.harden.coinType)
-    .derive(accountVisual + derivationConfig.hardStart)
-
-  const accountPrivateKeyHex = Buffer.from(
-    accountPrivateKey.asBytes(),
-  ).toString('hex')
-
-  let stakingPrivateKey: CSL.PrivateKey | undefined
+  let stakingRole: string | undefined
+  let stakingIndex: string | undefined
   if (implementationConfig.features.staking) {
     const derivation = implementationConfig.features.staking.derivation
-    stakingPrivateKey = accountPrivateKey
-      .derive(derivation.role)
-      .derive(derivation.index)
-      .toRawKey()
+    stakingRole = String(derivation.role)
+    stakingIndex = String(derivation.index)
   }
 
   // Derive staking key requirements from certificates and withdrawals
@@ -68,42 +54,34 @@ export const signWalletTransaction = (
     }
   }
 
-  if (needsStakingKey && !stakingPrivateKey) {
+  if (needsStakingKey && (!stakingRole || !stakingIndex)) {
     throw new Error(
       'signWalletTransaction: required staking key but not supported',
     )
   }
 
-  const stakingKeysForSigning =
-    needsStakingKey && stakingPrivateKey
-      ? [
-          {
-            keyHex: Buffer.from(stakingPrivateKey.asBytes()).toString('hex'),
-          },
-        ]
-      : undefined
-
-  // Extract datum data from outputs
-  const datumDatas = unsignedTx.outputs
-    .map((output) => output.datum)
-    .filter(isNonNullable)
-    .filter(
-      (datum: Datum): datum is Exclude<Datum, {hash: string}> =>
-        'data' in datum,
-    )
-
-  // Sign the transaction using the new signing function
-  return CardanoMobileWrapped.cslScope((csl) => {
-    const signedTx = signTransaction(
-      csl,
-      unsignedTx,
-      accountPrivateKeyHex,
-      stakingKeysForSigning,
-      datumDatas.length > 0
-        ? datumDatas.map((d) => ({data: d.data}))
-        : undefined,
-    )
-
-    return signedTx
+  const signedTransactionHex = signWalletTransactionHex({
+    transactionHex: unsignedTx.cbor,
+    masterKeyHex: decryptedMasterKey,
+    purpose: String(implementationConfig.derivations.base.harden.purpose),
+    coinType: String(implementationConfig.derivations.base.harden.coinType),
+    accountIndex: String(accountVisual),
+    ...(needsStakingKey ? {stakingRole, stakingIndex} : {}),
   })
+
+  return new Uint8Array(Buffer.from(signedTransactionHex, 'hex'))
+}
+
+/** Sign a transaction with explicitly resolved wallet derivation paths in CML. */
+export const signWalletTransactionWithPaths = (
+  transactionHex: string,
+  masterKeyHex: string,
+  signerPaths: number[][],
+): Uint8Array => {
+  const signedHex = signWalletTransactionPathsHex({
+    transactionHex,
+    masterKeyHex,
+    signerPaths,
+  })
+  return new Uint8Array(Buffer.from(signedHex, 'hex'))
 }

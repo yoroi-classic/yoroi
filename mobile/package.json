@@ -53,14 +53,10 @@
   "dependencies": {
     "@cardano-foundation/ledgerjs-hw-app-cardano": "7.1.4",
     "@craftzdog/react-native-buffer": "6.1.1",
-    "@emurgo/cardano-serialization-lib-browser": "14.1.2",
     "@emurgo/cip14-js": "3.0.1",
     "@emurgo/cip4-js": "1.0.7",
-    "@emurgo/cross-csl-core": "8.0.0-alpha.1",
-    "@emurgo/cross-csl-mobile": "8.0.0-alpha.1",
     "@emurgo/cross-msl-core": "2.0.0",
     "@emurgo/cross-msl-mobile": "2.0.0",
-    "@emurgo/csl-mobile-bridge-jsi": "1.0.0-alpha.7",
     "@emurgo/msl-mobile-bridge-jsi": "1.0.0-alpha.7",
     "@formatjs/intl-datetimeformat": "6.18.0",
     "@formatjs/intl-getcanonicallocales": "2.5.5",
@@ -83,12 +79,14 @@
     "@react-navigation/material-top-tabs": "7.3.6",
     "@react-navigation/native": "7.1.17",
     "@react-navigation/stack": "7.4.7",
+    "@scure/base": "2.4.0",
     "@sentry/react": "9.22.0",
     "@sentry/react-native": "6.14.0",
     "@shopify/flash-list": "1.7.6",
     "@tanstack/query-async-storage-persister": "5.90.12",
     "@tanstack/react-query": "5.90.10",
     "@tanstack/react-query-persist-client": "5.90.12",
+    "@yoroi-classic/cml-mobile-bridge": "git+https://github.com/yoroi-classic/csl-mobile-bridge.git#c9faadd533f30bab2d5c1d4d854c55bdb0fbc030",
     "axios": "1.10.0",
     "bech32": "1.1.4",
     "bignumber.js": "9.3.0",
@@ -177,8 +175,6 @@
   "devDependencies": {
     "@babel/core": "7.26.0",
     "@babel/plugin-transform-export-namespace-from": "7.27.1",
-    "@emurgo/cardano-serialization-lib-nodejs": "14.1.2",
-    "@emurgo/cross-csl-nodejs": "8.0.0-alpha.1",
     "@emurgo/cross-msl-nodejs": "2.0.0",
     "@expo/config-plugins": "54.0.2",
     "@formatjs/cli": "6.7.1",
@@ -214,7 +210,6 @@
     "typescript": "5.8.3"
   },
   "overrides": {
-    "@emurgo/csl-mobile-bridge-jsi": "1.0.0-alpha.7",
     "@emurgo/msl-mobile-bridge-jsi": "1.0.0-alpha.7",
     "react-native-svg": "15.11.2",
     "@react-native-async-storage/async-storage": "2.1.2"

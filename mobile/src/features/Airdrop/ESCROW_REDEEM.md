@@ -36,7 +36,7 @@ User taps "Redeem"
        2. Discover escrow UTxO
        │   POST /api/txs/utxoForAddresses with escrow address
        │   → find UTxO with NIGHT tokens + inline datum
-       │   → convert JSON datum to CBOR hex via CSL
+       │   → convert JSON datum to CBOR hex via the CML bridge
        │   → parse into EscrowDatum
        │
        3. Validate timing

@@ -1,243 +1,98 @@
-import {TransactionHash} from '@yoroi/types'
+import {applyLedgerWitnessesToTransactionHex} from '@yoroi-classic/cml-mobile-bridge'
 
-import {
-  buildLedgerSignedTx,
-  createSignedLedgerTxFromCbor,
-  signRawTransaction,
-} from './signing'
+import {buildLedgerSignedTx, createSignedLedgerTxFromCbor} from './signing'
 
-describe('ledger signing', () => {
-  describe('buildLedgerSignedTx', () => {
-    it('should build signed transaction from Ledger response', async () => {
-      // Create a recursive mock for derive that can be called multiple times
-      // The derive function is called for each path index, so we need a chain
-      const createDeriveMock = (depth: number = 0): any => {
-        if (depth > 10) {
-          // Return final key object
-          return {
-            toRawKey: jest.fn(() => ({
-              toHex: jest.fn(() => 'publicKeyHex'),
-            })),
-            chaincode: jest.fn(() => Buffer.from('chaincode')),
-          }
-        }
-        return {
-          derive: jest.fn(() => createDeriveMock(depth + 1)),
-          toRawKey: jest.fn(() => ({
-            toHex: jest.fn(() => 'publicKeyHex'),
-          })),
-          chaincode: jest.fn(() => Buffer.from('chaincode')),
-        }
-      }
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  applyLedgerWitnessesToTransactionHex: jest.fn(() => '84a0a0f5'),
+}))
 
-      const mockCsl = {
-        Bip32PublicKey: {
-          fromBytes: jest.fn(() => createDeriveMock(0)),
-        },
-        TransactionWitnessSet: {
-          new: jest.fn(() => ({
-            setVkeys: jest.fn(),
-            setBootstraps: jest.fn(),
-            setPlutusData: jest.fn(),
-            setRedeemers: jest.fn(),
-            setPlutusScripts: jest.fn(),
-          })),
-        },
-        PlutusList: {
-          new: jest.fn(() => ({
-            len: jest.fn(() => 0),
-            add: jest.fn(),
-          })),
-        },
-        BootstrapWitness: {
-          new: jest.fn(() => ({
-            toBytes: jest.fn(() => Buffer.from('bootstrap')),
-          })),
-        },
-        Vkeywitness: {
-          new: jest.fn(() => ({
-            toBytes: jest.fn(() => Buffer.from('vkey')),
-          })),
-        },
-        Vkeywitnesses: {
-          new: jest.fn(() => ({
-            add: jest.fn(),
-          })),
-        },
-        BootstrapWitnesses: {
-          new: jest.fn(() => ({
-            add: jest.fn(),
-          })),
-        },
-        Vkey: {
-          new: jest.fn(() => ({
-            toBytes: jest.fn(() => Buffer.from('vkey')),
-          })),
-        },
-        Ed25519Signature: {
-          fromBytes: jest.fn(() => ({
-            toBytes: jest.fn(() => Buffer.from('sig')),
-          })),
-        },
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Transaction: {
-          new: jest.fn(() => ({
-            toBytes: jest.fn(() => Buffer.from('tx')),
-            id: jest.fn(() => ({
-              toHex: jest.fn(() => 'txId'),
-            })),
-          })),
-        },
-        TransactionBody: {
-          fromBytes: jest.fn(() => ({
-            inputs: jest.fn(() => ({
-              len: jest.fn(() => 0),
-            })),
-          })),
-        },
-        FixedTransaction: {
-          fromBytes: jest.fn(() => ({
-            transactionHash: jest.fn(() => ({
-              toHex: jest.fn(() => 'txHash'),
-            })),
-          })),
-        },
-      } as any
+const ledgerResponse = {
+  txHashHex: 'ab'.repeat(32),
+  witnesses: [
+    {
+      path: [1852 + 0x80000000, 1815 + 0x80000000, 0x80000000, 0, 0],
+      witnessSignatureHex: 'cd'.repeat(64),
+    },
+  ],
+}
 
-      const unsignedTx = {
+describe('Ledger witness integration', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('merges Ledger signatures into transaction CBOR through the CML bridge', async () => {
+    const signed = await buildLedgerSignedTx(
+      {
+        transactionHex: '84a0a0f5',
         senderUtxos: [
           {
-            receiver: 'addr_test1',
-            txHash: 'hash1' as TransactionHash,
-            txIndex: 0,
+            receiver: 'addr_test1source',
+            txHash: '01'.repeat(32),
+            txIndex: 2,
             addressing: {
-              path: [2147483648, 2147483648, 0, 0, 0],
-              startLevel: 1, // PURPOSE level
+              path: [1852 + 0x80000000, 1815 + 0x80000000, 0x80000000, 0, 0],
+              startLevel: 1,
             },
           },
         ],
-        txBuilder: {
-          build: jest.fn(() => ({
-            toBytes: jest.fn(() => Buffer.from('body')),
-          })),
+      },
+      ledgerResponse as never,
+      1852 + 0x80000000,
+      'ef'.repeat(64),
+      true,
+      undefined,
+      3,
+    )
+
+    expect(applyLedgerWitnessesToTransactionHex).toHaveBeenCalledWith({
+      transactionHex: '84a0a0f5',
+      accountPublicKeyHex: 'ef'.repeat(64),
+      purpose: String(1852 + 0x80000000),
+      coinType: '2147485463',
+      accountIndex: '2147483651',
+      witnesses: [
+        {
+          path: ledgerResponse.witnesses[0]!.path,
+          signatureHex: 'cd'.repeat(64),
         },
-        auxiliaryData: null,
-      } as any
-
-      const signedLedgerTx = {
-        witnesses: [
-          {
-            path: [2147483648, 2147483648, 0, 0, 0],
-            witnessSignatureHex: 'signature',
-          },
-        ],
-        txHashHex: 'txHash', // Must match the hash returned by FixedTransaction mock
-      } as any
-
-      const result = await buildLedgerSignedTx(
-        mockCsl,
-        unsignedTx,
-        signedLedgerTx,
-        1852,
-        'publicKeyHex',
-      )
-
-      expect(result).toBeDefined()
-      expect(result.id).toBe('txHash') // Should match txHashHex
-      expect(result.encodedTx).toBeDefined()
+      ],
+      expectedTxIdHex: 'ab'.repeat(32),
+      senderUtxos: [
+        {
+          txHashHex: '01'.repeat(32),
+          outputIndex: 2,
+          address: 'addr_test1source',
+          path: ledgerResponse.witnesses[0]!.path,
+        },
+      ],
     })
-
-    it('should throw error when witness not found', async () => {
-      const mockCsl = {
-        Bip32PublicKey: {
-          fromBytes: jest.fn(() => ({
-            derive: jest.fn(),
-          })),
-        },
-        TransactionWitnessSet: {
-          new: jest.fn(() => ({})),
-        },
-        PlutusList: {
-          new: jest.fn(() => ({
-            len: jest.fn(() => 0),
-            add: jest.fn(),
-          })),
-        },
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        TransactionBody: {
-          fromBytes: jest.fn(() => ({
-            inputs: jest.fn(() => ({
-              len: jest.fn(() => 0),
-            })),
-          })),
-        },
-        FixedTransaction: {
-          fromBytes: jest.fn(() => ({
-            transactionHash: jest.fn(() => ({
-              toHex: jest.fn(() => 'txHash'),
-            })),
-          })),
-        },
-      } as any
-
-      const unsignedTx = {
-        senderUtxos: [
-          {
-            receiver: 'addr_test1',
-            txHash: 'hash1' as TransactionHash,
-            txIndex: 0,
-            addressing: {
-              path: [2147483648, 2147483648, 0, 0, 0],
-              startLevel: 1, // PURPOSE level
-            },
-          },
-        ],
-        txBuilder: {
-          build: jest.fn(() => ({
-            toBytes: jest.fn(() => Buffer.from('body')),
-          })),
-        },
-        auxiliaryData: null,
-      } as any
-
-      const signedLedgerTx = {
-        witnesses: [
-          {
-            path: [2147483648, 2147483648, 0, 0, 1], // Different path
-            witnessSignatureHex: 'signature',
-          },
-        ],
-      } as any
-
-      await expect(
-        buildLedgerSignedTx(
-          mockCsl,
-          unsignedTx,
-          signedLedgerTx,
-          1852,
-          'publicKeyHex',
-        ),
-      ).rejects.toThrow('no witness for')
-    })
+    expect(signed.id).toBe(ledgerResponse.txHashHex)
+    expect(Buffer.from(signed.encodedTx).toString('hex')).toBe('84a0a0f5')
   })
 
-  describe('createSignedLedgerTxFromCbor', () => {
-    it('should have correct function signature', () => {
-      // This function uses CardanoMobileWrapped.cslScope internally
-      // which requires real CSL. We verify the function exists and has correct signature
-      expect(typeof createSignedLedgerTxFromCbor).toBe('function')
-    })
-  })
+  it('uses the same CML witness boundary for serialized Ledger transactions', async () => {
+    await createSignedLedgerTxFromCbor(
+      '84a0a0f5',
+      ledgerResponse as never,
+      1852 + 0x80000000,
+      'ef'.repeat(64),
+    )
 
-  describe('signRawTransaction', () => {
-    it('should have correct function signature', () => {
-      // This function uses CardanoMobileWrapped.cslScope internally
-      // which requires real CSL. We verify the function exists and has correct signature
-      expect(typeof signRawTransaction).toBe('function')
-    })
+    expect(applyLedgerWitnessesToTransactionHex).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionHex: '84a0a0f5',
+        accountPublicKeyHex: 'ef'.repeat(64),
+        purpose: String(1852 + 0x80000000),
+        coinType: '2147485463',
+        accountIndex: '2147483648',
+        witnesses: [
+          {
+            path: ledgerResponse.witnesses[0]!.path,
+            signatureHex: 'cd'.repeat(64),
+          },
+        ],
+        expectedTxIdHex: 'ab'.repeat(32),
+        senderUtxos: [],
+      }),
+    )
   })
 })

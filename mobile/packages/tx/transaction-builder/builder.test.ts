@@ -10,7 +10,10 @@ import {
   UtxoId,
 } from '@yoroi/types'
 
+import * as cmlMobileBridge from '@yoroi-classic/cml-mobile-bridge'
+
 import {NoOutputsError} from '../errors'
+import {addMint} from '../minting/mint'
 import {ModernUtxo} from '../utxo/models'
 import {
   addCertificate,
@@ -23,6 +26,7 @@ import {
   addOutput,
   addOutputs,
   addReferenceInput,
+  addScriptInput,
   addWithdrawal,
   buildTransaction,
   buildTransactionCBOR,
@@ -47,6 +51,18 @@ import type {
   TransactionWithdrawal,
 } from './types'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressToHex: jest.fn(() => `01${'00'.repeat(28)}`),
+  buildTransactionRecipeCml: jest.fn(() => ({
+    cborHex: '84a0a0f5',
+    fee: '168581',
+  })),
+  buildEscrowRedeemTransactionCml: jest.fn(() => ({
+    cborHex: '84a0a0f5',
+    fee: '168581',
+  })),
+}))
+
 describe('transaction builder', () => {
   const createMockUtxo = (
     txHash: string,
@@ -58,7 +74,6 @@ describe('transaction builder', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   describe('createTransactionBuilder', () => {
@@ -453,6 +468,1114 @@ describe('transaction builder', () => {
       },
     }
     const protocolConfig = createCardanoHaskellConfig(protocolParams, 0)
+
+    it('routes generic Shelley payment recipes through the CML bridge and preserves the unsigned transaction contract', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      const policyId = 'ab'.repeat(28)
+      const assetName = '00ff'
+      const tokenId = `${policyId}.${assetName}` as never
+      const utxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver:
+          'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address,
+      }
+      let state = addInput(createTransactionBuilder(), utxo)
+      state = addOutput(
+        state,
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam',
+        {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+          [tokenId]: '1' as Balance.Quantity,
+        },
+      )
+      state = setChangeAddress(
+        state,
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8nj8',
+      )
+      state = setTTL(state, 123456)
+      state = addMint(state, {
+        policyId,
+        assets: [{assetName, amount: '1'}],
+        script: {type: 'native', script: `8200581c${'cd'.repeat(28)}`},
+      })
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({changeAddress: expect.any(String)}),
+          mints: [
+            {
+              policyIdHex: policyId,
+              scriptType: 'native',
+              scriptCborHex: `8200581c${'cd'.repeat(28)}`,
+              assets: [{assetNameHex: assetName, quantity: '1'}],
+            },
+          ],
+        }),
+      )
+      expect(bridgeBuilder).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            manualChangeOutput: expect.anything(),
+          }),
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes Plutus mint-only recipes through CML with protocol-derived collateral return', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '1000000',
+        })
+      const policyId = 'ab'.repeat(28)
+      const assetName = '00ff'
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const fundingUtxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const collateralUtxo = {
+        ...createMockUtxo('02'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), fundingUtxo)
+      state = addCollateralInput(state, collateralUtxo)
+      state = addMint(state, {
+        policyId,
+        assets: [{assetName, amount: '3'}],
+        script: {type: 'plutus', plutusVersion: 'plutusV2', script: '4e00'},
+        redeemer: 'd87980',
+        redeemerExUnits: {mem: '100', steps: '200'},
+      })
+      state = setChangeAddress(state, address)
+      state = setTTL(state, 123456)
+      const plutusProtocolConfig = {
+        ...protocolConfig,
+        collateralPercentage: '150',
+        scriptExecutionPrices: {
+          memory: {numerator: '577', denominator: '10000'},
+          cpu: {numerator: '721', denominator: '10000000'},
+        },
+        plutusV2CostModel: [0],
+      }
+      state = setFee(state, {[primaryTokenId]: '1000000' as Balance.Quantity})
+      state = setChangeOutput(state, address, {
+        [primaryTokenId]: '9000000' as Balance.Quantity,
+        [`${policyId}.${assetName}`]: '3' as Balance.Quantity,
+      })
+
+      const built = await buildTransaction(state, plutusProtocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledTimes(2)
+      expect(bridgeBuilder).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          scriptInputs: [],
+          mints: [
+            {
+              policyIdHex: policyId,
+              scriptType: 'plutusV2',
+              scriptCborHex: '4e00',
+              assets: [{assetNameHex: assetName, quantity: '3'}],
+              redeemerCborHex: 'd87980',
+              redeemerMem: '100',
+              redeemerSteps: '200',
+            },
+          ],
+          totalCollateral: '1500000',
+          collateralReturn: expect.objectContaining({
+            address,
+            lovelace: '3500000',
+          }),
+          options: expect.objectContaining({
+            manualFee: '1000000',
+            manualChangeOutput: expect.objectContaining({
+              lovelace: '9000000',
+              assets: [
+                {
+                  policyIdHex: policyId,
+                  assetNameHex: assetName,
+                  quantity: '3',
+                },
+              ],
+            }),
+          }),
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes change-only governance certificate transactions through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const utxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), utxo)
+      state = addCertificate(state, {
+        kind: 'VoteDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        drep: 'AlwaysAbstain',
+      })
+      state = setChangeAddress(state, address)
+      state = setTTL(state, 123456)
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outputs: [],
+          certificates: [
+            {
+              kind: 'VoteDelegation',
+              stakeCredentialKeyHashHex: 'aa'.repeat(28),
+              drep: 'AlwaysAbstain',
+            },
+          ],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes ordinary reference inputs through the CML payment recipe', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const paymentUtxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const referenceUtxo = {
+        ...createMockUtxo('02'.repeat(32), 1, {
+          [primaryTokenId]: '1000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), paymentUtxo)
+      state = addReferenceInput(state, referenceUtxo)
+      state = addOutput(state, address, {
+        [primaryTokenId]: '5000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, address)
+      state = setTTL(state, 123456)
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          referenceInputs: [
+            {
+              txHashHex: '02'.repeat(32),
+              index: '1',
+              address,
+              addressHex: expect.any(String),
+              isBootstrap: false,
+              lovelace: '1000000',
+              assets: [],
+            },
+          ],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes a single inline-datum Plutus V3 reference-script spend with collateral return through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const collateralTokenId = `${'aa'.repeat(28)}.01` as never
+      const fundingUtxo = {
+        ...createMockUtxo('01'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const scriptUtxo = {
+        ...createMockUtxo('02'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+        }),
+        receiver: address,
+        inlineDatumCborHex: 'd87980',
+      }
+      const collateralUtxo = {
+        ...createMockUtxo('03'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+          [collateralTokenId]: '2' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const secondCollateralUtxo = {
+        ...createMockUtxo('05'.repeat(32), 1, {
+          [primaryTokenId]: '4000000' as Balance.Quantity,
+          [collateralTokenId]: '3' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), fundingUtxo)
+      state = addScriptInput(state, {
+        utxo: scriptUtxo,
+        scriptHash: 'cd'.repeat(28),
+        redeemer: 'd87980',
+        redeemerExUnits: {mem: '900000', steps: '250000000'},
+        referenceScriptUtxo: {
+          txHash: '04'.repeat(32),
+          txIndex: 0,
+          langVersion: 'v3',
+          scriptSize: 3,
+          output: {
+            address,
+            lovelace: '2000000',
+            assets: [],
+            scriptCborHex: '010000',
+          },
+        },
+        datumSource: 'inline',
+      })
+      state = addCollateralInput(state, collateralUtxo)
+      state = addCollateralInput(state, secondCollateralUtxo)
+      state = addOutput(state, address, {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, address)
+      state = setValidityInterval(state, 100, 1000)
+      const plutusProtocolConfig = {
+        ...protocolConfig,
+        collateralPercentage: '150',
+        scriptExecutionPrices: {
+          memory: {numerator: '577', denominator: '10000'},
+          cpu: {numerator: '721', denominator: '10000000'},
+        },
+        plutusV3CostModel: [0],
+      }
+
+      const built = await buildTransaction(state, plutusProtocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          scriptInputs: [
+            expect.objectContaining({
+              utxo: expect.objectContaining({
+                txHashHex: '02'.repeat(32),
+                inlineDatumCborHex: 'd87980',
+              }),
+              datumSource: 'inline',
+              redeemerCborHex: 'd87980',
+              redeemerMem: '900000',
+              redeemerSteps: '250000000',
+              referenceScript: expect.objectContaining({
+                scriptCborHex: '010000',
+                size: '3',
+              }),
+            }),
+          ],
+          collateralInputs: expect.arrayContaining([
+            expect.objectContaining({txHashHex: '03'.repeat(32)}),
+            expect.objectContaining({txHashHex: '05'.repeat(32)}),
+          ]),
+          totalCollateral: '252872',
+          collateralReturn: expect.objectContaining({
+            lovelace: '8747128',
+            assets: [
+              {policyIdHex: 'aa'.repeat(28), assetNameHex: '01', quantity: '5'},
+            ],
+          }),
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes an explicit-datum Plutus V3 reference-script spend through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const fundingUtxo = {
+        ...createMockUtxo('11'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const scriptUtxo = {
+        ...createMockUtxo('12'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const collateralUtxo = {
+        ...createMockUtxo('13'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), fundingUtxo)
+      const extraReference = {
+        ...createMockUtxo('15'.repeat(32), 1, {
+          [primaryTokenId]: '3000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      state = addReferenceInput(state, extraReference)
+      state = addScriptInput(state, {
+        utxo: scriptUtxo,
+        scriptHash: 'ab'.repeat(28),
+        redeemer: 'd87980',
+        redeemerExUnits: {mem: '900000', steps: '250000000'},
+        referenceScriptUtxo: {
+          txHash: '14'.repeat(32),
+          txIndex: 0,
+          langVersion: 'v3',
+          scriptSize: 3,
+          output: {
+            address,
+            lovelace: '2000000',
+            assets: [],
+            scriptCborHex: '010000',
+          },
+        },
+        datumSource: {data: 'd87980'},
+      })
+      state = addScriptInput(state, {
+        utxo: {
+          ...createMockUtxo('16'.repeat(32), 0, {
+            [primaryTokenId]: '5000000' as Balance.Quantity,
+          }),
+          receiver: address,
+        },
+        scriptHash: 'cd'.repeat(28),
+        redeemer: '80',
+        redeemerExUnits: {mem: '100', steps: '200'},
+        referenceScriptUtxo: {
+          txHash: '17'.repeat(32),
+          txIndex: 1,
+          langVersion: 'v2',
+          scriptSize: 3,
+          output: {
+            address,
+            lovelace: '2000000',
+            assets: [],
+            scriptCborHex: '020000',
+          },
+        },
+        datumSource: {data: 'd87980'},
+      })
+      state = addCollateralInput(state, collateralUtxo)
+      state = addOutput(state, address, {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, address)
+      state = setValidityInterval(state, 100, 1000)
+      const plutusProtocolConfig = {
+        ...protocolConfig,
+        collateralPercentage: '150',
+        scriptExecutionPrices: {
+          memory: {numerator: '577', denominator: '10000'},
+          cpu: {numerator: '721', denominator: '10000000'},
+        },
+        plutusV3CostModel: [0],
+        plutusV2CostModel: [0],
+      }
+
+      await buildTransaction(state, plutusProtocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          scriptInputs: [
+            expect.objectContaining({
+              utxo: expect.objectContaining({txHashHex: '12'.repeat(32)}),
+              datumSource: {kind: 'explicit', cborHex: 'd87980'},
+            }),
+            expect.objectContaining({
+              utxo: expect.objectContaining({txHashHex: '16'.repeat(32)}),
+              plutusVersion: 'V2',
+              referenceScript: expect.objectContaining({
+                scriptCborHex: '020000',
+                size: '3',
+              }),
+              redeemerCborHex: '80',
+              redeemerMem: '100',
+              redeemerSteps: '200',
+            }),
+          ],
+          referenceInputs: [
+            expect.objectContaining({txHashHex: '15'.repeat(32), index: '1'}),
+          ],
+          totalCollateral: expect.any(String),
+        }),
+      )
+      expect(
+        bridgeBuilder.mock.calls[0]?.[0].scriptInputs[0]?.utxo,
+      ).not.toHaveProperty('inlineDatumCborHex')
+      bridgeBuilder.mockRestore()
+    })
+
+    it.each(['v1', 'v2'] as const)(
+      'routes a Plutus %s reference-script spend through CML with its matching cost model',
+      async (langVersion) => {
+        const bridgeBuilder = jest
+          .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+          .mockReturnValue({
+            cborHex: '84a0a0f5',
+            fee: '168581',
+          })
+        const address =
+          'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+        const fundingUtxo = {
+          ...createMockUtxo('21'.repeat(32), 0, {
+            [primaryTokenId]: '10000000' as Balance.Quantity,
+          }),
+          receiver: address,
+        }
+        const scriptUtxo = {
+          ...createMockUtxo('22'.repeat(32), 0, {
+            [primaryTokenId]: '5000000' as Balance.Quantity,
+          }),
+          receiver: address,
+          inlineDatumCborHex: 'd87980',
+        }
+        const collateralUtxo = {
+          ...createMockUtxo('23'.repeat(32), 0, {
+            [primaryTokenId]: '5000000' as Balance.Quantity,
+          }),
+          receiver: address,
+        }
+        let state = addInput(createTransactionBuilder(), fundingUtxo)
+        state = addScriptInput(state, {
+          utxo: scriptUtxo,
+          scriptHash: 'ab'.repeat(28),
+          redeemer: 'd87980',
+          redeemerExUnits: {mem: '900000', steps: '250000000'},
+          referenceScriptUtxo: {
+            txHash: '24'.repeat(32),
+            txIndex: 0,
+            langVersion,
+            scriptSize: 3,
+            output: {
+              address,
+              lovelace: '2000000',
+              assets: [],
+              scriptCborHex: '010000',
+            },
+          },
+          datumSource: 'inline',
+        })
+        state = addCollateralInput(state, collateralUtxo)
+        state = addOutput(state, address, {
+          [primaryTokenId]: '2000000' as Balance.Quantity,
+        })
+        state = setChangeAddress(state, address)
+        state = setValidityInterval(state, 100, 1000)
+        const model = [0]
+        const plutusProtocolConfig = {
+          ...protocolConfig,
+          collateralPercentage: '150',
+          scriptExecutionPrices: {
+            memory: {numerator: '577', denominator: '10000'},
+            cpu: {numerator: '721', denominator: '10000000'},
+          },
+          ...(langVersion === 'v1'
+            ? {plutusV1CostModel: model}
+            : {plutusV2CostModel: model}),
+        }
+
+        await buildTransaction(state, plutusProtocolConfig)
+
+        expect(bridgeBuilder).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            scriptInputs: [
+              expect.objectContaining({
+                plutusVersion: langVersion.toUpperCase(),
+              }),
+            ],
+            protocolParams: expect.objectContaining({
+              ...(langVersion === 'v1'
+                ? {plutusV1CostModel: model}
+                : {plutusV2CostModel: model}),
+            }),
+          }),
+        )
+        bridgeBuilder.mockRestore()
+      },
+    )
+
+    it('routes legacy inline Plutus script witnesses through the CML recipe', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '247908',
+        })
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const fundingUtxo = {
+        ...createMockUtxo('25'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const scriptUtxo = {
+        ...createMockUtxo('26'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      const collateralUtxo = {
+        ...createMockUtxo('27'.repeat(32), 0, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+        }),
+        receiver: address,
+      }
+      let state = addInput(createTransactionBuilder(), fundingUtxo)
+      state = addScriptInput(state, {
+        utxo: scriptUtxo,
+        // The legacy builder's no-reference branch consumes this field as
+        // Plutus V1 script CBOR, not as a script hash.
+        scriptHash: '4e00',
+        redeemer: 'd87980',
+        redeemerExUnits: {mem: '100', steps: '200'},
+        datumSource: {data: 'd87980'},
+      })
+      state = addCollateralInput(state, collateralUtxo)
+      state = addOutput(state, address, {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, address)
+      state = setTTL(state, 123456)
+      const plutusProtocolConfig = {
+        ...protocolConfig,
+        collateralPercentage: '150',
+        scriptExecutionPrices: {
+          memory: {numerator: '577', denominator: '10000'},
+          cpu: {numerator: '721', denominator: '10000000'},
+        },
+        plutusV1CostModel: [0],
+      }
+
+      const built = await buildTransaction(state, plutusProtocolConfig)
+      expect(built.cbor).toBe('84a0a0f5')
+
+      const inlineRecipe = bridgeBuilder.mock.calls[0]?.[0].scriptInputs[0]
+      expect(inlineRecipe).toMatchObject({
+        inlineScriptCborHex: '4e00',
+        plutusVersion: 'V1',
+        datumSource: {kind: 'explicit', cborHex: 'd87980'},
+      })
+      expect(inlineRecipe).not.toHaveProperty('scriptHashHex')
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes multiasset outputs and metadata through CML when no CSL-only recipe fields are present', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      const policyId = 'ab'.repeat(28)
+      const tokenId = `${policyId}.00ff` as never
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('02'.repeat(32), 1, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+          [tokenId]: '12' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+        [tokenId]: '7' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addMetadata(state, '674', {msg: ['fixture']})
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputs: [
+            expect.objectContaining({
+              txHashHex: '02'.repeat(32),
+              assets: [
+                {policyIdHex: policyId, assetNameHex: '00ff', quantity: '12'},
+              ],
+            }),
+          ],
+          outputs: [
+            expect.objectContaining({
+              assets: [
+                {policyIdHex: policyId, assetNameHex: '00ff', quantity: '7'},
+              ],
+            }),
+          ],
+          metadata: [{label: '674', data: {msg: ['fixture']}}],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes stake delegation certificates with their key-hash fields through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('03'.repeat(32), 2, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addCertificate(state, {
+        kind: 'StakeDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        poolKeyHash: 'bb'.repeat(28) as KeyHash,
+      })
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          certificates: [
+            {
+              kind: 'StakeDelegation',
+              stakeCredentialKeyHashHex: 'aa'.repeat(28),
+              poolKeyHash: 'bb'.repeat(28),
+            },
+          ],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes standalone key withdrawals through CML and preserves the reward-account address', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('04'.repeat(32), 3, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addWithdrawal(
+        state,
+        'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+        '3500000',
+      )
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          withdrawals: [
+            {
+              rewardAddress:
+                'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+              amount: '3500000',
+            },
+          ],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes a stake certificate and reward withdrawal together through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('07'.repeat(32), 6, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addCertificate(state, {
+        kind: 'StakeDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        poolKeyHash: 'bb'.repeat(28) as KeyHash,
+      })
+      state = addWithdrawal(
+        state,
+        'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq' as Address,
+        '3500000' as Amount,
+      )
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          certificates: [
+            {
+              kind: 'StakeDelegation',
+              stakeCredentialKeyHashHex: 'aa'.repeat(28),
+              poolKeyHash: 'bb'.repeat(28),
+            },
+          ],
+          withdrawals: [
+            {
+              rewardAddress:
+                'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+              amount: '3500000',
+            },
+          ],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes vote delegation and DRep data through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('05'.repeat(32), 4, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addCertificate(state, {
+        kind: 'VoteDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        drep: {KeyHash: 'bb'.repeat(28) as KeyHash},
+      })
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          certificates: [
+            {
+              kind: 'VoteDelegation',
+              stakeCredentialKeyHashHex: 'aa'.repeat(28),
+              drep: {KeyHash: 'bb'.repeat(28)},
+            },
+          ],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes combined stake/vote registration with the configured deposit through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('06'.repeat(32), 5, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setTTL(state, 123456)
+      state = addCertificate(state, {
+        kind: 'StakeVoteRegistrationAndDelegation',
+        stakeCredentialKeyHashHex: 'aa'.repeat(28) as KeyHash,
+        poolKeyHash: 'bb'.repeat(28) as KeyHash,
+        drep: 'AlwaysAbstain',
+      })
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          certificates: [
+            {
+              kind: 'StakeVoteRegistrationAndDelegation',
+              stakeCredentialKeyHashHex: 'aa'.repeat(28),
+              poolKeyHash: 'bb'.repeat(28),
+              drep: 'AlwaysAbstain',
+            },
+          ],
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes the validity interval start and end through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('07'.repeat(32), 6, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, 'addr_test1qrecipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1qchange')
+      state = setValidityInterval(state, 120000, 123456)
+
+      await buildTransaction(state, protocolConfig)
+
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            ttl: '123456',
+            validityIntervalStart: '120000',
+            validityIntervalEnd: '123456',
+            changeAddress: 'addr_test1qchange',
+          }),
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes explicit manual fee and manual change through CML without inventing TTL', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '100000',
+        })
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      const input = createMockUtxo('08'.repeat(32), 2, {
+        [primaryTokenId]: '5000000' as Balance.Quantity,
+      })
+      input.receiver = address
+      let state = addInput(createTransactionBuilder(), input)
+      state = addOutput(state, address, {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeOutput(state, address, {
+        [primaryTokenId]: '2900000' as Balance.Quantity,
+      })
+      state = setFee(state, {[primaryTokenId]: '100000' as Balance.Quantity})
+
+      let built: Awaited<ReturnType<typeof buildTransaction>> | undefined
+      try {
+        built = await buildTransaction(state, protocolConfig)
+      } catch {
+        // A missing CML route falls through to the native builder, which this
+        // focused test intentionally cannot initialize.
+      }
+
+      expect(bridgeBuilder).toHaveBeenCalled()
+      expect(built?.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: {
+            changeAddress: address,
+            manualFee: '100000',
+            manualChangeOutput: {
+              address,
+              lovelace: '2900000',
+              assets: [],
+            },
+          },
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes an exactly balanced manual-fee transaction without a change address through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({cborHex: '84a0a0f5', fee: '200000'})
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('31'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = addOutput(state, address, {
+        [primaryTokenId]: '9800000' as Balance.Quantity,
+      })
+      state = setFee(state, {[primaryTokenId]: '200000' as Balance.Quantity})
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: {manualFee: '200000'},
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes withdrawal-only funding through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({cborHex: '84a0a0f5', fee: '168581'})
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      let state = createTransactionBuilder()
+      state = addWithdrawal(
+        state,
+        'stake_test1uqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+        '3500000',
+      )
+      state = addOutput(state, address, {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, address)
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputs: [],
+          withdrawals: [{rewardAddress: expect.any(String), amount: '3500000'}],
+          options: expect.objectContaining({changeAddress: address}),
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes change-only transactions through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({cborHex: '84a0a0f5', fee: '168581'})
+      const address =
+        'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam' as Address
+      let state = addInput(
+        createTransactionBuilder(),
+        createMockUtxo('32'.repeat(32), 0, {
+          [primaryTokenId]: '10000000' as Balance.Quantity,
+        }),
+      )
+      state = setChangeAddress(state, address)
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outputs: [],
+          options: expect.objectContaining({changeAddress: address}),
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
+
+    it('routes Byron source UTxO bytes and bootstrap classification through CML', async () => {
+      const bridgeBuilder = jest
+        .spyOn(cmlMobileBridge, 'buildTransactionRecipeCml')
+        .mockReturnValue({
+          cborHex: '84a0a0f5',
+          fee: '168581',
+        })
+      const addressHex = `82d818582183${'00'.repeat(28)}`
+      jest.mocked(cmlMobileBridge.addressToHex).mockReturnValueOnce(addressHex)
+      const input = {
+        ...createMockUtxo('09'.repeat(32), 3, {
+          [primaryTokenId]: '5000000' as Balance.Quantity,
+        }),
+        receiver: 'Ae2tdPwUPEZFRbyh7Z9' as Address,
+      }
+      let state = addInput(createTransactionBuilder(), input)
+      state = addOutput(state, 'addr_test1recipient', {
+        [primaryTokenId]: '2000000' as Balance.Quantity,
+      })
+      state = setChangeAddress(state, 'addr_test1change')
+
+      const built = await buildTransaction(state, protocolConfig)
+
+      expect(built.cbor).toBe('84a0a0f5')
+      expect(bridgeBuilder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputs: [
+            expect.objectContaining({
+              address: 'Ae2tdPwUPEZFRbyh7Z9',
+              addressHex,
+              isBootstrap: true,
+            }),
+          ],
+          options: {changeAddress: 'addr_test1change'},
+        }),
+      )
+      bridgeBuilder.mockRestore()
+    })
 
     it('should throw NoOutputsError when no outputs and no change address', async () => {
       const state = createTransactionBuilder()

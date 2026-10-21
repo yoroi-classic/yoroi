@@ -1,0 +1,66 @@
+import {
+  CardanoHaskellConfig,
+  ModernUtxo,
+  TransactionMetadata,
+  TransactionOutput,
+  cmlAssetsFromAmounts,
+  cmlPaymentInputFromUtxo,
+  isByronAddress,
+} from '@yoroi/tx'
+import {Portfolio} from '@yoroi/types'
+
+import {buildSimplePaymentTransaction} from '@yoroi-classic/cml-mobile-bridge'
+
+import {minimumAdaForAssetsCml} from '../cml/minimumAda'
+
+export const buildSimplePaymentCml = ({
+  inputs,
+  outputs,
+  changeAddress,
+  ttl,
+  protocolParams,
+  primaryTokenId,
+  metadata,
+}: {
+  inputs: ModernUtxo[]
+  outputs: TransactionOutput[]
+  changeAddress: string
+  ttl: number
+  protocolParams: CardanoHaskellConfig
+  primaryTokenId: Portfolio.Token.Id
+  metadata?: Array<{label: string; data: TransactionMetadata['data']}>
+}): {cbor: string; fee: bigint} | undefined => {
+  // Byron source inputs require bootstrap witnesses. Keep those on the current
+  // signing path until CML signing receives the source UTxO addressing path.
+  if (inputs.some((input) => isByronAddress(input.receiver))) {
+    return undefined
+  }
+
+  const result = buildSimplePaymentTransaction({
+    inputs: inputs.map((input) =>
+      cmlPaymentInputFromUtxo(input, primaryTokenId),
+    ),
+    outputs: outputs.map((output) => ({
+      address: output.address,
+      lovelace: String(output.amounts[primaryTokenId] ?? '0'),
+      assets: cmlAssetsFromAmounts(output.amounts, primaryTokenId),
+      datum: output.datum
+        ? 'hash' in output.datum
+          ? {kind: 'hash' as const, hex: output.datum.hash}
+          : {kind: 'inline' as const, hex: output.datum.data}
+        : undefined,
+    })),
+    changeAddress,
+    ttl: String(ttl),
+    feeCoefficient: protocolParams.linearFee.coefficient,
+    feeConstant: protocolParams.linearFee.constant,
+    coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+    keyDeposit: protocolParams.keyDeposit,
+    poolDeposit: protocolParams.poolDeposit,
+    maxValueSize: '5000',
+    metadata,
+  })
+  return {cbor: result.cborHex, fee: BigInt(result.fee)}
+}
+
+export {minimumAdaForAssetsCml}

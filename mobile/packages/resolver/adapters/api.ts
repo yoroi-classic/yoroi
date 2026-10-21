@@ -1,7 +1,6 @@
 import {fetchData} from '@yoroi/common'
 import {Resolver} from '@yoroi/types'
 
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {AxiosRequestConfig} from 'axios'
 
 import {cnsCryptoAddress} from './cns/api'
@@ -29,11 +28,9 @@ const initialDeps = {
 export const resolverApiMaker = (
   {
     apiConfig,
-    cslFactory,
     isMainnet = true,
   }: {
     apiConfig: Readonly<ApiConfig>
-    cslFactory: (scope: string) => WasmModuleProxy
     isMainnet?: boolean
   },
   {
@@ -59,7 +56,7 @@ export const resolverApiMaker = (
   const getUnstoppableCryptoAddress = unstoppableApi.getCryptoAddress(
     apiConfig[Resolver.NameServer.Unstoppable],
   )
-  const getCnsCryptoAddress = cnsApi.getCryptoAddress(cslFactory, isMainnet)
+  const getCnsCryptoAddress = cnsApi.getCryptoAddress(isMainnet)
   const operationsGetCryptoAddress: GetCryptoAddressOperations = [
     [Resolver.NameServer.Handle, getHandleCryptoAddress],
     [Resolver.NameServer.Unstoppable, getUnstoppableCryptoAddress],

@@ -1,6 +1,6 @@
 import {Api} from '@yoroi/types'
 
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {resolveCnsAddressRecord} from '@yoroi-classic/cml-mobile-bridge'
 
 import {AssocMap, BuiltinByteString} from './types'
 import {CNSUserRecord} from './types'
@@ -74,58 +74,12 @@ export const parseAssocMapAsync = async <T>(
   return parsedAssocMap
 }
 
-export const objToHex = <T>(obj: T, csl: WasmModuleProxy): string => {
-  const plutusData = csl.PlutusData.fromJson(JSON.stringify(obj), 1)
-  const result = plutusData.toHex()
-  return result
-}
-
 export const parsePlutusAddressToBech32 = (
-  plutusHex: string,
-  csl: WasmModuleProxy,
+  plutusAddress: unknown,
   networkId: number,
 ): string => {
-  const cslPlutusDataAddress = csl.PlutusData.fromHex(plutusHex)
-  const plutusDataAddressJson = cslPlutusDataAddress.toJson(1)
-  const plutusDataAddressObject = JSON.parse(plutusDataAddressJson)
-  const plutusDataPaymentKeyObject = plutusDataAddressObject.fields[0]
-  const plutusDataStakeKeyObject = plutusDataAddressObject.fields[1]
-  const cslPaymentKeyHash = plutusDataPaymentKeyObject.fields[0].bytes
-
-  // Take into account whether the hash is a PubKeyHash or ScriptHash
-  const credentialKeyHashBytes = Buffer.from(cslPaymentKeyHash, 'hex')
-  const pubKeyCredentialKeyHash = csl.Ed25519KeyHash.fromBytes(
-    credentialKeyHashBytes,
-  )
-  const pubKeyCredential = csl.Credential.fromKeyhash(pubKeyCredentialKeyHash)
-  const scriptCredentialKeyHash = csl.ScriptHash.fromBytes(
-    credentialKeyHashBytes,
-  )
-  const scriptCredential = csl.Credential.fromScripthash(
-    scriptCredentialKeyHash,
-  )
-  const cslPaymentCredential =
-    plutusDataPaymentKeyObject.constructor === 0
-      ? pubKeyCredential
-      : scriptCredential
-  let bech32Addr = ''
-
-  // Parsing address according to whether it has a stake key
-  const cslStakeKeyHash = csl.Ed25519KeyHash.fromBytes(
-    Buffer.from(
-      plutusDataStakeKeyObject.fields[0].fields[0].fields[0].bytes,
-      'hex',
-    ),
-  )
-  const stakeCredential = csl.Credential.fromKeyhash(cslStakeKeyHash)
-  const cslBaseAddress = csl.BaseAddress.new(
+  return resolveCnsAddressRecord({
+    plutusAddressJson: JSON.stringify(plutusAddress),
     networkId,
-    cslPaymentCredential,
-    stakeCredential,
-  )
-  const cslAddress = cslBaseAddress.toAddress()
-
-  bech32Addr = cslAddress.toBech32(undefined)
-
-  return bech32Addr
+  }).addressBech32
 }

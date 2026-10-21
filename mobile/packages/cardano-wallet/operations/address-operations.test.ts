@@ -1,5 +1,7 @@
 import {Address, Wallet} from '@yoroi/types'
 
+import {addressInfoFromAddress} from '@yoroi-classic/cml-mobile-bridge'
+
 import {AccountManager, AddressChain} from '../account-manager/account-manager'
 import {
   ReadOnlyAccountManager,
@@ -9,6 +11,7 @@ import {
   generateNewReceiveAddress,
   getAddressing,
   getChangeAddress,
+  getFirstPaymentAddress,
 } from './address-operations'
 
 describe('address-operations', () => {
@@ -55,6 +58,33 @@ describe('address-operations', () => {
       )
       expect(mockWallet.isUsedAddress).toHaveBeenCalled()
       expect(address).toBeDefined()
+    })
+  })
+
+  describe('getFirstPaymentAddress', () => {
+    it('returns the original Shelley base-address string after CML validation', () => {
+      jest.mocked(addressInfoFromAddress).mockReturnValue({
+        hex: `01${'ab'.repeat(56)}`,
+        networkId: 1,
+        bech32: mockAddresses[0]!,
+        isValid: true,
+      })
+      expect(getFirstPaymentAddress(mockAddresses as Address[])).toBe(
+        mockAddresses[0],
+      )
+      expect(addressInfoFromAddress).toHaveBeenCalledWith(mockAddresses[0])
+    })
+
+    it('rejects non-base addresses', () => {
+      jest.mocked(addressInfoFromAddress).mockReturnValue({
+        hex: `61${'ab'.repeat(28)}`,
+        networkId: 1,
+        bech32: mockAddresses[0]!,
+        isValid: true,
+      })
+      expect(() => getFirstPaymentAddress(mockAddresses as Address[])).toThrow(
+        'getFirstPaymentAddress: invalid address',
+      )
     })
   })
 

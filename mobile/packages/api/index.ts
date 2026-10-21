@@ -93,6 +93,7 @@ export {
   canUseCardanoWalletBackendV1FilterUsed,
   cardanoWalletBackendV1Maker,
 } from './cardano/adapters/cardano-wallet-backend/api-maker'
+export type {AddressUtxo, ResolvedUtxo} from './cardano/api-types'
 export {CardanoBackend, ManagedCardanoApi, WalletContext} from './cardano/types'
 
 // Re-export API types for convenience

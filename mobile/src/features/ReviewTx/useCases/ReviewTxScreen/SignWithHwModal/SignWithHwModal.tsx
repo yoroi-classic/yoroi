@@ -4,7 +4,6 @@ import {UnsignedTransaction} from '@yoroi/tx'
 import {HW} from '@yoroi/types'
 import {useSelectedWallet, useWalletManager} from '@yoroi/wallet-manager'
 
-import * as CSL from '@emurgo/cross-csl-core'
 import * as React from 'react'
 import {ErrorBoundary} from 'react-error-boundary'
 import {ActivityIndicator, View} from 'react-native'
@@ -21,7 +20,7 @@ type TransportType = 'USB' | 'BLE'
 type Step = 'select-transport' | 'connect-transport' | 'loading'
 
 type Props = {
-  onSuccess?: (signedTx: CSL.Transaction) => void
+  onSuccess?: (signedTx: Uint8Array) => void
   unsignedTx: UnsignedTransaction
   onCancel?: () => void
   supportsCIP36?: boolean

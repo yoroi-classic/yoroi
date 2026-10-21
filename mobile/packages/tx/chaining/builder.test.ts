@@ -47,9 +47,6 @@ describe('chaining builder', () => {
       expect(() => chainedUtxo.toTransactionUnspentOutputHex()).toThrow(
         'Cannot serialize chained UTXO',
       )
-      expect(() => chainedUtxo.toTransactionUnspentOutput({} as any)).toThrow(
-        'Cannot convert chained UTXO',
-      )
     })
   })
 

@@ -8,8 +8,26 @@ import {
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
+import * as accountManagerApi from './account-manager/account-manager'
 import {keyManager} from './key-manager/key-manager'
-import {CardanoMobileWrapped} from './wrappedCsl'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  walletRootKeyHexFromEntropy: jest.fn(() => 'ab'.repeat(96)),
+  derivePublicKeyFromAccountPathHex: jest.fn(() => 'cd'.repeat(32)),
+  publicKeyHashHexFromRawHex: jest.fn(() => 'ef'.repeat(28)),
+  baseAddressBech32FromPublicKeyHashes: jest.fn(() => 'addr1fixture'),
+  deriveAccountPublicKeyHex: jest.fn(
+    () =>
+      '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+  ),
+  addressToHex: jest.fn(
+    () => 'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+  ),
+  rewardAddressFromAddress: jest.fn(() => 'stake_test1fixture'),
+  rewardAddressHexFromAccountPublicKey: jest.fn(
+    () => 'e0c11ef08c44f3610b7e56d46e086b90186c12e9a68f0521b7c4c72e4b',
+  ),
+}))
 
 // Setup network managers and initialize wallet factories before tests
 const mockTokenManagers = {
@@ -81,6 +99,10 @@ describe('CardanoWallet', () => {
   afterEach(() => AsyncStorage.clear())
 
   it('build', async () => {
+    const accountManagerMakerSpy = jest.spyOn(
+      accountManagerApi,
+      'accountManagerMaker',
+    )
     const ShelleyWalletPreprod = getWalletFactory({
       implementation: 'cardano-cip1852',
       network: Chain.Network.Preprod,
@@ -91,19 +113,23 @@ describe('CardanoWallet', () => {
     const id = '261c7e0f-dd72-490c-8ce9-6714b512b969'
 
     // keys
-    const {accountPubKeyHex} = CardanoMobileWrapped.cslScope((csl) =>
-      keyManager('cardano-cip1852')({
-        csl,
-        mnemonic,
-        accountVisual,
-      }),
-    )
+    const {accountPubKeyHex} = keyManager('cardano-cip1852')({
+      mnemonic,
+      accountVisual,
+    })
 
     const wallet = await ShelleyWalletPreprod.build({
       id,
       accountPubKeyHex,
       accountVisual,
     })
+
+    expect(accountManagerMakerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardanoWalletBackendNetwork: Chain.Network.Preprod,
+      }),
+    )
+    accountManagerMakerSpy.mockRestore()
 
     expect(wallet.publicKeyHex).toBe(
       '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',

@@ -488,8 +488,8 @@ Configuration files are located in the root directory:
 **Build fails with Rust errors:**
 
 ```bash
-# Clean and rebuild Rust modules
-cd node_modules/@emurgo/csl-mobile-bridge-jsi/rust
+# Clean and rebuild the CML Rust bridge
+cd node_modules/@yoroi-classic/cml-mobile-bridge/rust
 cargo clean
 cargo build --release --target aarch64-apple-ios
 ```

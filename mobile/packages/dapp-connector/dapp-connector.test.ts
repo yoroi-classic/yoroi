@@ -1,14 +1,18 @@
 import {Chain} from '@yoroi/types'
 
-import {init} from '@emurgo/cross-csl-nodejs'
-
 import {connectionStorageMaker} from './adapters/async-storage'
 import {dappConnectorMaker} from './dapp-connector'
 import {mockedData} from './mocks'
 import {ResolverWallet} from './resolver'
 import {storageMock} from './storage.mocks'
 
+jest.mock('@yoroi/cardano-wallet', () => ({
+  collateralConfig: {minLovelace: {toString: () => '5000000'}},
+}))
+
 const maxCip103Txs = 20
+
+const balance = (hex: string, _lovelace: string) => hex
 
 const getDappConnector = (wallet = mockWallet) => {
   const storage = connectionStorageMaker({storage: storageMock})
@@ -510,7 +514,7 @@ describe('DappConnector', () => {
     it('should resolve getUsedAddresses with mocked data', async () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
-        getUsedAddresses: () => [{toHex: () => '00'}] as any,
+        getUsedAddresses: () => ['00'],
       })
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
@@ -528,7 +532,7 @@ describe('DappConnector', () => {
     it('should resolve getUsedAddresses with mocked data also when pagination is provided', async () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
-        getUsedAddresses: () => [{toHex: () => '00'}] as any,
+        getUsedAddresses: () => ['00'],
       })
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
@@ -849,7 +853,7 @@ describe('DappConnector', () => {
     it('should resolve getCollateral with mocked data', async () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
-        getCollateral: () => Promise.resolve([{toHex: () => '00'}] as any),
+        getCollateral: () => Promise.resolve(['00']),
       })
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
@@ -868,7 +872,7 @@ describe('DappConnector', () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
         getCollateral: () => Promise.resolve([]),
-        getBalance: () => CSL.Value.fromHex('00'),
+        getBalance: () => balance('00', '0'),
       })
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
@@ -887,7 +891,7 @@ describe('DappConnector', () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
         getCollateral: () => Promise.resolve([]),
-        getBalance: () => CSL.Value.new(CSL.BigNum.fromStr('20000000')),
+        getBalance: () => balance('0112a880', '20000000'),
         sendReorganisationTx: async () => ({toHex: () => '00'}) as any,
       })
       const sendMessage = jest.fn()
@@ -914,7 +918,7 @@ describe('DappConnector', () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
         getCollateral: () => Promise.resolve([]),
-        getBalance: () => CSL.Value.new(CSL.BigNum.fromStr('20000000')),
+        getBalance: () => balance('0112a880', '20000000'),
         sendReorganisationTx: async () =>
           Promise.reject(new Error('Reorganisation failed')),
       })
@@ -970,7 +974,7 @@ describe('DappConnector', () => {
           collateralId: '',
           isConfirmed: false,
         }),
-        getBalance: () => CSL.Value.fromHex('0000000000'), // Zero balance
+        getBalance: () => balance('0000000000', '0'), // Zero balance
         sendReorganisationTx: jest.fn(),
       }
       const dappConnector = getDappConnector(walletWithLowBalance)
@@ -989,8 +993,8 @@ describe('DappConnector', () => {
     })
 
     it('should return collateral UTXOs when available', async () => {
-      const utxo1 = {toHex: () => 'utxo1'} as any
-      const utxo2 = {toHex: () => 'utxo2'} as any
+      const utxo1 = 'utxo1'
+      const utxo2 = 'utxo2'
       const walletWithCollateral = {
         ...mockWallet,
         getCollateral: () => Promise.resolve([utxo1, utxo2]),
@@ -1012,7 +1016,7 @@ describe('DappConnector', () => {
     it('should resolve getUnusedAddresses with mocked data', async () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
-        getUnusedAddresses: () => [{toHex: () => '00'}] as any,
+        getUnusedAddresses: () => ['00'],
       })
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
@@ -1087,7 +1091,7 @@ describe('DappConnector', () => {
     it('should resolve getUtxos with mocked data', async () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
-        getUtxos: () => Promise.resolve([{toHex: () => '00'}] as any),
+        getUtxos: () => Promise.resolve(['00']),
       })
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
@@ -1105,7 +1109,7 @@ describe('DappConnector', () => {
     it('should resolve getUtxos with mocked data also when pagination is provided', async () => {
       const dappConnector = getDappConnector({
         ...mockWallet,
-        getUtxos: () => Promise.resolve([{toHex: () => '00'}] as any),
+        getUtxos: () => Promise.resolve(['00']),
       })
       const sendMessage = jest.fn()
       await dappConnector.addConnection({
@@ -1331,7 +1335,6 @@ const createEvent = (
 
 const walletId = 'b5d94758-26c5-48b0-af2b-6e68c3ef2dbf'
 
-const CSL = init('test')
 const mockWallet: ResolverWallet = {
   signTx: () => Promise.resolve('mock-signed-tx-hex'),
   signData: () => Promise.resolve({key: '', signature: ''}),
@@ -1339,17 +1342,13 @@ const mockWallet: ResolverWallet = {
   network: Chain.Network.Mainnet,
   networkId: 1,
   confirmConnection: async () => true,
-  getBalance: () => CSL.Value.fromHex('1a062ea8a0'),
+  getBalance: () => balance('1a062ea8a0', '10000000000'),
   getUnusedAddresses: () => [],
   getUsedAddresses: () => [],
   getChangeAddress: () =>
-    CSL.Address.fromHex(
-      '017ef00ee3672330155382a2857573868af466b88aa8c4081f45583e1784d958399bcce03402fd853d43a4e7366f2018932e5aff4eea904693',
-    ),
+    '017ef00ee3672330155382a2857573868af466b88aa8c4081f45583e1784d958399bcce03402fd853d43a4e7366f2018932e5aff4eea904693',
   getRewardAddresses: () => [
-    CSL.Address.fromHex(
-      'e184d958399bcce03402fd853d43a4e7366f2018932e5aff4eea904693',
-    ),
+    'e184d958399bcce03402fd853d43a4e7366f2018932e5aff4eea904693',
   ],
   getUtxos: () => Promise.resolve([]),
   getCollateral: () => Promise.resolve([]),

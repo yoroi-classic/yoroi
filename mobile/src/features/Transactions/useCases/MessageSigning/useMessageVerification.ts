@@ -1,5 +1,4 @@
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
-
+import {verifyEd25519Signature} from '@yoroi-classic/cml-mobile-bridge'
 import {Buffer} from 'buffer'
 import {decode, encode} from 'cbor2'
 import * as React from 'react'
@@ -69,8 +68,6 @@ export const useMessageVerification = () => {
           }
         }
 
-        const publicKeyBuffer = Buffer.from(publicKeyHex, 'hex')
-
         // Extract address from signature protected header (if present)
         const extractedAddressBech32 =
           await extractAddressFromSignature(protectedHeaderBytes)
@@ -139,14 +136,11 @@ export const useMessageVerification = () => {
         // Encode signature structure to CBOR
         const dataToSign = Buffer.from(encode(sigStructure))
 
-        // Verify using CSL
-        const isValid = CardanoMobileWrapped.cslScope((csl) => {
-          const publicKey = csl.PublicKey.fromBytes(publicKeyBuffer)
-          const signature = csl.Ed25519Signature.fromBytes(
-            Buffer.from(signatureBytes),
-          )
-
-          return publicKey.verify(dataToSign, signature)
+        // Verify the exact CIP-8 Sig_structure bytes using the CML bridge.
+        const isValid = verifyEd25519Signature({
+          publicKeyHex,
+          messageHex: dataToSign.toString('hex'),
+          signatureHex: Buffer.from(signatureBytes).toString('hex'),
         })
 
         // Verify address if provided

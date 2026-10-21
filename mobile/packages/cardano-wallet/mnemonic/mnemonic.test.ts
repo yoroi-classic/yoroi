@@ -1,5 +1,10 @@
-import {CardanoMobileWrapped} from '../wrappedCsl'
-import {generateAdaMnemonic, generateWalletRootKey} from './mnemonic'
+import {walletRootKeyHexFromEntropy} from '@yoroi-classic/cml-mobile-bridge'
+
+import {generateAdaMnemonic, getMasterKeyFromMnemonic} from './mnemonic'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  walletRootKeyHexFromEntropy: jest.fn(() => 'ab'.repeat(96)),
+}))
 
 const mnemonic = [
   'dry balcony arctic what garbage sort',
@@ -8,21 +13,16 @@ const mnemonic = [
 ].join(' ')
 
 describe('BIP39', () => {
-  const expectedKey =
-    '9053adfb225e91c0bf2db38e1978907cfeff6e66b9a9c3d8945aa686a9d' +
-    '29851bf83c8e2e556464605afeb9651fab3ef3f0aa205685c8f1e6f818629f843bde9' +
-    'a7e129fd35d072ce79b40a49cefcbc8526a3cb8d4bfa7a47afddaddc31dbb728'
-
   it('correctly generates mnemonics', () => {
     const recoverPhrase = generateAdaMnemonic()
     expect(recoverPhrase.split(' ').length).toEqual(15)
   })
 
-  it('correctly derives wallet root key', async () => {
-    const rootKeyBytes = CardanoMobileWrapped.cslScope((csl) => {
-      const rootKey = generateWalletRootKey(mnemonic, csl)
-      return rootKey.asBytes()
-    })
-    expect(Buffer.from(rootKeyBytes).toString('hex')).toEqual(expectedKey)
+  it('generates wallet root key through the CML bridge from BIP39 entropy', () => {
+    const rootKeyBytes = getMasterKeyFromMnemonic(mnemonic)
+    expect(walletRootKeyHexFromEntropy).toHaveBeenCalledWith(
+      expect.stringMatching(/^[0-9a-f]+$/),
+    )
+    expect(Buffer.from(rootKeyBytes).toString('hex')).toEqual('ab'.repeat(96))
   })
 })

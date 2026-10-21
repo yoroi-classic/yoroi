@@ -1,229 +1,72 @@
+import {CIP30TransactionError as SharedCIP30TransactionError} from '@yoroi/types'
+
 import {CIP30TransactionError, validateTransactionCbor} from './validation'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  transactionValidationInfoJson: jest.fn(() =>
+    JSON.stringify({inputsCount: 1, outputsCount: 1, fee: '1000000', ttl: 10}),
+  ),
+}))
+
 describe('CIP-30 validation', () => {
-  describe('validateTransactionCbor', () => {
-    it('should reject invalid hex', () => {
-      const mockCsl = {} as any
-      const result = validateTransactionCbor(mockCsl, 'invalid-hex!')
-
-      expect(result.valid).toBe(false)
-      expect(result.errors.some((e) => e.includes('valid hex string'))).toBe(
-        true,
-      )
+  it('rejects invalid hex without calling the native parser', () => {
+    const {transactionValidationInfoJson} = jest.requireMock(
+      '@yoroi-classic/cml-mobile-bridge',
+    )
+    const result = validateTransactionCbor('invalid-hex!')
+    expect(result).toEqual({
+      valid: false,
+      errors: ['Transaction CBOR must be valid hex string'],
+      warnings: [],
     })
+    expect(transactionValidationInfoJson).not.toHaveBeenCalled()
+  })
 
-    it('should reject when transaction parsing fails', () => {
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => {
-            throw new Error('Parse error')
-          }),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.valid).toBe(false)
-      expect(result.errors.some((e) => e.includes('Parse error'))).toBe(true)
-    })
-
-    it('should reject when transaction is null', () => {
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => null),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.valid).toBe(false)
-      expect(
-        result.errors.some((e) => e.includes('Failed to parse transaction')),
-      ).toBe(true)
-    })
-
-    it('should reject when transaction body is missing', () => {
-      const mockTx = {
-        body: jest.fn(() => null),
-      }
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => mockTx),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.valid).toBe(false)
-      expect(
-        result.errors.some((e) => e.includes('Transaction body is missing')),
-      ).toBe(true)
-    })
-
-    it('should warn when transaction has no inputs', () => {
-      const mockInputs = {
-        len: jest.fn(() => 0),
-      }
-      const mockOutputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockFee = {
-        toStr: jest.fn(() => '1000000'),
-      }
-      const mockTtl = jest.fn(() => 1000000)
-      const mockTxBody = {
-        inputs: jest.fn(() => mockInputs),
-        outputs: jest.fn(() => mockOutputs),
-        fee: jest.fn(() => mockFee),
-        ttl: mockTtl,
-      }
-      const mockTx = {
-        body: jest.fn(() => mockTxBody),
-      }
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => mockTx),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.errors.some((e) => e.includes('no inputs'))).toBe(true)
-    })
-
-    it('should warn when transaction has no outputs', () => {
-      const mockInputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockOutputs = {
-        len: jest.fn(() => 0),
-      }
-      const mockFee = {
-        toStr: jest.fn(() => '1000000'),
-      }
-      const mockTtl = jest.fn(() => 1000000)
-      const mockTxBody = {
-        inputs: jest.fn(() => mockInputs),
-        outputs: jest.fn(() => mockOutputs),
-        fee: jest.fn(() => mockFee),
-        ttl: mockTtl,
-      }
-      const mockTx = {
-        body: jest.fn(() => mockTxBody),
-      }
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => mockTx),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.warnings.some((w) => w.includes('no outputs'))).toBe(true)
-    })
-
-    it('should warn when fee is zero', () => {
-      const mockInputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockOutputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockFee = {
-        toStr: jest.fn(() => '0'),
-      }
-      const mockTtl = jest.fn(() => 1000000)
-      const mockTxBody = {
-        inputs: jest.fn(() => mockInputs),
-        outputs: jest.fn(() => mockOutputs),
-        fee: jest.fn(() => mockFee),
-        ttl: mockTtl,
-      }
-      const mockTx = {
-        body: jest.fn(() => mockTxBody),
-      }
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => mockTx),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.warnings.some((w) => w.includes('fee is zero'))).toBe(true)
-    })
-
-    it('should warn when TTL is not set', () => {
-      const mockInputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockOutputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockFee = {
-        toStr: jest.fn(() => '1000000'),
-      }
-      const mockTtl = jest.fn(() => 0)
-      const mockTxBody = {
-        inputs: jest.fn(() => mockInputs),
-        outputs: jest.fn(() => mockOutputs),
-        fee: jest.fn(() => mockFee),
-        ttl: mockTtl,
-      }
-      const mockTx = {
-        body: jest.fn(() => mockTxBody),
-      }
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => mockTx),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.warnings.some((w) => w.includes('TTL is not set'))).toBe(
-        true,
-      )
-    })
-
-    it('should validate correct transaction', () => {
-      const mockInputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockOutputs = {
-        len: jest.fn(() => 1),
-      }
-      const mockFee = {
-        toStr: jest.fn(() => '1000000'),
-      }
-      const mockTtl = jest.fn(() => 1000000)
-      const mockTxBody = {
-        inputs: jest.fn(() => mockInputs),
-        outputs: jest.fn(() => mockOutputs),
-        fee: jest.fn(() => mockFee),
-        ttl: mockTtl,
-      }
-      const mockTx = {
-        body: jest.fn(() => mockTxBody),
-      }
-      const mockCsl = {
-        Transaction: {
-          fromHex: jest.fn(() => mockTx),
-        },
-      }
-      const result = validateTransactionCbor(mockCsl as any, 'abcdef')
-
-      expect(result.valid).toBe(true)
-      expect(result.errors).toHaveLength(0)
+  it('maps parsed CML validation fields to existing warnings and errors', () => {
+    const {transactionValidationInfoJson} = jest.requireMock(
+      '@yoroi-classic/cml-mobile-bridge',
+    )
+    transactionValidationInfoJson.mockReturnValueOnce(
+      JSON.stringify({inputsCount: 0, outputsCount: 0, fee: '0', ttl: null}),
+    )
+    expect(validateTransactionCbor('00')).toEqual({
+      valid: false,
+      errors: ['Transaction has no inputs'],
+      warnings: [
+        'Transaction has no outputs',
+        'Transaction fee is zero',
+        'Transaction TTL is not set',
+      ],
     })
   })
 
-  describe('CIP30TransactionError', () => {
-    it('should create error with validation result', () => {
-      const validation = {
-        valid: false,
-        errors: ['Error 1'],
-        warnings: [],
-      }
-      const error = new CIP30TransactionError('Test error', validation)
-
-      expect(error.message).toBe('Test error')
-      expect(error.name).toBe('CIP30TransactionError')
-      expect(error.validation).toBe(validation)
-      expect(error).toBeInstanceOf(Error)
+  it('rejects parser errors as a failed transaction parse', () => {
+    const {transactionValidationInfoJson} = jest.requireMock(
+      '@yoroi-classic/cml-mobile-bridge',
+    )
+    transactionValidationInfoJson.mockImplementationOnce(() => {
+      throw new Error('invalid transaction CBOR')
     })
+    expect(validateTransactionCbor('abcdef').errors).toEqual([
+      'Failed to parse transaction: invalid transaction CBOR',
+    ])
+  })
+
+  it('accepts a transaction with inputs, outputs, fee, and TTL', () => {
+    expect(validateTransactionCbor('abcdef')).toEqual({
+      valid: true,
+      errors: [],
+      warnings: [],
+    })
+  })
+
+  it('creates a typed transaction error', () => {
+    const validation = {valid: false, errors: ['Error 1'], warnings: []}
+    const error = new CIP30TransactionError('Test error', validation)
+    expect(error.message).toBe('Test error')
+    expect(error.name).toBe('CIP30TransactionError')
+    expect(error.validation).toBe(validation)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toBeInstanceOf(SharedCIP30TransactionError)
   })
 })

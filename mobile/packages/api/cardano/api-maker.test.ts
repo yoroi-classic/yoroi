@@ -128,8 +128,26 @@ describe('cardanoWalletApiMaker', () => {
     )
   })
 
+  it('routes used-address filtering through a configured cardano-wallet-backend', () => {
+    cardanoWalletApiMaker({
+      baseApiUrl: 'https://api.yoroiwallet.com/api',
+      cardanoWalletBackendNetwork: 'mainnet',
+      cardanoWalletBackendUrl: 'https://wallet-backend.example.com',
+      getSpendingKey: mockGetSpendingKey,
+    })
+
+    expect(cardanoApiManagerMaker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cardanoWalletBackendAdapter: expect.any(Object),
+        preferences: expect.objectContaining({
+          filterUsedAddresses: 'cardano-wallet-backend',
+        }),
+      }),
+    )
+  })
+
   it.each([undefined, '', '   '])(
-    'keeps legacy transaction submission without a backend URL: %p',
+    'keeps submission and used-address filtering on legacy without a backend URL: %p',
     (cardanoWalletBackendUrl) => {
       cardanoWalletApiMaker({
         baseApiUrl: 'https://api.yoroiwallet.com/api',
@@ -139,11 +157,15 @@ describe('cardanoWalletApiMaker', () => {
       })
 
       expect(cardanoWalletBackendV1Maker).not.toHaveBeenCalled()
+      const managerOptions = jest.mocked(cardanoApiManagerMaker).mock
+        .calls[0]?.[0]
+      expect(managerOptions?.preferences.filterUsedAddresses).toBe('legacy')
       expect(cardanoApiManagerMaker).toHaveBeenCalledWith(
         expect.objectContaining({
           cardanoWalletBackendAdapter: undefined,
           preferences: expect.objectContaining({
             submitTransaction: 'legacy',
+            filterUsedAddresses: 'legacy',
           }),
         }),
       )
@@ -163,6 +185,7 @@ describe('cardanoWalletApiMaker', () => {
         cardanoWalletBackendAdapter: undefined,
         preferences: expect.objectContaining({
           submitTransaction: 'legacy',
+          filterUsedAddresses: 'legacy',
         }),
       }),
     )

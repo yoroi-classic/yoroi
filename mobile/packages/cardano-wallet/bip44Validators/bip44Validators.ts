@@ -1,9 +1,5 @@
 import {cardanoConfig} from '@yoroi/blockchains'
 
-import {CardanoMobile} from '../wrappedCsl'
-
-const isString = (s: unknown) => typeof s === 'string' || s instanceof String
-
 const isUInt32 = (i: unknown) =>
   Number.isInteger(i) && typeof i === 'number' && i >= 0 && i < 4294967296
 
@@ -33,15 +29,3 @@ export const isCIP1852AccountPath = (path: Array<number>): boolean => {
       path[1] === 1815)
   )
 }
-
-const canParsePublicKey = (publicKeyHex: string): boolean => {
-  try {
-    CardanoMobile.Bip32PublicKey.fromBytes(Buffer.from(publicKeyHex, 'hex'))
-    return true
-  } catch (_e) {
-    return false
-  }
-}
-
-export const isValidPublicKey = (key: string): boolean =>
-  key != null && isString(key) && canParsePublicKey(key)

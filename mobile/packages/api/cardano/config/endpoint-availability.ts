@@ -7,7 +7,7 @@ import {CardanoBackend} from '../types'
 export const ENDPOINT_AVAILABILITY: Record<string, CardanoBackend[]> = {
   getTipStatus: ['backend-zero', 'legacy'],
   fetchNewTxHistory: ['backend-zero', 'legacy'],
-  filterUsedAddresses: ['backend-zero', 'legacy'],
+  filterUsedAddresses: ['backend-zero', 'cardano-wallet-backend', 'legacy'],
   submitTransaction: ['backend-zero', 'cardano-wallet-backend', 'legacy'],
   getAccountState: ['backend-zero', 'legacy'],
   bulkGetAccountState: ['backend-zero', 'legacy'],

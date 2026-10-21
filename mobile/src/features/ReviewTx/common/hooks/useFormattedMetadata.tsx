@@ -1,8 +1,5 @@
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
 import {isString} from '@yoroi/common'
 
-import {MetadataJsonSchema} from '@emurgo/cross-csl-core'
-import {Buffer} from 'buffer'
 import * as React from 'react'
 
 import {FormattedMetadata, TransactionBody} from '../types'
@@ -17,99 +14,40 @@ export const formatMetadata = (
   let scripts: Array<{scriptHash: string; scriptBytes: string}> | null = null
 
   if (cbor != null && hash != null) {
-    CardanoMobileWrapped.cslScope((csl) => {
-      const tx = csl.Transaction.fromHex(cbor)
-      const auxiliaryData = tx.auxiliaryData()
+    const auxiliaryData = txBody.cmlReviewInfo?.auxiliaryData
+    if (auxiliaryData) {
+      if (auxiliaryData.metadata.length > 0) {
+        const labels = Object.fromEntries(
+          auxiliaryData.metadata.map((entry) => [
+            entry.label,
+            parseBasicConversionsJson(entry.basicConversionsJson) ??
+              entry.json ??
+              entry.cmlJson,
+          ]),
+        )
+        allLabels = labels
 
-      if (!auxiliaryData) return
-
-      // Extract all metadata labels
-      const txMetadata = auxiliaryData.metadata()
-      if (txMetadata) {
-        const labels: Record<string, unknown> = {}
-        const keys = txMetadata.keys()
-
-        for (let i = 0; i < keys.len(); i++) {
-          const key = keys.get(i)
-          if (!key) continue
-
-          const metadatum = txMetadata.get(key)
-          if (!metadatum) continue
-
-          try {
-            const decodedMetadata = csl.decodeMetadatumToJsonStr(
-              metadatum,
-              MetadataJsonSchema.BasicConversions,
-            )
-            const labelStr = key.toStr()
-            labels[labelStr] = JSON.parse(decodedMetadata)
-
-            // Extract CIP-674 metadata for backward compatibility
-            if (labelStr === '674') {
-              const msg = [parseMsg(JSON.parse(decodedMetadata)?.msg ?? [''])]
-              metadata = {msg}
-            }
-          } catch {
-            // If decoding fails, store raw value as hex
-            try {
-              labels[key.toStr()] = Buffer.from(metadatum.toBytes()).toString(
-                'hex',
-              )
-            } catch {
-              // Ignore if even hex conversion fails
-            }
-          }
-        }
-
-        if (Object.keys(labels).length > 0) {
-          allLabels = labels
+        if (Object.hasOwn(labels, '674')) {
+          const cip674 = labels['674']
+          const message =
+            cip674 != null && typeof cip674 === 'object' && 'msg' in cip674
+              ? ((cip674 as {msg?: Array<string> | string}).msg ?? [''])
+              : ['']
+          metadata = {msg: [parseMsg(message)]}
         }
       }
 
-      // Extract scripts from auxiliary data
-      const nativeScripts = auxiliaryData.nativeScripts()
-      const plutusScripts = auxiliaryData.plutusScripts()
-
-      if (nativeScripts || plutusScripts) {
-        scripts = []
-
-        if (nativeScripts) {
-          for (let i = 0; i < nativeScripts.len(); i++) {
-            const script = nativeScripts.get(i)
-            if (!script) continue
-
-            try {
-              scripts.push({
-                scriptHash: script.hash().toHex(),
-                scriptBytes: Buffer.from(script.toBytes()).toString('hex'),
-              })
-            } catch {
-              // Ignore if extraction fails
-            }
-          }
-        }
-
-        if (plutusScripts) {
-          for (let i = 0; i < plutusScripts.len(); i++) {
-            const script = plutusScripts.get(i)
-            if (!script) continue
-
-            try {
-              scripts.push({
-                scriptHash: script.hash().toHex(),
-                scriptBytes: Buffer.from(script.toBytes()).toString('hex'),
-              })
-            } catch {
-              // Ignore if extraction fails
-            }
-          }
-        }
-
-        if (scripts.length === 0) {
-          scripts = null
-        }
+      const auxiliaryScripts = [
+        ...auxiliaryData.nativeScripts,
+        ...auxiliaryData.plutusScripts,
+      ]
+      if (auxiliaryScripts.length > 0) {
+        scripts = auxiliaryScripts.map((script) => ({
+          scriptHash: script.hashHex,
+          scriptBytes: script.cborHex,
+        }))
       }
-    })
+    }
   }
 
   return {
@@ -118,6 +56,63 @@ export const formatMetadata = (
     allLabels,
     scripts,
   }
+}
+
+const parseBasicConversionsJson = (value: string | null): unknown | null => {
+  if (value == null) return null
+  try {
+    return JSON.parse(preserveUnsafeIntegerLiterals(value)) as unknown
+  } catch {
+    return value
+  }
+}
+
+const preserveUnsafeIntegerLiterals = (json: string): string => {
+  let result = ''
+  let index = 0
+
+  while (index < json.length) {
+    const current = json[index]
+    if (current === '"') {
+      const start = index++
+      while (index < json.length) {
+        if (json[index] === '\\') {
+          index += 2
+          continue
+        }
+        if (json[index++] === '"') break
+      }
+      result += json.slice(start, index)
+      continue
+    }
+
+    if (current === '-' || (current != null && /[0-9]/.test(current))) {
+      const token = json
+        .slice(index)
+        .match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/)?.[0]
+      if (token) {
+        const isInteger = !/[.eE]/.test(token)
+        result +=
+          isInteger && isUnsafeInteger(token) ? JSON.stringify(token) : token
+        index += token.length
+        continue
+      }
+    }
+
+    result += current
+    index++
+  }
+
+  return result
+}
+
+const isUnsafeInteger = (value: string): boolean => {
+  const digits = value.replace(/^-?0*/, '') || '0'
+  const limit = '9007199254740991'
+  return (
+    digits.length > limit.length ||
+    (digits.length === limit.length && digits > limit)
+  )
 }
 
 const parseMsg = (msg: Array<string> | string): string => {

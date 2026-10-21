@@ -4,6 +4,14 @@ import {Balance, TokenId} from '@yoroi/types'
 import {getMinAmounts, withMinAmounts, withPrimaryToken} from './getMinAmounts'
 import {mocks as walletMocks} from './mocks/mocks/wallet'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressInfoFromAddress: jest.fn((address: string) => {
+    if (address === 'really-bad-address') throw new Error('invalid address')
+    return {bech32: address}
+  }),
+  minimumCoinForAssets: jest.fn(() => '1301620'),
+}))
+
 describe('withMinAmounts()', () => {
   it('should return the min amount quantity', async () => {
     const address =
@@ -117,6 +125,28 @@ describe('getMinAmounts()', () => {
     ).resolves.toEqual({
       [walletMocks.wallet.portfolioPrimaryTokenInfo.id]: '1301620',
     })
+
+    const {minimumCoinForAssets} = jest.requireMock(
+      '@yoroi-classic/cml-mobile-bridge',
+    )
+    expect(minimumCoinForAssets).toHaveBeenLastCalledWith(
+      address,
+      [
+        {
+          policyIdHex:
+            '698a6ea0ca99f315034072af31eaac6ec11fe8558d3f48e9775aab9d',
+          assetNameHex: '7444524950',
+          quantity: '12',
+        },
+        {
+          policyIdHex:
+            '29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c6',
+          assetNameHex: '4d494e',
+          quantity: '55',
+        },
+      ],
+      protocolParamsPlaceholder.coinsPerUtxoByte,
+    )
   })
 
   it('should throw an error', async () => {

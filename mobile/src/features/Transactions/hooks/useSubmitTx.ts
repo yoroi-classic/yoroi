@@ -1,23 +1,22 @@
 import {TxSubmissionStatus} from '@yoroi/api'
 import {YoroiWallet} from '@yoroi/cardano-wallet'
 import {delay} from '@yoroi/cardano-wallet'
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
 import {useMutationWithInvalidations} from '@yoroi/common'
 import {calculateTxId} from '@yoroi/tx'
 import {Branded} from '@yoroi/types'
 import {useWalletManagerSelector} from '@yoroi/wallet-manager'
 
-import * as CSL from '@emurgo/cross-csl-core'
 import {UseMutationOptions} from '@tanstack/react-query'
 
 import {FormattedTx} from '~/features/ReviewTx/common/types'
 import {logger} from '~/kernel/logger/logger'
 
 import {createOptimisticTransactionFromFormattedTx} from '../utils/createOptimisticTransaction'
+import {signedTransactionBase64} from './transaction-cbor'
 
-export const useSubmitTx = (
+export const useSubmitTx = <T extends Uint8Array = Uint8Array>(
   {wallet}: {wallet: YoroiWallet},
-  options: UseMutationOptions<TxSubmissionStatus, Error, CSL.Transaction> & {
+  options: UseMutationOptions<TxSubmissionStatus, Error, T> & {
     formattedTx?: FormattedTx
     memo?: string | null
   } = {},
@@ -29,21 +28,15 @@ export const useSubmitTx = (
   const mutation = useMutationWithInvalidations({
     mutationFn: async (signedTx) => {
       const serverStatus = await wallet.checkServerStatus()
-      const txBytes = signedTx.toBytes()
+      const txBytes = signedTx
       const base64 = Branded.asTransactionCborBase64(
-        Buffer.from(txBytes).toString('base64'),
+        signedTransactionBase64(txBytes),
       )
 
       let txId: string | undefined
       try {
         // Calculate txId before submission for better error tracking
-        txId = await CardanoMobileWrapped.cslScope(async (csl) => {
-          return await calculateTxId(
-            csl,
-            Buffer.from(txBytes).toString('hex'),
-            'hex',
-          )
-        })
+        txId = await calculateTxId(Buffer.from(txBytes).toString('hex'), 'hex')
         logger.debug('useSubmitTx: Submitting transaction', {
           txId,
           walletId: wallet.id,
@@ -108,13 +101,10 @@ export const useSubmitTx = (
 
       if (serverStatus.isQueueOnline) {
         if (!txId) {
-          txId = await CardanoMobileWrapped.cslScope(async (csl) => {
-            return await calculateTxId(
-              csl,
-              Buffer.from(txBytes).toString('hex'),
-              'hex',
-            )
-          })
+          txId = await calculateTxId(
+            Buffer.from(txBytes).toString('hex'),
+            'hex',
+          )
         }
 
         // Notify sync manager about transaction submission for fast polling
@@ -129,13 +119,10 @@ export const useSubmitTx = (
       // This ensures fast polling when queue comes back online
       if (!txId) {
         try {
-          txId = await CardanoMobileWrapped.cslScope(async (csl) => {
-            return await calculateTxId(
-              csl,
-              Buffer.from(txBytes).toString('hex'),
-              'hex',
-            )
-          })
+          txId = await calculateTxId(
+            Buffer.from(txBytes).toString('hex'),
+            'hex',
+          )
         } catch (error) {
           logger.error(
             'useSubmitTx: Failed to calculate txId after submission',

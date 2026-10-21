@@ -11,7 +11,6 @@ import {Balance, Branded} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 import {useWalletManager} from '@yoroi/wallet-manager'
 
-import {CredKind} from '@emurgo/cross-csl-core'
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
 import {
@@ -26,6 +25,7 @@ import {
 import {Address} from '~/common/Address/Address'
 import {TokenItem} from '~/common/TokenItem/TokenItem'
 import {WalletBalance} from '~/common/WalletBalance/WalletBalance'
+import {AddressCredentialKind} from '~/features/ReviewTx/common/address-kind'
 import {Operations, useOperations} from '~/features/ReviewTx/common/operations'
 import {
   calculateSendsAndReceives,
@@ -537,7 +537,7 @@ const MyWalletSection = ({
         address={address}
         textStyle={[a.body_2_md_regular, {color: p.text_gray_medium}]}
         rightAdornment={
-          ownedOutputs[0]?.addressKind === CredKind.Script ? (
+          ownedOutputs[0]?.addressKind === AddressCredentialKind.Script ? (
             <Icon.DigitalAsset size={24} color={p.el_gray_medium} />
           ) : undefined
         }
@@ -705,7 +705,7 @@ const OneExternalPartySection = ({
             style={{maxWidth: 260}}
             textStyle={[a.body_2_md_regular, ta.text_gray_medium]}
             rightAdornment={
-              output?.addressKind === CredKind.Script ? (
+              output?.addressKind === AddressCredentialKind.Script ? (
                 <Icon.DigitalAsset size={24} color={ta.el_gray_medium.color} />
               ) : undefined
             }
@@ -830,7 +830,7 @@ const ExternalPartyItem = ({
         address={address}
         textStyle={[a.body_2_md_regular, {color: p.text_gray_medium}]}
         rightAdornment={
-          output?.addressKind === CredKind.Script ? (
+          output?.addressKind === AddressCredentialKind.Script ? (
             <Icon.DigitalAsset size={24} color={p.el_gray_medium} />
           ) : undefined
         }

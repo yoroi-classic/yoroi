@@ -1,13 +1,11 @@
 import {Resolver} from '@yoroi/types'
 
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {AxiosRequestConfig} from 'axios'
 
 import {CnsApiConfig} from './api'
 import {CnsCardanoApi} from './cardano-api-maker'
 import {ParsedCNSUserRecord} from './types'
 import {
-  objToHex,
   parseAssocMapAsync,
   parsePlutusAddressToBech32,
   stringToHex,
@@ -47,7 +45,6 @@ export const resolveUserRecord = async (
   cnsName: string,
   cnsApiConfig: CnsApiConfig,
   cnsCardanoApi: CnsCardanoApi,
-  csl: WasmModuleProxy,
   fetcherConfig?: AxiosRequestConfig,
 ): Promise<ParsedCNSUserRecord> => {
   const assetName = stringToHex(cnsName)
@@ -74,15 +71,7 @@ export const resolveUserRecord = async (
   const virtualSubdomains = await parseAssocMapAsync(
     inlineDatum.fields[0], // validated with validateCNSUserRecord
     async (item) => {
-      const itemHex = objToHex(item, csl)
-
-      const bech32 = parsePlutusAddressToBech32(
-        itemHex,
-        csl,
-        cnsApiConfig.networkId,
-      )
-
-      return bech32
+      return parsePlutusAddressToBech32(item, cnsApiConfig.networkId)
     },
   )
 
@@ -99,7 +88,6 @@ export const resolveVirtualSubdomain = async (
   virtualDomain: string,
   cnsApiConfig: CnsApiConfig,
   cnsCardanoApi: CnsCardanoApi,
-  csl: WasmModuleProxy,
   fetcherConfig?: AxiosRequestConfig,
 ): Promise<string | undefined> => {
   const [target, cnsName, ext] = virtualDomain.split('.')
@@ -108,7 +96,6 @@ export const resolveVirtualSubdomain = async (
     `${cnsName}.${ext}`,
     cnsApiConfig,
     cnsCardanoApi,
-    csl,
     fetcherConfig,
   )
 
@@ -124,7 +111,6 @@ export const resolveAddress = async (
   cnsName: string,
   cnsApiConfig: CnsApiConfig,
   cnsCardanoApi: CnsCardanoApi,
-  csl: WasmModuleProxy,
   fetcherConfig?: AxiosRequestConfig,
 ): Promise<string> => {
   let address
@@ -137,7 +123,6 @@ export const resolveAddress = async (
       cnsName,
       cnsApiConfig,
       cnsCardanoApi,
-      csl,
       fetcherConfig,
     )
   }

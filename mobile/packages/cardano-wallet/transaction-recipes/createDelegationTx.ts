@@ -15,10 +15,7 @@ import {
 } from '@yoroi/tx'
 import {Address, Branded, KeyHash, Portfolio, Wallet} from '@yoroi/types'
 
-import type {PublicKey} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
-
-import {CardanoMobileWrapped} from '../wrappedCsl'
 
 export type CreateDelegationTxParams = {
   utxos: ModernUtxo[]
@@ -32,7 +29,7 @@ export type CreateDelegationTxParams = {
   networkId: number
   getAbsoluteSlotNumber: () => Promise<BigNumber>
   getChangeAddress: (addressMode: Wallet.AddressMode) => Address | string
-  getStakingKey: () => PublicKey
+  getStakingKeyHashHex: () => KeyHash
   getDelegationStatus: () => {isRegistered: boolean}
   poolId: KeyHash | string | undefined
   addressMode: Wallet.AddressMode
@@ -45,7 +42,7 @@ export async function createDelegationTx({
   networkId,
   getAbsoluteSlotNumber,
   getChangeAddress,
-  getStakingKey,
+  getStakingKeyHashHex,
   getDelegationStatus,
   poolId,
   addressMode,
@@ -57,7 +54,6 @@ export async function createDelegationTx({
       ? (changeAddressRaw as Address)
       : changeAddressRaw
   const registrationStatus = getDelegationStatus().isRegistered
-  const stakingKey = getStakingKey()
   const delegationType = registrationStatus
     ? RegistrationStatus.DelegateOnly
     : RegistrationStatus.RegisterAndDelegate
@@ -68,10 +64,7 @@ export async function createDelegationTx({
   )
 
   // Extract stake credential key hash from staking key (done once outside retry loop)
-  const stakeKeyHashHex = CardanoMobileWrapped.cslScope(() => {
-    const keyHash = stakingKey.hash()
-    return keyHash.toHex()
-  })
+  const stakeKeyHashHex = getStakingKeyHashHex()
 
   // Helper function to calculate required ADA based on fee estimate
   // Must account for: fee (and deposit if registering) + minimum UTXO for change output
@@ -167,7 +160,7 @@ export async function createDelegationTx({
       // Add only selected UTXOs as inputs
       builderState = addInputs(builderState, selectedUtxos)
 
-      // Add certificates based on delegation type (store as data, not CSL objects)
+      // Add certificates based on delegation type as plain recipe data.
       if (delegationType === RegistrationStatus.RegisterAndDelegate) {
         // Register staking key first
         builderState = addCertificate(builderState, {

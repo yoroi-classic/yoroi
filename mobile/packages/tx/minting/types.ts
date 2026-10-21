@@ -3,12 +3,23 @@
  */
 export type MintingScriptType = 'native' | 'plutus'
 
-/**
- * Minting script (hex encoded)
- */
-export type MintingScript = {
-  type: MintingScriptType
-  script: string // Script hex (Native Script or Plutus Script CBOR)
+export type MintingScript =
+  | {type: 'native'; script: string; plutusVersion?: never}
+  | {
+      type: 'plutus'
+      script: string
+      plutusVersion: 'plutusV1' | 'plutusV2' | 'plutusV3'
+    }
+
+export type MintReferenceScript = {
+  txHash: string
+  txIndex: number
+  output: {
+    address: string
+    lovelace: string
+    assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
+    scriptCborHex: string
+  }
 }
 
 /**
@@ -22,16 +33,25 @@ export type MintAsset = {
 /**
  * Mint action for a policy
  */
-export type MintAction = {
+type MintActionBase = {
   policyId: string // Policy ID (script hash)
   assets: MintAsset[] // Assets to mint under this policy
-  script: MintingScript // Minting policy script
-  redeemer?: string // Redeemer hex (for Plutus scripts)
-  referenceScript?: {
-    txHash: string
-    txIndex: number
-  } // Reference script UTXO (if using reference script)
+  referenceScript?: MintReferenceScript
 }
+
+export type MintAction = MintActionBase &
+  (
+    | {
+        script: Extract<MintingScript, {type: 'native'}>
+        redeemer?: never
+        redeemerExUnits?: never
+      }
+    | {
+        script: Extract<MintingScript, {type: 'plutus'}>
+        redeemer: string
+        redeemerExUnits: {mem: string; steps: string}
+      }
+  )
 
 /**
  * Minting result

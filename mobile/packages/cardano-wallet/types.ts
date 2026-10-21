@@ -15,11 +15,9 @@ import {
 import {
   Addressing as AddressingType,
   CardanoAddressedUtxo as CardanoAddressedUtxoType,
-  SignedTx as SignedTxType,
   StakingKeyBalances as StakingKeyBalancesType,
   TokenEntry as TokenEntryType,
   UnsignedTransaction,
-  UnsignedTx as UnsignedTxType,
 } from '@yoroi/tx'
 import type {TransactionMetadata as TxMetadataFromTypes} from '@yoroi/types'
 import {
@@ -36,8 +34,6 @@ import {
 } from '@yoroi/types'
 
 import {WalletChecksum as WalletChecksumType} from '@emurgo/cip4-js'
-import * as CoreTypes from '@emurgo/cross-csl-core'
-import * as CSL from '@emurgo/cross-csl-core'
 
 import {AddressChain} from './account-manager/account-manager'
 import {ReadOnlyAddressChain} from './account-manager/read-only-account-manager'
@@ -117,17 +113,15 @@ export type YoroiWallet = {
 
   signRawTx(
     txHex: string,
-    pKeys: CoreTypes.PrivateKey[],
+    rootKeyHex: string,
+    signerPaths: number[][],
   ): Promise<Uint8Array | undefined>
 
   getAddressing(address: string): {path: number[]; startLevel: number}
   getManualAddresses(): Promise<Array<ManualAddress>>
 
   // Sending
-  signTx(
-    signRequest: UnsignedTransaction,
-    rootKey: string,
-  ): Promise<CSL.Transaction>
+  signTx(signRequest: UnsignedTransaction, rootKey: string): Promise<Uint8Array>
   submitTransaction(signedTx: TransactionCborBase64): Promise<void>
 
   // Ledger
@@ -135,7 +129,7 @@ export type YoroiWallet = {
     request: UnsignedTransaction,
     useUSB: boolean,
     hwDeviceInfo: HW.DeviceInfo,
-  ): Promise<CSL.Transaction>
+  ): Promise<Uint8Array>
   ledgerSupportsCIP36(
     useUSB: boolean,
     hwDeviceInfo: HW.DeviceInfo,
@@ -205,7 +199,7 @@ export type YoroiWallet = {
   checkServerStatus(): Promise<ServerStatus>
 
   // CIP36 Payment Address
-  getFirstPaymentAddress(): CoreTypes.BaseAddress
+  getFirstPaymentAddress(): Address
 
   // Backend-zero wallet registration
   getWalletContext?():
@@ -294,28 +288,17 @@ const yoroiWalletKeys: Array<keyof YoroiWallet> = [
 export namespace CardanoTypes {
   export type TxMetadata = TxMetadataFromTypes
   export type CardanoAddressedUtxo = CardanoAddressedUtxoType
-  export type SignedTx = SignedTxType
-  export type UnsignedTx = UnsignedTxType
+  export type SignedTx = Uint8Array
+  export type UnsignedTx = UnsignedTransaction
   export type MultiTokenValue = Balance.Amounts // Use Balance.Amounts directly
   export type StakingKeyBalances = StakingKeyBalancesType
   export type WalletChecksum = WalletChecksumType
 
-  export type Address = CoreTypes.Address
   export type Addressing = AddressingType
-  export type AssetName = CoreTypes.AssetName
-  export type BigNum = CoreTypes.BigNum
-  export type Bip32PrivateKey = CoreTypes.Bip32PrivateKey
-  export type Bip32PublicKey = CoreTypes.Bip32PublicKey
-  export type Certificate = CoreTypes.Certificate
-  export type Ed25519KeyHash = CoreTypes.Ed25519KeyHash
-  export type LinearFee = CoreTypes.LinearFee
-  export type MultiAsset = CoreTypes.MultiAsset
-  export type PublicKey = CoreTypes.PublicKey
-  export type RewardAddress = CoreTypes.RewardAddress
-  export type ScriptHash = CoreTypes.ScriptHash
-  export type StakeCredential = CoreTypes.Credential
-  export type TransactionBuilder = CoreTypes.TransactionBuilder
-  export type Value = CoreTypes.Value
+  export type PublicKey = {
+    toHex(): string
+    hash(): {toHex(): string; toBytes(): Uint8Array}
+  }
   export type TokenEntry = TokenEntryType
 }
 

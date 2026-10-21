@@ -9,12 +9,12 @@ import 'react-native-get-random-values'
 // @ts-ignore
 import QuickCrypto from 'react-native-quick-crypto'
 
-// CSL encryption constants
-const CSL_SALT_SIZE = 16 // bytes
-const CSL_NONCE_SIZE = 12 // bytes
+const LEGACY_SALT_SIZE = 32 // bytes; CSL EMIP-3 format
+const LEGACY_NONCE_SIZE = 12 // bytes
+const LEGACY_PBKDF_ITERATIONS = 19_162
 
 // Standard ChaCha20-Poly1305 constants
-const STANDARD_PBKDF_ITERATIONS = 12983 // Same as CSL for compatibility
+const STANDARD_PBKDF_ITERATIONS = 12983
 const STANDARD_SALT_SIZE = 16 // bytes
 const STANDARD_NONCE_SIZE = 12 // bytes
 const STANDARD_KEY_SIZE = 32 // bytes
@@ -24,25 +24,11 @@ const STANDARD_DIGEST = 'sha512'
 export type WalletLinkEncryptionAlgorithm =
   | 'plain'
   | 'chacha20poly1305' // Standard format: salt + nonce + ciphertext + tag
-  | 'chacha20poly1305-csl' // CSL format: ciphertext + tag + nonce + salt (legacy, decryption only)
-
-export type CSLEncryptFunction = (
-  passwordHex: string,
-  saltHex: string,
-  nonceHex: string,
-  dataHex: string,
-) => string
-
-export type CSLDecryptFunction = (
-  passwordHex: string,
-  encryptedDataHex: string,
-) => string
+  | 'chacha20poly1305-csl' // CSL EMIP-3 format (legacy, decryption only)
 
 export type RandomHexStringFunction = (length: number) => Hex
 
 export type WalletLinkEncryptionOptions = {
-  cslEncrypt?: CSLEncryptFunction
-  cslDecrypt?: CSLDecryptFunction
   randomHexString?: RandomHexStringFunction
 }
 
@@ -51,7 +37,7 @@ export type WalletLinkEncryptionOptions = {
  * @param data - Plaintext data to encrypt (hex string)
  * @param password - Encryption password
  * @param algorithm - Encryption algorithm to use
- * @param options - Optional CSL functions and utilities (required for 'csl' algorithm)
+ * @param options - Optional random-byte source for deterministic callers
  * @returns Encrypted data as hex string
  */
 export const encryptWalletData = (
@@ -65,19 +51,7 @@ export const encryptWalletData = (
   }
 
   if (algorithm === 'chacha20poly1305-csl') {
-    if (!options?.cslEncrypt || !options?.randomHexString) {
-      throw new Error(
-        'CSL encrypt function and randomHexString are required for CSL format encryption',
-      )
-    }
-    // Use CSL's encrypt_with_password function
-    // CSL format: [Encrypted Data] + [Tag (16 bytes)] + [Nonce (12 bytes)] + [Salt (16 bytes)]
-    // CSL expects: password (hex), salt (hex), nonce (hex), data (hex)
-    const salt = options.randomHexString(CSL_SALT_SIZE * 2).value // 32 hex chars = 16 bytes
-    const nonce = options.randomHexString(CSL_NONCE_SIZE * 2).value // 24 hex chars = 12 bytes
-    const passwordHex = hex.fromUtf8(password).value
-
-    return options.cslEncrypt(passwordHex, salt, nonce, data)
+    throw new Error('Legacy wallet-link encryption is decrypt-only')
   }
 
   if (algorithm === 'chacha20poly1305') {
@@ -132,32 +106,55 @@ export const encryptWalletData = (
  * @param encryptedData - Encrypted data as hex string
  * @param password - Decryption password
  * @param algorithm - Encryption algorithm used
- * @param options - Optional CSL functions (required for 'csl' algorithm)
+ * @param options - Reserved compatibility options
  * @returns Decrypted data as hex string
  */
 export const decryptWalletData = (
   encryptedData: string,
   password: string,
   algorithm: WalletLinkEncryptionAlgorithm,
-  options?: WalletLinkEncryptionOptions,
+  _options?: WalletLinkEncryptionOptions,
 ): string => {
   if (algorithm === 'plain') {
     return encryptedData
   }
 
   if (algorithm === 'chacha20poly1305-csl') {
-    if (!options?.cslDecrypt) {
-      throw new Error(
-        'CSL decrypt function is required for CSL format decryption',
-      )
-    }
-    // Use CSL's decrypt_with_password function
-    // CSL format: [Encrypted Data] + [Tag (16 bytes)] + [Nonce (12 bytes)] + [Salt (16 bytes)]
     try {
-      const passwordHex = hex.fromUtf8(password).value
-      return options.cslDecrypt(passwordHex, encryptedData)
+      const legacyBytes = Buffer.from(encryptedData, 'hex')
+      const metadataSize =
+        LEGACY_SALT_SIZE + LEGACY_NONCE_SIZE + STANDARD_TAG_SIZE
+      if (legacyBytes.length <= metadataSize) {
+        throw new Error('Legacy ciphertext is too short')
+      }
+
+      // CSL EMIP-3 wire order is salt + nonce + tag + ciphertext.
+      const salt = legacyBytes.slice(0, LEGACY_SALT_SIZE)
+      const nonceStart = LEGACY_SALT_SIZE
+      const nonce = legacyBytes.slice(
+        nonceStart,
+        nonceStart + LEGACY_NONCE_SIZE,
+      )
+      const tagStart = nonceStart + LEGACY_NONCE_SIZE
+      const tag = legacyBytes.slice(tagStart, tagStart + STANDARD_TAG_SIZE)
+      const ciphertext = legacyBytes.slice(metadataSize)
+      const keyBuffer = QuickCrypto.pbkdf2Sync(
+        Buffer.from(password, 'utf8'),
+        salt,
+        LEGACY_PBKDF_ITERATIONS,
+        STANDARD_KEY_SIZE,
+        STANDARD_DIGEST,
+      )
+      const cipher = chacha20poly1305(
+        new Uint8Array(keyBuffer),
+        new Uint8Array(nonce),
+      )
+      const ciphertextWithTag = Buffer.concat([ciphertext, tag])
+      return Buffer.from(
+        cipher.decrypt(new Uint8Array(ciphertextWithTag)),
+      ).toString('hex')
     } catch (error) {
-      getLogger().debug('ChaCha20-Poly1305 (CSL format) decryption failed', {
+      getLogger().debug('Legacy wallet-link decryption failed', {
         origin: 'decryptWalletData',
       })
       throw new App.Errors.WrongPassword()

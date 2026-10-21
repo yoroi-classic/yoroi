@@ -1,9 +1,9 @@
+import type {GovernanceCertificate} from '@yoroi/staking'
 import {
   CertificateKind,
   ModernUtxo,
   NoOutputsError,
   NotEnoughMoneyToSendError,
-  TransactionCertificate,
   addCertificate,
   addInputs,
   buildRecipeTransaction,
@@ -14,18 +14,10 @@ import {
   setChangeAddress,
   setTTLWithBuffer,
 } from '@yoroi/tx'
-import {
-  Address,
-  App,
-  Branded,
-  KeyHash,
-  Portfolio,
-  ScriptHash,
-  Wallet,
-} from '@yoroi/types'
+import {Address, App, Branded, Portfolio, Wallet} from '@yoroi/types'
 
-import type {CardanoTypes} from '../types'
-import {CardanoMobileWrapped} from '../wrappedCsl'
+/** Plain certificate data accepted from the staking manager. */
+export type GovernanceCertificateInput = GovernanceCertificate
 
 export type CreateUnsignedGovernanceTxParams = {
   utxos: ModernUtxo[]
@@ -39,7 +31,7 @@ export type CreateUnsignedGovernanceTxParams = {
   networkId: number
   getAbsoluteSlotNumber: () => Promise<BigNumber>
   getChangeAddress: (addressMode: Wallet.AddressMode) => Address | string
-  votingCertificates: CardanoTypes.Certificate[]
+  votingCertificates: GovernanceCertificateInput[]
   addressMode: Wallet.AddressMode
 }
 
@@ -65,16 +57,10 @@ export async function createUnsignedGovernanceTx({
     networkId,
   )
 
-  // Check if there's a StakeRegistration certificate (requires keyDeposit)
-  const hasStakeRegistration = CardanoMobileWrapped.cslScope(() => {
-    for (const cert of votingCertificates) {
-      const stakeReg = cert.asStakeRegistration()
-      if (stakeReg) {
-        return true
-      }
-    }
-    return false
-  })
+  // Check if there's a StakeRegistration certificate (requires keyDeposit).
+  const hasStakeRegistration = votingCertificates.some(
+    ({kind}) => kind === CertificateKind.StakeRegistration,
+  )
 
   // Estimate fee for governance transaction
   // Governance transactions are typically small (~400-600 bytes)
@@ -169,112 +155,8 @@ export async function createUnsignedGovernanceTx({
     // Add only selected UTXOs as inputs
     builderState = addInputs(builderState, selectedUtxos)
 
-    // Convert CSL Certificate objects to certificate data to avoid mixing CSL instances
-    // Extract certificate data from CSL objects within a CSL scope
-    const certificateDataList: TransactionCertificate[] =
-      CardanoMobileWrapped.cslScope(() => {
-        const result: TransactionCertificate[] = []
-        // DRepKind enum values from @emurgo/cross-csl-core
-        const DRepKind = {
-          KeyHash: 0,
-          ScriptHash: 1,
-          AlwaysAbstain: 2,
-          AlwaysNoConfidence: 3,
-        }
-        for (const cert of votingCertificates) {
-          // Handle VoteDelegation certificates
-          const voteDeleg = cert.asVoteDelegation()
-          if (voteDeleg) {
-            const stakeCred = voteDeleg.stakeCredential()
-            const keyHash = stakeCred.toKeyhash()
-            if (!keyHash) {
-              throw new Error('Vote delegation certificate has no key hash')
-            }
-            const drep = voteDeleg.drep()
-            const drepKind = drep.kind()
-            // Handle different DRep types using kind() method
-            let drepValue:
-              | {KeyHash: KeyHash}
-              | {ScriptHash: ScriptHash}
-              | 'AlwaysAbstain'
-              | 'AlwaysNoConfidence'
-            if (drepKind === DRepKind.AlwaysAbstain) {
-              drepValue = 'AlwaysAbstain'
-            } else if (drepKind === DRepKind.AlwaysNoConfidence) {
-              drepValue = 'AlwaysNoConfidence'
-            } else if (drepKind === DRepKind.KeyHash) {
-              const drepKeyHash = drep.toKeyHash()
-              if (drepKeyHash) {
-                drepValue = {KeyHash: drepKeyHash.toHex() as KeyHash}
-              } else {
-                throw new Error(
-                  'Vote delegation certificate DRep KeyHash is invalid',
-                )
-              }
-            } else if (drepKind === DRepKind.ScriptHash) {
-              const drepScriptHash = drep.toScriptHash()
-              if (drepScriptHash) {
-                drepValue = {ScriptHash: drepScriptHash.toHex() as ScriptHash}
-              } else {
-                throw new Error(
-                  'Vote delegation certificate DRep ScriptHash is invalid',
-                )
-              }
-            } else {
-              throw new Error(
-                `Vote delegation certificate DRep has unknown kind: ${drepKind}`,
-              )
-            }
-            result.push({
-              kind: CertificateKind.VoteDelegation,
-              stakeCredentialKeyHashHex: keyHash.toHex() as KeyHash,
-              drep: drepValue,
-            })
-            continue
-          }
-
-          // Handle StakeRegistration certificates (needed when registering staking key)
-          const stakeReg = cert.asStakeRegistration()
-          if (stakeReg) {
-            const stakeCred = stakeReg.stakeCredential()
-            const keyHash = stakeCred.toKeyhash()
-            if (!keyHash) {
-              throw new Error('Stake registration certificate has no key hash')
-            }
-            result.push({
-              kind: CertificateKind.StakeRegistration,
-              stakeCredentialKeyHashHex: Branded.asKeyHash(keyHash.toHex()),
-            })
-            continue
-          }
-
-          // Handle StakeDeregistration certificates (if needed)
-          const stakeDereg = cert.asStakeDeregistration()
-          if (stakeDereg) {
-            const stakeCred = stakeDereg.stakeCredential()
-            const keyHash = stakeCred.toKeyhash()
-            if (!keyHash) {
-              throw new Error(
-                'Stake deregistration certificate has no key hash',
-              )
-            }
-            result.push({
-              kind: CertificateKind.StakeDeregistration,
-              stakeCredentialKeyHashHex: Branded.asKeyHash(keyHash.toHex()),
-            })
-            continue
-          }
-
-          // If none of the supported certificate types match, throw an error
-          throw new Error(
-            `Unsupported certificate type in governance transaction: ${cert}`,
-          )
-        }
-        return result
-      })
-
-    // Add voting certificates as data (not CSL objects)
-    for (const certData of certificateDataList) {
+    // Add the plain governance certificate values directly to the builder.
+    for (const certData of votingCertificates) {
       builderState = addCertificate(builderState, certData)
     }
 

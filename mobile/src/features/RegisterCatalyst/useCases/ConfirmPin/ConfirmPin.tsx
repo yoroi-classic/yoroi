@@ -45,6 +45,7 @@ export const ConfirmPin = () => {
           catalystKeyHex,
           supportsCIP36,
           addressMode: meta.addressMode,
+          implementation: meta.implementation,
         })
       }
 
@@ -350,7 +351,7 @@ const useGenerateVotingKeys = (
 ) => {
   const mutation = useMutation({
     mutationFn: async (pin: string) => {
-      const catalystKey = generatePrivateKeyForCatalyst().toRawKey().asBytes()
+      const catalystKey = generatePrivateKeyForCatalyst()
 
       const catalystKeyHex = Buffer.from(catalystKey).toString('hex')
 

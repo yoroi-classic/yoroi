@@ -1,7 +1,7 @@
 import {atoms as a, useTheme} from '@yoroi/theme'
 
 import * as React from 'react'
-import {TouchableOpacity, View} from 'react-native'
+import {TouchableOpacity, View, useColorScheme} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {useStrings} from '~/kernel/i18n/useStrings'
@@ -9,7 +9,8 @@ import {Icon} from '~/ui/Icon'
 
 export const LanguageWarning = ({enabled}: {enabled?: boolean}) => {
   const strings = useStrings()
-  const {atoms: ta, basePalette} = useTheme()
+  const {atoms: ta} = useTheme()
+  const colorScheme = useColorScheme()
   const [dismissed, setDismissed] = React.useState(false)
 
   if (!enabled) return null
@@ -30,8 +31,11 @@ export const LanguageWarning = ({enabled}: {enabled?: boolean}) => {
 
       <Markdown
         value={contributors}
-        colorScheme={basePalette}
+        colorScheme={colorScheme}
         backgroundColor={ta.bg_color_max.backgroundColor}
+        flatListProps={{
+          style: {backgroundColor: ta.bg_color_max.backgroundColor},
+        }}
         styles={{
           paragraph: ta.bg_color_min,
           strong: {

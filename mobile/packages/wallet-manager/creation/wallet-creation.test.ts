@@ -4,6 +4,11 @@ import {getMasterKeyFromMnemonic} from '@yoroi/cardano-wallet'
 import {createTokenManagerMock} from '@yoroi/portfolio'
 import {Chain, Wallet} from '@yoroi/types'
 
+import {
+  deriveAccountPublicKeyHex,
+  walletRootKeyHexFromEntropy,
+} from '@yoroi-classic/cml-mobile-bridge'
+
 import {initializeWalletFactories} from '../network-manager/get-wallet-factory'
 import {
   createWalletFromMnemonic,
@@ -54,6 +59,13 @@ describe('wallet-creation', () => {
 
   const testMnemonic =
     'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+
+  beforeEach(() => {
+    // Wallet metadata tests don't exercise key derivation; keep the native
+    // bridge boundary explicit and use a deterministic test root key.
+    jest.mocked(walletRootKeyHexFromEntropy).mockReturnValue('ab'.repeat(96))
+    jest.mocked(deriveAccountPublicKeyHex).mockReturnValue('cd'.repeat(64))
+  })
 
   const mockMakeWalletEncryptedStorage = jest.fn().mockReturnValue({
     xpriv: {

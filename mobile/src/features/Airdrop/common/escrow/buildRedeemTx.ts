@@ -1,23 +1,14 @@
+import {toAssetNameHex, toPolicyId} from '@yoroi/api'
 import type {CardanoHaskellConfig} from '@yoroi/tx'
-import {
-  addCollateralInput,
-  addInput,
-  addOutput,
-  addScriptInput,
-  buildTransaction,
-  createTransactionBuilder,
-  setChangeAddress,
-  setValidityInterval,
-} from '@yoroi/tx'
 import type {ModernUtxo} from '@yoroi/tx'
-import type {Balance, DatumCbor, Portfolio} from '@yoroi/types'
+import type {Balance, Portfolio} from '@yoroi/types'
+
+import {buildEscrowRedeemTransactionCml} from '@yoroi-classic/cml-mobile-bridge'
 
 import {logger} from '~/kernel/logger/logger'
 
 import {
   ESCROW_SCRIPT_HASH,
-  ESCROW_SCRIPT_SIZE,
-  KNOWN_REFERENCE_SCRIPT_UTXOS,
   NIGHT_ASSET_NAME_HEX,
   NIGHT_POLICY_ID,
   SHELLEY_SLOT_CONFIG,
@@ -56,13 +47,31 @@ function escrowToModernUtxo(
     txHash: escrowUtxo.txHash,
     txIndex: escrowUtxo.txIndex,
     balance,
+    inlineDatumCborHex: escrowUtxo.datumHex,
     toTransactionUnspentOutputHex: () => {
       throw new Error('Not needed for script inputs')
     },
-    toTransactionUnspentOutput: () => {
-      throw new Error('Not needed for script inputs')
-    },
   } as unknown as ModernUtxo
+}
+
+function toCmlUtxo(utxo: ModernUtxo, primaryTokenId: Portfolio.Token.Id) {
+  const assets = Object.entries(utxo.balance)
+    .filter(([tokenId]) => tokenId !== primaryTokenId)
+    .map(([tokenId, quantity]) => ({
+      policyIdHex: toPolicyId(tokenId as Portfolio.Token.Id),
+      assetNameHex: toAssetNameHex(tokenId as Portfolio.Token.Id),
+      quantity,
+    }))
+  return {
+    txHashHex: utxo.txHash,
+    index: utxo.txIndex.toString(),
+    address: utxo.receiver,
+    lovelace: utxo.balance[primaryTokenId] ?? '0',
+    assets,
+    ...(utxo.inlineDatumCborHex
+      ? {inlineDatumCborHex: utxo.inlineDatumCborHex}
+      : {}),
+  }
 }
 
 export type BuildEscrowRedeemTxParams = {
@@ -113,73 +122,116 @@ export async function buildEscrowRedeemTx(
     remainingNight: remainingNight.toString(),
   })
 
-  let state = createTransactionBuilder()
-
-  // Script input: the escrow UTxO being spent
   const escrowModernUtxo = escrowToModernUtxo(escrowUtxo, primaryTokenId)
-  const refScriptUtxo =
-    KNOWN_REFERENCE_SCRIPT_UTXOS[1] ?? KNOWN_REFERENCE_SCRIPT_UTXOS[0]!
-
-  state = addScriptInput(state, {
-    utxo: escrowModernUtxo,
-    scriptHash: ESCROW_SCRIPT_HASH,
-    redeemer: 'd87980', // Constr(0, [])
-    redeemerExUnits: {mem: '900000', steps: '250000000'},
-    referenceScriptUtxo: {
-      txHash: refScriptUtxo.txHash,
-      txIndex: refScriptUtxo.txIndex,
-      langVersion: 'v3',
-      scriptSize: ESCROW_SCRIPT_SIZE,
-    },
-    datumSource: 'inline',
-  })
-
-  // Funding inputs (ADA for fees)
-  for (const utxo of fundingUtxos) {
-    state = addInput(state, utxo)
-  }
+  const refScriptUtxo = escrowUtxo.referenceScriptOutput
 
   // Output 1: NIGHT to eligible address
   const eligibleOutputAmounts: Balance.Amounts = {
     [primaryTokenId]: '1176630' as Balance.Quantity, // min ADA for token output
     [NIGHT_TOKEN_ID]: nightPerThaw as Balance.Quantity,
   }
-  state = addOutput(state, eligibleAddress, eligibleOutputAmounts)
+  const outputs: Parameters<
+    typeof buildEscrowRedeemTransactionCml
+  >[0]['outputs'] = [
+    {
+      address: eligibleAddress,
+      lovelace: String(eligibleOutputAmounts[primaryTokenId] ?? '0'),
+      assets: [
+        {
+          policyIdHex: toPolicyId(NIGHT_TOKEN_ID),
+          assetNameHex: toAssetNameHex(NIGHT_TOKEN_ID),
+          quantity: String(eligibleOutputAmounts[NIGHT_TOKEN_ID] ?? '0'),
+        },
+      ],
+    },
+  ]
 
   // Output 2: Escrow change (if thaws remaining > 1)
   if (datum.thawsRemaining > 1n) {
-    const updatedDatumHex = buildUpdatedDatumHex(datum)
+    const updatedDatumHex = buildUpdatedDatumHex(escrowUtxo.datumHex)
     const escrowChangeAmounts: Balance.Amounts = {
       [primaryTokenId]: escrowUtxo.adaAmount as Balance.Quantity,
       [NIGHT_TOKEN_ID]: remainingNight.toString() as Balance.Quantity,
     }
-    state = addOutput(state, escrowUtxo.address, escrowChangeAmounts, {
-      data: updatedDatumHex as DatumCbor,
+    outputs.push({
+      address: escrowUtxo.address,
+      lovelace: String(escrowChangeAmounts[primaryTokenId] ?? '0'),
+      assets: [
+        {
+          policyIdHex: toPolicyId(NIGHT_TOKEN_ID),
+          assetNameHex: toAssetNameHex(NIGHT_TOKEN_ID),
+          quantity: String(escrowChangeAmounts[NIGHT_TOKEN_ID] ?? '0'),
+        },
+      ],
+      datumCborHex: updatedDatumHex,
     })
   }
-
-  // Collateral
-  state = addCollateralInput(state, collateralUtxo)
 
   // Validity interval: must be after thaw date, within reasonable TTL
   const thawSlot = msToSlot(datum.nextThawTime)
   const invalidBefore = Math.max(thawSlot, currentSlot)
   const invalidAfter = currentSlot + 7200 // ~2 hours TTL
-  state = setValidityInterval(state, invalidBefore, invalidAfter)
-
-  // Change address
-  state = setChangeAddress(state, changeAddress)
-
-  // Build
-  const result = await buildTransaction(state, protocolParams, primaryTokenId)
-
-  if (!result.cbor) {
-    throw new Error('Failed to build escrow redeem transaction')
+  const refScriptCoinsPerByte = protocolParams.refScriptCoinsPerByte
+  const refScriptTierStepBytes = protocolParams.refScriptTierStepBytes
+  const refScriptMultiplier = protocolParams.refScriptMultiplier
+  const plutusV3CostModel = protocolParams.plutusV3CostModel
+  const scriptExecutionPrices = protocolParams.scriptExecutionPrices
+  if (
+    !refScriptCoinsPerByte ||
+    !refScriptTierStepBytes ||
+    !refScriptMultiplier ||
+    !plutusV3CostModel ||
+    !scriptExecutionPrices
+  ) {
+    throw new Error(
+      'Missing reference-script fee, execution-unit prices, or Plutus V3 cost model parameters',
+    )
   }
 
-  logger.info('buildEscrowRedeemTx: Transaction built successfully', {
-    cborLength: result.cbor.length,
+  const {cborHex} = buildEscrowRedeemTransactionCml({
+    scriptInput: toCmlUtxo(escrowModernUtxo, primaryTokenId),
+    additionalScriptInputs: [],
+    referenceScriptInput: {
+      txHashHex: refScriptUtxo.txHash,
+      index: refScriptUtxo.txIndex.toString(),
+      address: escrowUtxo.referenceScriptOutput.address,
+      lovelace: escrowUtxo.referenceScriptOutput.value,
+      assets: escrowUtxo.referenceScriptOutput.assets,
+    },
+    referenceInputs: [],
+    referenceScriptCborHex:
+      escrowUtxo.referenceScriptOutput.referenceScriptCborHex,
+    referenceScriptSize:
+      escrowUtxo.referenceScriptOutput.referenceScriptSize.toString(),
+    fundingInputs: fundingUtxos.map((utxo) => toCmlUtxo(utxo, primaryTokenId)),
+    collateralInput: toCmlUtxo(collateralUtxo, primaryTokenId),
+    outputs,
+    changeAddress,
+    scriptHashHex: ESCROW_SCRIPT_HASH,
+    redeemerCborHex: 'd87980',
+    redeemerMem: '900000',
+    redeemerSteps: '250000000',
+    validityStart: invalidBefore.toString(),
+    ttl: invalidAfter.toString(),
+    feeCoefficient: protocolParams.linearFee.coefficient,
+    feeConstant: protocolParams.linearFee.constant,
+    coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+    keyDeposit: protocolParams.keyDeposit,
+    poolDeposit: protocolParams.poolDeposit,
+    maxValueSize: '5000',
+    maxTxSize: '16384',
+    collateralPercentage: protocolParams.collateralPercentage ?? '150',
+    refScriptCoinsPerByte,
+    refScriptTierStepBytes,
+    refScriptMultiplier,
+    exUnitPricesMemory: scriptExecutionPrices.memory,
+    exUnitPricesSteps: scriptExecutionPrices.cpu,
+    plutusV3CostModel,
   })
 
-  return result.cbor
+  logger.info('buildEscrowRedeemTx: Transaction built successfully', {
+    cborLength: cborHex.length,
+  })
+
+  return cborHex
 }

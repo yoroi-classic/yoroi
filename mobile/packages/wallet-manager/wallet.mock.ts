@@ -1,6 +1,6 @@
 import {cardanoConfig, protocolParamsPlaceholder} from '@yoroi/blockchains'
 import {
-  CardanoMobile,
+  type CardanoTypes,
   type ManualAddress,
   YoroiWallet,
 } from '@yoroi/cardano-wallet'
@@ -24,6 +24,10 @@ import {
   Wallet,
 } from '@yoroi/types'
 
+import {
+  derivePublicKeyFromAccountPathHex,
+  publicKeyHashHexFromRawHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {noop} from 'lodash'
 import {Observable, Subscription} from 'rxjs'
 
@@ -296,19 +300,21 @@ const wallet: YoroiWallet = {
   getStakingKey: () => {
     const pubKeyHex =
       '8e4e2f11b6ac2a269913286e26339779ab8767579d18d173cdd324929d94e2c43e3ec212cc8a36ed9860579dfe1e3ef4d6de778c5dbdd981623b48727cd96247'
-    const accountPubKey = CardanoMobile.Bip32PublicKey.fromBytes(
-      Buffer.from(pubKeyHex, 'hex'),
-    )
-    return accountPubKey
-      .derive(
-        cardanoConfig.implementations['cardano-cip1852'].features.staking
-          .derivation.role,
-      )
-      .derive(
-        cardanoConfig.implementations['cardano-cip1852'].features.staking
-          .derivation.index,
-      )
-      .toRawKey()
+    const derivation =
+      cardanoConfig.implementations['cardano-cip1852'].features.staking
+        .derivation
+    const rawPublicKeyHex = derivePublicKeyFromAccountPathHex(pubKeyHex, [
+      derivation.role,
+      derivation.index,
+    ])
+    const keyHashHex = publicKeyHashHexFromRawHex(rawPublicKeyHex)
+    return {
+      toHex: () => rawPublicKeyHex,
+      hash: () => ({
+        toHex: () => keyHashHex,
+        toBytes: () => Uint8Array.from(Buffer.from(keyHashHex, 'hex')),
+      }),
+    } as unknown as CardanoTypes.PublicKey
   },
   signRawTx(): Promise<Uint8Array | undefined> {
     throw new Error('not implemented: signRawTx')

@@ -1,93 +1,75 @@
 import {Address} from '@yoroi/types'
 
-import {CardanoTypes} from '../types'
-import {CardanoMobile} from '../wrappedCsl'
+import {addressInfoFromAddress} from '@yoroi-classic/cml-mobile-bridge'
+import {Buffer} from 'buffer'
 
-/**
- * @description Get the spending keyHash, resolves null for PointerAddress & EnterpriseAddress missing yoroi-lib impl
- *
- * @param {Address} address wasm address
- * @returns Promise<CardanoTypes.Ed25519KeyHash | undefined> null for legacy/other addresses and undefined for scriptHash
- */
-function getSpendingKeyHash(
-  address: CardanoTypes.Address,
-): CardanoTypes.Ed25519KeyHash | null | undefined {
-  const baseAddr = CardanoMobile.BaseAddress.fromAddress(address)
-  if (baseAddr?.hasValue()) return baseAddr.paymentCred().toKeyhash()
-
-  const rewardAddr = CardanoMobile.RewardAddress.fromAddress(address)
-  if (rewardAddr?.hasValue()) return rewardAddr.paymentCred().toKeyhash()
-
-  return null
+type ParsedAddress = {
+  hex: string
+  networkId: number
+  bech32: string | null
+  isValid: true
 }
 
-/**
- * @description Get the staking keyHash of a BaseAddress
- *
- * @param {Address} address
- * @returns {Promise<CardanoTypes.Ed25519KeyHash | null | undefined>} null for legacy/other addresses and undefined for scriptHash
- */
-function getStakingKeyHash(
-  address: CardanoTypes.Address,
-): CardanoTypes.Ed25519KeyHash | null | undefined {
-  const baseAddr = CardanoMobile.BaseAddress.fromAddress(address)
-  if (baseAddr?.hasValue()) return baseAddr.stakeCred().toKeyhash()
-
-  return null
-}
-
-function toHexKeyHash(
-  keyHash: CardanoTypes.Ed25519KeyHash | null | undefined,
-): string {
-  if (!keyHash) return ''
-  if (!keyHash.hasValue()) return ''
-
-  return Buffer.from(keyHash.toBytes() ?? '').toString('hex')
-}
-
-/**
- * @description Try to resolve the spending key hashes for a bech32 address
- *
- * @param {Address | string} address expects to be a bech32
- * @returns {Promise<string | null>} returns a hex string with the key hash or null if can't extract
- */
-export function getStakingKey(address: Address | string) {
-  const addrStr = typeof address === 'string' ? address : address
-  const wasmAddress = toWasmAddress(addrStr)
-  if (wasmAddress?.hasValue())
-    return toHexKeyHash(getStakingKeyHash(wasmAddress))
-  return null
-}
-
-/**
- * @description Try to resolve the staking key hashes for a bech32 address
- *
- * @param {Address | string} address expects to be a bech32
- * @returns {Promise<string | null>} returns a hex string with the key hash or null if can't extract
- */
-export function getSpendingKey(address: Address | string) {
-  const addrStr = typeof address === 'string' ? address : address
-  const wasmAddress = toWasmAddress(addrStr)
-  if (wasmAddress?.hasValue())
-    return toHexKeyHash(getSpendingKeyHash(wasmAddress))
-  return null
-}
-
-/**
- * @description Try to resolve bech32 to the wasm Address, ignores other than bech32 addresses
- *
- * @param {Address | string} address expects to be a bech32
- * @returns {Promise<CardanoTypes.Address | null>} null when byron/jorgamndur (deprecated)
- * @example toWasmAddress("addr1q9ndnrwz52yeex4j04kggp0ul5632qmxqx22ugtukkytjysw86pdygc6zarl2kks6fvg8um447uvv679sfdtzkwf2kuq673wke")
- * @example toWasmAddress("stake1u948jr02falxxqphnv3g3rkd3mdzqmtqq3x0tjl39m7dqngqg0fxp")
- */
-export function toWasmAddress(
+/** Parse address forms with CML and expose only serializable address data. */
+export function toCardanoAddressInfo(
   address: Address | string,
-): CardanoTypes.Address | null {
-  const addrStr = typeof address === 'string' ? address : address
+): ParsedAddress | null {
   try {
-    return CardanoMobile.Address.fromBech32(addrStr)
-  } catch (e) {
+    const info = addressInfoFromAddress(String(address))
+    return info.isValid ? info : null
+  } catch {
     return null
   }
+}
+
+function credentialHashFromAddress(
+  address: Address | string,
+  credential: 'payment' | 'staking',
+): string | null {
+  const info = toCardanoAddressInfo(address)
+  if (!info) return null
+
+  const bytes = Buffer.from(info.hex, 'hex')
+  if (bytes.length === 0) return null
+  const addressKind = bytes[0]! >> 4
+
+  // Base addresses have payment and stake credentials. Pointer and enterprise
+  // addresses have a payment credential only; reward addresses have a stake
+  // credential only. Byron addresses do not contain Shelley credentials.
+  if (credential === 'payment') {
+    if (addressKind >= 14 && addressKind <= 15) {
+      if (bytes.length !== 29 || addressKind === 15) return ''
+      return bytes.subarray(1, 29).toString('hex')
+    }
+    if (addressKind > 7 || bytes.length < 29) return null
+    if ((addressKind & 1) === 1) return '' // Script credential, not a key hash.
+    return bytes.subarray(1, 29).toString('hex')
+  }
+
+  if (addressKind >= 14 && addressKind <= 15) {
+    return ''
+  }
+  if (addressKind >= 0 && addressKind <= 3) {
+    if (bytes.length !== 57 || ((addressKind >> 1) & 1) === 1) return ''
+    return bytes.subarray(29, 57).toString('hex')
+  }
+  return null
+}
+
+/** Extract a payment key hash from Shelley base, enterprise, or reward addresses. */
+export function getSpendingKey(address: Address | string): string | null {
+  return credentialHashFromAddress(address, 'payment')
+}
+
+/** Extract a stake key hash from Shelley base addresses. */
+export function getStakingKey(address: Address | string): string | null {
+  return credentialHashFromAddress(address, 'staking')
+}
+
+/** Return true only when a parsed Shelley address has the requested stake key credential. */
+export function addressUsesStakingKey(
+  address: Address | string,
+  keyHashHex: string,
+): boolean {
+  return getStakingKey(address) === keyHashHex.toLowerCase()
 }

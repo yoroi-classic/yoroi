@@ -1,65 +1,25 @@
 import * as bech32Module from 'bech32'
 
-import {CardanoTypes} from '../../types'
-
 export const parseDrepId = (
   drepId: string,
-  cardano: CardanoTypes.Wasm,
 ): {type: 'key'; hash: string} | {type: 'script'; hash: string} => {
-  const isPotentiallyValidHex = /^(22|23)[0-9a-fA-F]{56}$/.test(drepId)
-
-  if (drepId.startsWith('drep_vkh1') && isValidBech32KeyHash(drepId, cardano)) {
+  const cip129 = /^(22|23)([0-9a-fA-F]{56})$/.exec(drepId)
+  if (cip129?.[1] && cip129[2]) {
     return {
-      type: 'key',
-      hash: convertBech32KeyHashToHex(drepId, cardano),
+      type: cip129[1] === '22' ? 'key' : 'script',
+      hash: cip129[2].toLowerCase(),
     }
   }
 
-  if (drepId.startsWith('drep1') && isValidBech32KeyHash(drepId, cardano)) {
-    return {
-      type: 'key',
-      hash: convertBech32KeyHashToHex(drepId, cardano),
-    }
-  }
-
-  if (
-    drepId.startsWith('drep_script1') &&
-    isValidBech32ScriptHash(drepId, cardano)
-  ) {
-    return {
-      type: 'script',
-      hash: convertBech32ScriptHashToHex(drepId, cardano),
-    }
-  }
+  const decoded = decodeBech32Hash(drepId)
+  if (decoded) return decoded
 
   if (drepId.startsWith('drep1') && drepId.length === 58) {
     const base32Parsed = base32ToHex(drepId)
     if (!base32Parsed) {
       throw new Error('Invalid key DRep ID. Must have 58 hex characters')
     }
-    return parseDrepId(base32Parsed, cardano)
-  }
-
-  if (
-    isPotentiallyValidHex &&
-    drepId.startsWith('22') &&
-    isValidHexKeyHash(drepId.substr(2), cardano)
-  ) {
-    return {
-      type: 'key',
-      hash: drepId.substr(2),
-    }
-  }
-
-  if (
-    isPotentiallyValidHex &&
-    drepId.startsWith('23') &&
-    isValidHexScriptHash(drepId.substr(2), cardano)
-  ) {
-    return {
-      type: 'script',
-      hash: drepId.substr(2),
-    }
+    return parseDrepId(base32Parsed)
   }
 
   throw new Error(
@@ -67,76 +27,31 @@ export const parseDrepId = (
   )
 }
 
-const isValidBech32KeyHash = (
+const decodeBech32Hash = (
   drepId: string,
-  cardano: CardanoTypes.Wasm,
-): boolean => {
+): {type: 'key'; hash: string} | {type: 'script'; hash: string} | null => {
   try {
-    cardano.Ed25519KeyHash.fromBech32(drepId)
-    return true
-  } catch (e) {
-    return false
+    const decoded = bech32Module.decode(drepId, drepId.length)
+    const hash = convertBase32ToHex(decoded.words)
+    if (!/^[0-9a-f]{56}$/.test(hash)) return null
+    if (decoded.prefix === 'drep_vkh' || decoded.prefix === 'drep') {
+      return {type: 'key', hash}
+    }
+    if (decoded.prefix === 'drep_script') return {type: 'script', hash}
+  } catch {
+    return null
   }
+  return null
 }
 
-const isValidBech32ScriptHash = (
-  drepId: string,
-  cardano: CardanoTypes.Wasm,
-): boolean => {
-  try {
-    cardano.ScriptHash.fromBech32(drepId)
-    return true
-  } catch (e) {
-    return false
+export const convertHexKeyHashToBech32Format = (drepId: string): string => {
+  if (!/^[0-9a-fA-F]{56}$/.test(drepId)) {
+    throw new Error('Invalid key hash hex')
   }
-}
-
-const isValidHexScriptHash = (
-  drepId: string,
-  cardano: CardanoTypes.Wasm,
-): boolean => {
-  try {
-    cardano.ScriptHash.fromHex(drepId)
-    return true
-  } catch (e) {
-    return false
-  }
-}
-
-const isValidHexKeyHash = (
-  drepId: string,
-  cardano: CardanoTypes.Wasm,
-): boolean => {
-  try {
-    cardano.Ed25519KeyHash.fromHex(drepId)
-    return true
-  } catch (e) {
-    return false
-  }
-}
-
-const convertBech32KeyHashToHex = (
-  drepId: string,
-  cardano: CardanoTypes.Wasm,
-): string => {
-  const keyHash = cardano.Ed25519KeyHash.fromBech32(drepId)
-  return keyHash.toHex()
-}
-
-const convertBech32ScriptHashToHex = (
-  drepId: string,
-  cardano: CardanoTypes.Wasm,
-): string => {
-  const scriptHash = cardano.ScriptHash.fromBech32(drepId)
-  return scriptHash.toHex()
-}
-
-export const convertHexKeyHashToBech32Format = (
-  drepId: string,
-  cardano: CardanoTypes.Wasm,
-): string => {
-  const keyHash = cardano.Ed25519KeyHash.fromHex(drepId)
-  return keyHash.toBech32('drep')
+  return bech32Module.encode(
+    'drep',
+    bech32Module.toWords(Buffer.from(drepId, 'hex')),
+  )
 }
 
 const base32ToHex = (base32: string): string | null => {

@@ -4,13 +4,31 @@ import type {StakingInfo} from '@yoroi/staking'
 import {isByronAddress} from '@yoroi/tx'
 import {Balance, Branded, Portfolio, Wallet} from '@yoroi/types'
 
+import {
+  derivePublicKeyFromAccountPathHex,
+  publicKeyHashHexFromRawHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {Buffer} from 'buffer'
 
+import {getStakingKey as getStakingCredentialHash} from '../addressInfo/addressInfo'
 import {getDelegationStatus} from '../delegationUtils'
 import type {TimestampedCertMeta} from '../transactionManager/transactionManager'
 import type {CardanoTypes, YoroiWallet} from '../types'
 import {Quantities} from '../utils/utils'
-import {CardanoMobile} from '../wrappedCsl'
+
+const publicKeyLike = (
+  rawPublicKeyHex: string,
+  keyHashHex: string,
+): CardanoTypes.PublicKey => {
+  const bytes = Uint8Array.from(Buffer.from(keyHashHex, 'hex'))
+  return {
+    toHex: () => rawPublicKeyHex,
+    hash: () => ({
+      toHex: () => keyHashHex,
+      toBytes: () => bytes,
+    }),
+  } as CardanoTypes.PublicKey
+}
 
 /**
  * Get staking key for a wallet
@@ -42,36 +60,12 @@ export const getStakingKey = (
 
     for (const address of addresses) {
       try {
-        // Skip Byron addresses - they don't support staking
-        if (
-          isByronAddress(address) ||
-          CardanoMobile.ByronAddress.isValid(address)
-        ) {
+        // Byron and payment-only/script-stake addresses do not expose a key stake credential.
+        if (isByronAddress(address)) {
           continue
         }
-
-        // Parse address - supports hex or bech32
-        const isHexAddr = /^[0-9a-fA-F]{64,}$/.test(address)
-        const wasmAddress = isHexAddr
-          ? CardanoMobile.Address.fromHex(address)
-          : CardanoMobile.Address.fromBech32(address)
-
-        if (!wasmAddress || wasmAddress.isMalformed()) {
-          continue
-        }
-
-        const baseAddr = CardanoMobile.BaseAddress.fromAddress(wasmAddress)
-        if (baseAddr?.hasValue()) {
-          const stakeCred = baseAddr.stakeCred()
-          const keyHash = stakeCred.toKeyhash()
-          if (keyHash?.hasValue()) {
-            // Create a wrapper PublicKey-like object that returns the key hash
-            // This allows read-only wallets to work with code that expects getStakingKey().hash()
-            return {
-              hash: () => keyHash,
-            } as CardanoTypes.PublicKey
-          }
-        }
+        const keyHashHex = getStakingCredentialHash(address)
+        if (keyHashHex) return publicKeyLike('', keyHashHex)
       } catch {
         // Continue to next address
         continue
@@ -86,15 +80,14 @@ export const getStakingKey = (
   // For full wallets, derive from publicKeyHex
   const derivation = implementationConfig.features.staking.derivation
 
-  const accountPubKey = CardanoMobile.Bip32PublicKey.fromBytes(
-    new Uint8Array(Buffer.from(wallet.publicKeyHex, 'hex')),
+  const rawPublicKeyHex = derivePublicKeyFromAccountPathHex(
+    wallet.publicKeyHex,
+    [derivation.role, derivation.index],
   )
-  const stakingKey = accountPubKey
-    .derive(derivation.role)
-    .derive(derivation.index)
-    .toRawKey()
-
-  return stakingKey
+  return publicKeyLike(
+    rawPublicKeyHex,
+    publicKeyHashHexFromRawHex(rawPublicKeyHex),
+  )
 }
 
 /**

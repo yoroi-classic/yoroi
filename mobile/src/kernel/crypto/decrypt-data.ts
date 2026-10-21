@@ -1,9 +1,8 @@
 import {Hex, hex} from '@yoroi/common'
+import {decryptWalletData} from '@yoroi/links'
 import {App} from '@yoroi/types'
 
 import {logger} from '~/kernel/logger/logger'
-
-import {decrypt_with_password} from './csl'
 
 export const decryptData = ({
   encryptedData,
@@ -13,13 +12,31 @@ export const decryptData = ({
   secretKey: Hex
 }) => {
   try {
-    return hex(decrypt_with_password(secretKey.value, encryptedData.value))
-  } catch (error) {
-    // Log as debug since WrongPassword is expected during password validation
-    // and shouldn't be sent to error tracking services
-    logger.debug('Decryption failed (expected during password validation)', {
-      origin: 'decryptData',
-    })
-    throw new App.Errors.WrongPassword()
+    return hex(
+      decryptWalletData(
+        encryptedData.value,
+        secretKey.utf8,
+        'chacha20poly1305',
+      ),
+    )
+  } catch {
+    try {
+      // Existing encrypted storage uses CSL's EMIP-3 byte layout. Keep that
+      // format decrypt-only while new writes use the standard format.
+      return hex(
+        decryptWalletData(
+          encryptedData.value,
+          secretKey.utf8,
+          'chacha20poly1305-csl',
+        ),
+      )
+    } catch {
+      // Wrong password is expected during password validation and shouldn't be
+      // sent to error tracking services.
+      logger.debug('Decryption failed (expected during password validation)', {
+        origin: 'decryptData',
+      })
+      throw new App.Errors.WrongPassword()
+    }
   }
 }
