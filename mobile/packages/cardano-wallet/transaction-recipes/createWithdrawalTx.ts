@@ -16,7 +16,6 @@ import {
 } from '@yoroi/tx'
 import {Address, Branded, KeyHash, Portfolio, Wallet} from '@yoroi/types'
 
-import type {PublicKey} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
 import {deriveRewardAddressDetails, deriveStakeCredentialHex} from '../utils'
@@ -34,7 +33,6 @@ export type CreateWithdrawalTxParams = {
   networkId: number
   getAbsoluteSlotNumber: () => Promise<BigNumber>
   getChangeAddress: (addressMode: Wallet.AddressMode) => Address | string
-  getStakingKey: () => PublicKey
   getAccountState: (addresses: Address[]) => Promise<AccountStateResponse>
   shouldDeregister: boolean
   addressMode: Wallet.AddressMode

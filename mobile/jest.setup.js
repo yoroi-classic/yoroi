@@ -38,11 +38,47 @@ jest.mock('@react-native-async-storage/async-storage', () =>
     require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 )
 
-jest.mock('@emurgo/cross-csl-mobile', () => require('@emurgo/cross-csl-nodejs'))
-
-jest.mock('@emurgo/csl-mobile-bridge-jsi', () => require('@emurgo/cardano-serialization-lib-nodejs'))
-
-jest.mock('@emurgo/msl-mobile-bridge-jsi', () => require('@emurgo/cardano-serialization-lib-nodejs'))
+// The CML bridge is a native TurboModule in production. Most Jest suites run
+// without a React Native bridge; replace its entry point and require an
+// explicit per-test mock if a CML operation is exercised.
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => {
+    const api = [
+        'addressInfoFromAddress', 'addressToHex', 'baseAddressBech32FromPublicKeyHashes', 'buildEscrowRedeemTransactionCml',
+        'buildSimplePaymentTransaction', 'buildTransactionRecipeCml', 'datumInfoFromOutputCborHex', 'decodePlutusDataCborHex',
+        'deriveAccountPublicKeyHex', 'derivePublicKeyFromAccountPathHex', 'deriveWalletPublicKeyHex', 'deriveEscrowAddress',
+        'escrowDatumInfoJson', 'hashPlutusDataCborHex', 'minimumCoinForAssets',
+        'icarusAddressBase58FromAccountPublicKeyHex', 'normalizePoolIdentifier', 'resolveCnsAddressRecord', 'rewardAddressDetailsFromAddress',
+        'rewardAddressFromAddress', 'rewardAddressHexFromAccountPublicKey', 'signTransactionHex',
+        'signWalletData', 'signWalletTransactionHex', 'signWalletTransactionPathsHex',
+        'stakeCredentialHexFromAddress', 'transactionIdHex', 'transactionUnspentOutputHex',
+        'transactionReviewInfoJson', 'transactionValidationInfoJson', 'transactionWitnessSetHex',
+        'walletRootKeyHexFromEntropy', 'updatedEscrowDatumCborHex',
+        'verifyEd25519Signature', 'publicKeyHashHexFromRawHex', 'rewardAddressHexFromPublicKeyHash',
+        'valueFromAmountsHex', 'valueFromHexInfoJson', 'scriptHashHexFromCbor',
+        'transactionSigningRequirementsJson',
+    ]
+    const methods = Object.fromEntries(api.map((name) => [
+        name,
+        jest.fn(() => { throw new Error(`CML method ${name} must be mocked in this test`) }),
+    ]))
+    // Wallet fixtures exercise child-key/address plumbing but do not test CML
+    // derivation. Keep deterministic byte-shaped defaults; derivation-focused
+    // suites override these with their own expected vectors.
+    methods.derivePublicKeyFromAccountPathHex = jest.fn(() => 'ab'.repeat(32))
+    methods.publicKeyHashHexFromRawHex = jest.fn(
+        () => '01c01f8b958699ae769a246e9785db5a70e023977ea4b856dfacf23c',
+    )
+    methods.valueFromHexInfoJson = jest.fn((valueHex) => {
+        const coinByTestFixture = {
+            '00': '0',
+            '0000000000': '0',
+            '0112a880': '20000000',
+            '1a062ea8a0': '10000000000',
+        }
+        return JSON.stringify({coin: coinByTestFixture[valueHex] ?? '0', assets: []})
+    })
+    return methods
+})
 
 // Map mobile MSL to Node.js implementation for Jest
 jest.mock('@emurgo/cross-msl-mobile', () => {

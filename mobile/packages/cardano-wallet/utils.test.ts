@@ -9,19 +9,21 @@ import {
   rewardAddressFromAddress as nativeRewardAddressFromAddress,
   rewardAddressHexFromAccountPublicKey as nativeRewardAddressHexFromAccountPublicKey,
   stakeCredentialHexFromAddress as nativeStakeCredentialHexFromAddress,
-} from '@yoroi-classic/csl-mobile-bridge'
+  transactionUnspentOutputHex as nativeTransactionUnspentOutputHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import {
-  deriveRewardAddressFromAddress,
   deriveRewardAddressDetails,
+  deriveRewardAddressFromAddress,
   deriveRewardAddressHex,
   deriveStakeCredentialHex,
+  generateCIP30UtxoCbor,
   serializeAddressToHex,
   toSendToken,
   toSendTokenList,
 } from './utils'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressToHex: jest.fn(
     () =>
       '002f8b8dd5e6f03495f9753213d0594c8be5571496128d583ad781de78e56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
@@ -37,7 +39,44 @@ jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
   stakeCredentialHexFromAddress: jest.fn(
     () => '8200581ce56e8517f913420618dd04cfa84122f403ddae4ec09b1269279e61bf',
   ),
+  transactionUnspentOutputHex: jest.fn(() => 'fixture-cbor'),
 }))
+
+describe('generateCIP30UtxoCbor', () => {
+  it('uses CML and preserves exact ADA/token quantities', () => {
+    const policyId = 'ab'.repeat(28)
+    const utxo = {
+      amount: '9007199254740993',
+      receiver: 'addr_test1fixture',
+      tx_hash: 'cd'.repeat(32),
+      tx_index: 4,
+      utxo_id: `${'cd'.repeat(32)}:4`,
+      assets: [
+        {
+          amount: '18446744073709551615',
+          tokenId: `${policyId}.00ff`,
+          policyId,
+          name: '00ff',
+        },
+      ],
+    } as never
+
+    expect(generateCIP30UtxoCbor(utxo)).toBe('fixture-cbor')
+    expect(nativeTransactionUnspentOutputHex).toHaveBeenCalledWith({
+      txHashHex: 'cd'.repeat(32),
+      index: '4',
+      address: 'addr_test1fixture',
+      lovelace: '9007199254740993',
+      assets: [
+        {
+          policyIdHex: policyId,
+          assetNameHex: '00ff',
+          quantity: '18446744073709551615',
+        },
+      ],
+    })
+  })
+})
 
 describe('serializeAddressToHex', () => {
   it('delegates address serialization to the CML native bridge', () => {

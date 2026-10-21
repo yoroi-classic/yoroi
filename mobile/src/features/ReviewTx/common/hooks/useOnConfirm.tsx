@@ -1,8 +1,4 @@
-import {
-  CardanoMobileWrapped,
-  YoroiWallet,
-  getTransactionSigners,
-} from '@yoroi/cardano-wallet'
+import {YoroiWallet, getTransactionSigners} from '@yoroi/cardano-wallet'
 import {calculateTxId} from '@yoroi/tx'
 import {Branded, Wallet} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
@@ -426,35 +422,27 @@ const signTx = async (
   txId: string
   signedTxBytes: Uint8Array
 } | null> => {
-  const result = await CardanoMobileWrapped.cslScope(async () => {
-    const signers = await getTransactionSigners(cbor, wallet, meta)
+  const signers = await getTransactionSigners(cbor, wallet, meta)
 
-    const signedTxBytes = await wallet.signRawTx(cbor, rootKey, signers)
-    if (!signedTxBytes) {
-      logger.error(
-        'signTx: Failed to sign transaction - signRawTx returned null',
-        {
-          walletId: wallet.id,
-        },
-      )
-      return null
-    }
-
-    return {signedTxBytes}
-  })
-
-  if (!result) {
+  const signedTxBytes = await wallet.signRawTx(cbor, rootKey, signers)
+  if (!signedTxBytes) {
+    logger.error(
+      'signTx: Failed to sign transaction - signRawTx returned null',
+      {
+        walletId: wallet.id,
+      },
+    )
     return null
   }
 
   const txId = await calculateTxId(
-    Buffer.from(result.signedTxBytes).toString('hex'),
+    Buffer.from(signedTxBytes).toString('hex'),
     'hex',
   )
 
   return {
     txId,
-    signedTxBytes: result.signedTxBytes, // Include bytes directly to avoid re-serialization
+    signedTxBytes, // Include bytes directly to avoid re-serialization
   }
 }
 

@@ -1,7 +1,5 @@
 import {Resolver} from '@yoroi/types'
 
-import {init} from '@emurgo/cross-csl-nodejs'
-
 import {cnsApiConfig} from './api'
 import {
   resolveAddress,
@@ -10,6 +8,18 @@ import {
   resolveVirtualSubdomain,
 } from './api-helpers'
 import {cnsCardanoApiMock} from './cardano-api-maker.mocks'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  resolveCnsAddressRecord: jest.fn(() => ({
+    paymentCredentialKind: 'key',
+    paymentCredentialHashHex:
+      'a5644bcb8cd82b5e0478657e2c8feea865682a5b20db45d095807d84',
+    stakingCredentialHashHex:
+      'e40482bb4648fc54bffc06175c4a9e5f268b70da54bf6de4d6ad71df',
+    addressBech32:
+      'addr1qxjkgj7t3nvzkhsy0pjhuty0a65x26p2tvsdk3wsjkq8mp8yqjptk3jgl32tllqxzawy48jly69hpkj5hak7f44dw80sqfylvs',
+  })),
+}))
 
 describe('resolveDomain', () => {
   it('resolves an address', async () => {
@@ -83,7 +93,6 @@ describe('resolveUserRecord', () => {
       domain,
       cnsApiConfig.mainnet,
       cnsCardanoApiMock.success,
-      init('ctx'),
     )
 
     expect(result).toEqual(cnsCardanoApiMock.parsedInlineDatum)
@@ -96,7 +105,6 @@ describe('resolveUserRecord', () => {
       domain,
       cnsApiConfig.mainnet,
       cnsCardanoApiMock.disabled,
-      init('ctx'),
     )
 
     expect(result).toEqual({virtualSubdomains: []})
@@ -110,7 +118,6 @@ describe('resolveUserRecord', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.noMetadata,
-        init('ctx'),
       )
 
       fail('it should crash before')
@@ -127,7 +134,6 @@ describe('resolveUserRecord', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.expiredDomain,
-        init('ctx'),
       )
 
       fail('it should crash before')
@@ -144,7 +150,6 @@ describe('resolveUserRecord', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.noInlineDatum,
-        init('ctx'),
       )
 
       fail('it should crash before')
@@ -161,7 +166,6 @@ describe('resolveUserRecord', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.badInlineDatum,
-        init('ctx'),
       )
 
       fail('it should crash before')
@@ -179,7 +183,6 @@ describe('resolveVirtualSubdomain', () => {
       domain,
       cnsApiConfig.mainnet,
       cnsCardanoApiMock.success,
-      init('ctx'),
     )
 
     expect(result).toBe(
@@ -195,7 +198,6 @@ describe('resolveVirtualSubdomain', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.success,
-        init('ctx'),
       )
 
       fail('it should crash before')
@@ -214,7 +216,6 @@ describe('resolveAddress', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.success,
-        init('ctx'),
       ),
     ).toBe(
       'addr1qxjkgj7t3nvzkhsyOpjhuty0a65x26p2tvsdk3wsjkq8mp8yqjptk3jg|32t|lqxzawy48jly69hpkj5hak7f44dw80sqfylvs',
@@ -229,7 +230,6 @@ describe('resolveAddress', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.success,
-        init('ctx'),
       ),
     ).toBe(
       'addr1qxjkgj7t3nvzkhsy0pjhuty0a65x26p2tvsdk3wsjkq8mp8yqjptk3jgl32tllqxzawy48jly69hpkj5hak7f44dw80sqfylvs',
@@ -244,7 +244,6 @@ describe('resolveAddress', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.success,
-        init('ctx'),
       )
 
       fail('it should crash before')
@@ -261,7 +260,6 @@ describe('resolveAddress', () => {
         domain,
         cnsApiConfig.mainnet,
         cnsCardanoApiMock.success,
-        init('ctx'),
       )
 
       fail('it should crash before')

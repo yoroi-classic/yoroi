@@ -234,11 +234,11 @@ Each error includes:
 
 ## Performance Considerations
 
-- Locked ADA calculations use CSL (Cardano Serialization Library) which can be expensive
+- Locked ADA calculations use the CML-backed minimum-ADA helper and may be expensive
 - Results are cached when possible (see `useDynamicLockedDeposit` hook)
-- UTXO selection is optimized to minimize CSL calls
+- UTXO selection is optimized to minimize repeated minimum-ADA calculations
 - Reorganization analysis uses heuristics to avoid expensive calculations
 
 ## Migration Notes
 
-The service wraps existing functions from `assetUtils.ts` and `helpers.ts` to provide a cleaner API. The underlying implementations remain unchanged for backward compatibility.
+The service wraps existing functions from `assetUtils.ts` and `helpers.ts` to provide a cleaner API.

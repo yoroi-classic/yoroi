@@ -1,9 +1,3 @@
-// Transaction types
-// These are WASM types from CSL
-import type {
-  Transaction as CSLTransaction,
-  TransactionBody,
-} from '@emurgo/cross-csl-core'
 import type BigNumber from 'bignumber.js'
 
 import type {BalanceAmounts} from '../balance/token'
@@ -12,13 +6,14 @@ import {
   BalanceQuantity,
   KeyHash,
   TokenId,
+  TransactionCbor,
   TransactionHash,
   UtxoId,
 } from '../branded'
 
-// UnsignedTx type - matches TransactionBody structure
-export type UnsignedTx = TransactionBody
-export type SignedTx = CSLTransaction
+// Transactions cross package boundaries as serialized bytes, never WASM objects.
+export type UnsignedTx = {cbor?: TransactionCbor}
+export type SignedTx = Uint8Array
 
 export type TokenEntry = {
   amount: BigNumber

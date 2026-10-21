@@ -11,12 +11,17 @@ import {
   Wallet,
 } from '@yoroi/types'
 
+import {
+  baseAddressBech32FromPublicKeyHashes,
+  derivePublicKeyFromAccountPathHex,
+  icarusAddressBase58FromAccountPublicKeyHex,
+  publicKeyHashHexFromRawHex,
+  rewardAddressHexFromAccountPublicKey,
+} from '@yoroi-classic/cml-mobile-bridge'
 import _ from 'lodash'
 import {lruMemoize} from 'reselect'
 
 import * as cardanoApi from '../api/api'
-import {CardanoTypes} from '../types'
-import {CardanoMobile} from '../wrappedCsl'
 
 export type AddressGenerator = {
   readonly accountPubKeyHex: string
@@ -34,17 +39,7 @@ export function createAddressGenerator(
   implementation: Wallet.Implementation,
   chainId: number,
 ): AddressGenerator {
-  let cachedAccountPubKeyPtr: CardanoTypes.Bip32PublicKey | undefined
   let cachedRewardAddressHex: string | undefined
-
-  const getAccountPubKeyPtr = () => {
-    if (cachedAccountPubKeyPtr == null) {
-      cachedAccountPubKeyPtr = CardanoMobile.Bip32PublicKey.fromBytes(
-        Buffer.from(accountPubKeyHex, 'hex'),
-      )
-    }
-    return cachedAccountPubKeyPtr
-  }
 
   return {
     accountPubKeyHex,
@@ -59,19 +54,12 @@ export function createAddressGenerator(
 
       if (cachedRewardAddressHex != null) return cachedRewardAddressHex
 
-      const accountPubKeyPtr = getAccountPubKeyPtr()
-      const stakingRawKey = accountPubKeyPtr
-        .derive(staking.derivation.role)
-        .derive(staking.derivation.index)
-        .toRawKey()
-      const stakingKeyHash = stakingRawKey.hash()
-
-      const credential = CardanoMobile.Credential.fromKeyhash(stakingKeyHash)
-      const rewardAddr = CardanoMobile.RewardAddress.new(chainId, credential)
-      const rewardAddrAsAddr = rewardAddr.toAddress()
-      const rewardAddrBytes = rewardAddrAsAddr.toBytes()
-
-      cachedRewardAddressHex = Buffer.from(rewardAddrBytes).toString('hex')
+      cachedRewardAddressHex = rewardAddressHexFromAccountPublicKey(
+        accountPubKeyHex,
+        chainId,
+        staking.derivation.role,
+        staking.derivation.index,
+      )
       return cachedRewardAddressHex
     },
 
@@ -81,29 +69,21 @@ export function createAddressGenerator(
       if (!config.features.staking) {
         return getBIP44Addresses(accountPubKeyHex, role, indexes)
       } else {
-        const accountPubKeyPtr = getAccountPubKeyPtr()
         const staking = config.features.staking
-        const stakingCredential = CardanoMobile.Credential.fromKeyhash(
-          accountPubKeyPtr
-            .derive(staking.derivation.role)
-            .derive(staking.derivation.index)
-            .toRawKey()
-            .hash(),
-        )
-
-        const withType = accountPubKeyPtr.derive(role)
         return indexes.map((index) => {
-          const addressCredential = CardanoMobile.Credential.fromKeyhash(
-            withType.derive(index).toRawKey().hash(),
+          const paymentPublicKeyHex = derivePublicKeyFromAccountPathHex(
+            accountPubKeyHex,
+            [role, index],
           )
-
-          const baseAddressBech32 = CardanoMobile.BaseAddress.new(
+          const stakePublicKeyHex = derivePublicKeyFromAccountPathHex(
+            accountPubKeyHex,
+            [staking.derivation.role, staking.derivation.index],
+          )
+          const baseAddressBech32 = baseAddressBech32FromPublicKeyHashes(
+            publicKeyHashHexFromRawHex(paymentPublicKeyHex),
+            publicKeyHashHexFromRawHex(stakePublicKeyHex),
             chainId,
-            addressCredential,
-            stakingCredential,
           )
-            .toAddress()
-            .toBech32(undefined)
 
           return Branded.asAddress(baseAddressBech32)
         })
@@ -330,15 +310,13 @@ const getBIP44Addresses = (
   const protocolMagic = 764824073
   const addresses: Address[] = []
 
-  const withRole = CardanoMobile.Bip32PublicKey.fromBytes(
-    Buffer.from(accountPubKeyHex, 'hex'),
-  ).derive(role)
-
   for (const index of indexes) {
-    const byronAddrBs58 = CardanoMobile.ByronAddress.icarusFromKey(
-      withRole.derive(index),
+    const byronAddrBs58 = icarusAddressBase58FromAccountPublicKeyHex(
+      accountPubKeyHex,
+      role,
+      index,
       protocolMagic,
-    ).toBase58()
+    )
     addresses.push(Branded.asAddress(byronAddrBs58))
   }
 

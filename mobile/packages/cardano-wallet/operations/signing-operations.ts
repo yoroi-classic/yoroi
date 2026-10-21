@@ -5,7 +5,7 @@ import {Wallet} from '@yoroi/types'
 import {
   signWalletTransactionHex,
   signWalletTransactionPathsHex,
-} from '@yoroi-classic/csl-mobile-bridge'
+} from '@yoroi-classic/cml-mobile-bridge'
 import {Buffer} from 'buffer'
 
 

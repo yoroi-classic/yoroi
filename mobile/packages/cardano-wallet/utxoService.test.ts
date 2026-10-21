@@ -12,7 +12,7 @@ import {describe, expect, it} from '@jest/globals'
 import {calculateChangeOutputMinAda, calculateLockedAda} from './utxoService'
 import type {CalculateLockedAdaParams} from './utxoServiceTypes'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressInfoFromAddress: jest.fn((address: string) => ({bech32: address})),
   minimumCoinForAssets: jest.fn(() => '1500000'),
 }))
@@ -21,7 +21,7 @@ describe('utxoService', () => {
   describe('calculateChangeOutputMinAda', () => {
     it('keeps the configured base minimum for ADA-only change', async () => {
       const {minimumCoinForAssets} = jest.requireMock(
-        '@yoroi-classic/csl-mobile-bridge',
+        '@yoroi-classic/cml-mobile-bridge',
       )
       minimumCoinForAssets.mockClear()
 
@@ -43,7 +43,7 @@ describe('utxoService', () => {
 
     it('uses CML and preserves exact token quantities for change', async () => {
       const {minimumCoinForAssets} = jest.requireMock(
-        '@yoroi-classic/csl-mobile-bridge',
+        '@yoroi-classic/cml-mobile-bridge',
       )
       const tokenId = `${'ab'.repeat(28)}.00ff`
 

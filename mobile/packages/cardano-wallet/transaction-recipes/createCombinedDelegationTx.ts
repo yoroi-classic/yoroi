@@ -17,10 +17,8 @@ import {
 } from '@yoroi/tx'
 import {Address, Branded, KeyHash, Portfolio, Wallet} from '@yoroi/types'
 
-import type {PublicKey} from '@emurgo/cross-csl-core'
+import {normalizePoolIdentifier} from '@yoroi-classic/cml-mobile-bridge'
 import BigNumber from 'bignumber.js'
-
-import {CardanoMobileWrapped} from '../wrappedCsl'
 
 export type CreateCombinedDelegationTxParams = {
   utxos: ModernUtxo[]
@@ -34,7 +32,7 @@ export type CreateCombinedDelegationTxParams = {
   networkId: number
   getAbsoluteSlotNumber: () => Promise<BigNumber>
   getChangeAddress: (addressMode: Wallet.AddressMode) => Address | string
-  getStakingKey: () => PublicKey
+  getStakingKeyHashHex: () => KeyHash
   getDelegationStatus: () => {isRegistered: boolean}
   poolId?: KeyHash | string
   drepValue?: DRepValue
@@ -56,7 +54,7 @@ export async function createCombinedDelegationTx({
   networkId,
   getAbsoluteSlotNumber,
   getChangeAddress,
-  getStakingKey,
+  getStakingKeyHashHex,
   getDelegationStatus,
   poolId,
   drepValue,
@@ -69,7 +67,6 @@ export async function createCombinedDelegationTx({
       ? (changeAddressRaw as Address)
       : changeAddressRaw
   const registrationStatus = getDelegationStatus().isRegistered
-  const stakingKey = getStakingKey()
   const delegationType = registrationStatus
     ? RegistrationStatus.DelegateOnly
     : RegistrationStatus.RegisterAndDelegate
@@ -79,24 +76,11 @@ export async function createCombinedDelegationTx({
     networkId,
   )
 
-  // Extract stake credential key hash from staking key (done once outside retry loop)
-  const stakeKeyHashHex = CardanoMobileWrapped.cslScope(() => {
-    const keyHash = stakingKey.hash()
-    return keyHash.toHex()
-  })
+  const stakeKeyHashHex = getStakingKeyHashHex()
 
   // Convert poolId from bech32 to hex if needed (transaction builder expects hex)
   const poolKeyHashHex = poolId
-    ? CardanoMobileWrapped.cslScope((csl) => {
-        const poolIdStr = typeof poolId === 'string' ? poolId : poolId
-        // Check if poolId is bech32 format (starts with 'pool')
-        if (poolIdStr.startsWith('pool')) {
-          const keyHash = csl.Ed25519KeyHash.fromBech32(poolIdStr)
-          return keyHash.toHex() as KeyHash
-        }
-        // Assume it's already hex format
-        return poolIdStr as KeyHash
-      })
+    ? Branded.asKeyHash(normalizePoolIdentifier(String(poolId)).hash)
     : undefined
 
   // Validate that at least one delegation type is provided

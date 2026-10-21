@@ -1,4 +1,4 @@
-import {datumInfoFromOutputCborHex, hashPlutusDataCborHex} from '@yoroi-classic/csl-mobile-bridge'
+import {datumInfoFromOutputCborHex, hashPlutusDataCborHex} from '@yoroi-classic/cml-mobile-bridge'
 
 import type {Datum, DatumInfo} from './types'
 

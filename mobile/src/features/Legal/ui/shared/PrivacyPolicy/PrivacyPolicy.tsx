@@ -20,14 +20,13 @@ const useLoadPrivacyPolicy = ({languageCode}: {languageCode: LanguageCode}) => {
 
 export const PrivacyPolicy = ({languageCode}: {languageCode: LanguageCode}) => {
   const privacyPolicy = useLoadPrivacyPolicy({languageCode})
-  const {atoms: ta, basePaletteInverted, basePalette} = useTheme()
+  const {atoms: ta, basePaletteInverted} = useTheme()
   const color = basePaletteInverted === 'light' ? 'white' : 'black'
 
   return privacyPolicy != null ? (
     <Markdown
-      colorScheme={basePalette}
-      backgroundColor={ta.bg_color_max.backgroundColor}
       value={privacyPolicy}
+      flatListProps={{style: {backgroundColor: ta.bg_color_max.backgroundColor}}}
       styles={{
         text: {...a.body_1_lg_regular, ...ta.text_gray_max, ...a.py_sm},
         h2: {...a.body_1_lg_medium, ...ta.text_gray_max, ...a.py_sm},

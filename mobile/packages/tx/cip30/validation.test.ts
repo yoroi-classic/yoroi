@@ -1,19 +1,19 @@
 import {CIP30TransactionError, validateTransactionCbor} from './validation'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   transactionValidationInfoJson: jest.fn(() => JSON.stringify({inputsCount: 1, outputsCount: 1, fee: '1000000', ttl: 10})),
 }))
 
 describe('CIP-30 validation', () => {
   it('rejects invalid hex without calling the native parser', () => {
-    const {transactionValidationInfoJson} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+    const {transactionValidationInfoJson} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
     const result = validateTransactionCbor('invalid-hex!')
     expect(result).toEqual({valid: false, errors: ['Transaction CBOR must be valid hex string'], warnings: []})
     expect(transactionValidationInfoJson).not.toHaveBeenCalled()
   })
 
   it('maps parsed CML validation fields to existing warnings and errors', () => {
-    const {transactionValidationInfoJson} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+    const {transactionValidationInfoJson} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
     transactionValidationInfoJson.mockReturnValueOnce(JSON.stringify({inputsCount: 0, outputsCount: 0, fee: '0', ttl: null}))
     expect(validateTransactionCbor('00')).toEqual({
       valid: false,
@@ -23,7 +23,7 @@ describe('CIP-30 validation', () => {
   })
 
   it('rejects parser errors as a failed transaction parse', () => {
-    const {transactionValidationInfoJson} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+    const {transactionValidationInfoJson} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
     transactionValidationInfoJson.mockImplementationOnce(() => { throw new Error('invalid transaction CBOR') })
     expect(validateTransactionCbor('abcdef').errors).toEqual(['Failed to parse transaction: invalid transaction CBOR'])
   })

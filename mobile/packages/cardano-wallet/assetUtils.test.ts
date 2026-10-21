@@ -2,7 +2,7 @@ import {RawUtxo} from '@yoroi/api'
 
 import {calcLockedDeposit, calcOptimizedLockedDeposit} from './assetUtils'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressInfoFromAddress: jest.fn((address: string) => ({bech32: address})),
   minimumCoinForAssets: jest.fn(),
 }))
@@ -45,7 +45,7 @@ describe('assetUtils CML minimum-ADA calculations', () => {
 
   it('sums per-UTxO CML min-ADA values with exact asset quantities', async () => {
     const {minimumCoinForAssets} = jest.requireMock(
-      '@yoroi-classic/csl-mobile-bridge',
+      '@yoroi-classic/cml-mobile-bridge',
     )
     minimumCoinForAssets
       .mockReturnValueOnce('1500000')
@@ -87,7 +87,7 @@ describe('assetUtils CML minimum-ADA calculations', () => {
 
   it('uses CML minimum-ADA values for the optimized consolidation estimate', async () => {
     const {minimumCoinForAssets} = jest.requireMock(
-      '@yoroi-classic/csl-mobile-bridge',
+      '@yoroi-classic/cml-mobile-bridge',
     )
     minimumCoinForAssets
       .mockReturnValueOnce('1000000')

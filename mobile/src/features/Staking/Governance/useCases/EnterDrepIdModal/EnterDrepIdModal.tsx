@@ -1,4 +1,3 @@
-import {CardanoMobile} from '@yoroi/cardano-wallet'
 import {isNonNullable} from '@yoroi/common'
 import {isAdaHandleDomain, useResolverDRepId} from '@yoroi/resolver'
 import {getYoroiDrepIdHex, parseDrepId, useIsValidDRepID} from '@yoroi/staking'
@@ -219,7 +218,7 @@ export const EnterDrepIdModal = ({onSubmit, initialDrepId}: Props) => {
         hash = drepInfo.hex
         type = drepInfo.cred === 'key' ? 'key' : 'script'
       } else {
-        const parsed = parseDrepId(resolvedDrepId, CardanoMobile)
+        const parsed = parseDrepId(resolvedDrepId)
         hash = parsed.hash
         type = parsed.type
       }

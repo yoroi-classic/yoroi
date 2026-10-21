@@ -15,7 +15,6 @@ describe('selectUtxos', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   it('should use largestFirst strategy by default', () => {

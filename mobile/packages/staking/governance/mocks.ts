@@ -2,13 +2,15 @@ import {Branded, Chain} from '@yoroi/types'
 
 import {GovernanceManager} from './manager'
 
-// Mock certificate object
 const mockCertificate = {
-  toBytes: () => new Uint8Array([1, 2, 3, 4]),
-  toHex: () => '01020304',
-  toJson: () => ({}),
-  kind: () => 0,
-} as any
+  kind: 'VoteDelegation' as const,
+  stakeCredentialKeyHashHex: Branded.asKeyHash('00'.repeat(28)),
+  drep: 'AlwaysAbstain' as const,
+}
+const mockRegistrationCertificate = {
+  kind: 'StakeRegistration' as const,
+  stakeCredentialKeyHashHex: Branded.asKeyHash('00'.repeat(28)),
+}
 
 export const managerMock: GovernanceManager = {
   network: Chain.Network.Mainnet,
@@ -34,5 +36,5 @@ export const managerMock: GovernanceManager = {
     Promise.reject(new Error('Mock not implemented')),
   getLatestGovernanceAction: () =>
     Promise.reject(new Error('Mock not implemented')),
-  createStakeRegistrationCertificate: () => mockCertificate,
+  createStakeRegistrationCertificate: () => mockRegistrationCertificate,
 }

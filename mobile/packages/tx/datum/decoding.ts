@@ -1,4 +1,4 @@
-import {decodePlutusDataCborHex} from '@yoroi-classic/csl-mobile-bridge'
+import {decodePlutusDataCborHex} from '@yoroi-classic/cml-mobile-bridge'
 
 import type {Datum} from './types'
 

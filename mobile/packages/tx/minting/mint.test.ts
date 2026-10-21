@@ -47,14 +47,16 @@ describe('minting', () => {
       const mintAction1: MintAction = {
         policyId: 'policy1',
         assets: [{assetName: 'asset1', amount: '100' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
+        script: {type: 'plutus', script: 'script1', plutusVersion: 'plutusV3'},
         redeemer: 'old_redeemer',
+        redeemerExUnits: {mem: '1', steps: '2'},
       }
       const mintAction2: MintAction = {
         policyId: 'policy1',
         assets: [{assetName: 'asset2', amount: '200' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
+        script: {type: 'plutus', script: 'script1', plutusVersion: 'plutusV3'},
         redeemer: 'new_redeemer',
+        redeemerExUnits: {mem: '1', steps: '2'},
       }
 
       const state1 = addMint(state, mintAction1)
@@ -63,24 +65,14 @@ describe('minting', () => {
       expect(state2.options.mints?.[0]?.redeemer).toBe('new_redeemer')
     })
 
-    it('should keep existing redeemer if new action has none', () => {
-      const state = createTransactionBuilder()
-      const mintAction1: MintAction = {
-        policyId: 'policy1',
-        assets: [{assetName: 'asset1', amount: '100' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
-        redeemer: 'old_redeemer',
-      }
-      const mintAction2: MintAction = {
-        policyId: 'policy1',
-        assets: [{assetName: 'asset2', amount: '200' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
-      }
-
-      const state1 = addMint(state, mintAction1)
-      const state2 = addMint(state1, mintAction2)
-
-      expect(state2.options.mints?.[0]?.redeemer).toBe('old_redeemer')
+    it('does not permit an incomplete Plutus mint action', () => {
+      expect(() =>
+        createMintAction('policy1', 'asset1', '100', {
+          type: 'plutus',
+          script: 'script1',
+          plutusVersion: 'plutusV3',
+        }),
+      ).toThrow('Plutus mint creation requires redeemer and execution units')
     })
   })
 
@@ -127,15 +119,31 @@ describe('minting', () => {
         'policy1',
         'asset1',
         '100',
-        {type: 'plutus', script: 'script1'},
+        {type: 'plutus', script: 'script1', plutusVersion: 'plutusV3'},
         'redeemer1',
-        {txHash: 'hash1' as TransactionHash, txIndex: 0},
+        {
+          txHash: 'hash1' as TransactionHash,
+          txIndex: 0,
+          output: {
+            address: 'addr_test1',
+            lovelace: '1000000',
+            assets: [],
+            scriptCborHex: 'script1',
+          },
+        },
+        {mem: '1', steps: '2'},
       )
 
       expect(result.redeemer).toBe('redeemer1')
       expect(result.referenceScript).toEqual({
         txHash: 'hash1' as TransactionHash,
         txIndex: 0,
+        output: {
+          address: 'addr_test1',
+          lovelace: '1000000',
+          assets: [],
+          scriptCborHex: 'script1',
+        },
       })
     })
   })

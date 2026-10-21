@@ -1,8 +1,6 @@
 import {mountAsyncStorage} from '@yoroi/common'
 import {Chain} from '@yoroi/types'
 
-import {init} from '@emurgo/cross-csl-nodejs'
-
 import {GovernanceApi, governanceApiMaker} from './api'
 import {GovernanceAction, governanceManagerMaker} from './manager'
 
@@ -31,12 +29,10 @@ const apiMock: GovernanceApi = {
 }
 
 describe('createGovernanceManager', () => {
-  const cardano = init('global')
   const network = Chain.Network.Mainnet
   const options = {
     walletId: 'walletId',
     network,
-    cardano,
     storage: mountAsyncStorage({path: 'wallet/'}),
     api: governanceApiMaker({network}),
   } as const
@@ -142,11 +138,9 @@ describe('createGovernanceManager', () => {
 
   describe('createDelegationCertificate', () => {
     it('should create delegation certificate', async () => {
-      const privateKey = cardano.Bip32PrivateKey.fromBytes(
-        Buffer.from(privateKeyCBOR, 'hex'),
+      const stakingKey = stakeKey(
+        'c3892366f174a76af9252f78368f5747d3055ab3568ea3b6bf40b01e',
       )
-      const publicKey = privateKey.toPublic()
-      const stakingKey = publicKey.derive(2).derive(0).toRawKey()
 
       const drepId = 'c1ba49d52822bc4ef30cbf77060251668f1a6ef15ca46d18f76cc758'
       const manager = governanceManagerMaker(options)
@@ -155,11 +149,41 @@ describe('createGovernanceManager', () => {
         'key',
         stakingKey,
       )
-      expect(certificate).toBeDefined()
-      const certificateHex = Buffer.from(certificate.toBytes()).toString('hex')
-      expect(certificateHex).toBe(
-        '83098200581cc3892366f174a76af9252f78368f5747d3055ab3568ea3b6bf40b01e8200581cc1ba49d52822bc4ef30cbf77060251668f1a6ef15ca46d18f76cc758',
+      expect(certificate).toEqual({
+        kind: 'VoteDelegation',
+        stakeCredentialKeyHashHex:
+          'c3892366f174a76af9252f78368f5747d3055ab3568ea3b6bf40b01e',
+        drep: {
+          KeyHash: 'c1ba49d52822bc4ef30cbf77060251668f1a6ef15ca46d18f76cc758',
+        },
+      })
+    })
+
+    it('returns plain abstain and registration certificate data', () => {
+      const stakingKey = stakeKey(
+        'c3892366f174a76af9252f78368f5747d3055ab3568ea3b6bf40b01e',
       )
+      const manager = governanceManagerMaker(options)
+
+      expect(manager.createVotingCertificate('abstain', stakingKey)).toEqual({
+        kind: 'VoteDelegation',
+        stakeCredentialKeyHashHex:
+          'c3892366f174a76af9252f78368f5747d3055ab3568ea3b6bf40b01e',
+        drep: 'AlwaysAbstain',
+      })
+      expect(
+        manager.createVotingCertificate('no-confidence', stakingKey),
+      ).toEqual({
+        kind: 'VoteDelegation',
+        stakeCredentialKeyHashHex:
+          'c3892366f174a76af9252f78368f5747d3055ab3568ea3b6bf40b01e',
+        drep: 'AlwaysNoConfidence',
+      })
+      expect(manager.createStakeRegistrationCertificate(stakingKey)).toEqual({
+        kind: 'StakeRegistration',
+        stakeCredentialKeyHashHex:
+          'c3892366f174a76af9252f78368f5747d3055ab3568ea3b6bf40b01e',
+      })
     })
   })
 
@@ -197,5 +221,4 @@ describe('createGovernanceManager', () => {
   })
 })
 
-const privateKeyCBOR =
-  '780de6f67db8e048fe17df60d1fff06dd700cc54b10fc4bcf30f59444d46204c0b890d7dce4c8142d4a4e8e26beac26d6f3c191a80d7b79cc5952968ad7ffbb7d43e76aa8d9b5ad9d91d48479ecd8ef6d00e8df8874e8658ece0cdef94c42367'
+const stakeKey = (hash: string) => ({hash: () => ({toHex: () => hash})})

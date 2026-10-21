@@ -1,9 +1,10 @@
 import {RawUtxo} from '@yoroi/api'
 import {primaryTokenId as defaultPrimaryTokenId} from '@yoroi/portfolio'
 import {
+  CardanoAddressedUtxo,
   SendToken,
   TransactionOutput,
-  normalizeToAddress,
+  cmlAssetsFromAmounts,
   validateAndExtractAddressInfo,
 } from '@yoroi/tx'
 import {Balance, BaseAsset, Chain, Portfolio, Wallet} from '@yoroi/types'
@@ -14,14 +15,14 @@ import {
   rewardAddressFromAddress,
   rewardAddressHexFromAccountPublicKey,
   stakeCredentialHexFromAddress,
-} from '@yoroi-classic/csl-mobile-bridge'
+  transactionUnspentOutputHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {BigNumber} from 'bignumber.js'
 import {Buffer} from 'buffer'
 
 import {withMinAmounts} from './getMinAmounts'
-import {CardanoTypes, YoroiWallet} from './types'
+import {YoroiWallet} from './types'
 import {Amounts} from './utils/utils'
-import {CardanoMobileWrapped} from './wrappedCsl'
 
 export const deriveRewardAddressHex = (
   accountPubKeyHex: string,
@@ -61,7 +62,7 @@ export const deriveRewardAddressDetails = (
 // matches RawUtxo and a tx input/output
 type RemoteValue = {
   readonly amount: string
-  readonly assets?: ReadonlyArray<BaseAsset>
+  readonly assets?: ReadonlyArray<Pick<BaseAsset, 'amount' | 'tokenId'>>
 }
 
 export const amountsFromRemote = (
@@ -151,44 +152,14 @@ export const isTokenInfo = (
 }
 
 export const generateCIP30UtxoCbor = (utxo: RawUtxo) => {
-  return CardanoMobileWrapped.cslScope((csl) => {
-    const txHash = csl.TransactionHash.fromBytes(
-      Buffer.from(utxo.tx_hash, 'hex'),
-    )
-    if (!txHash) throw new Error('Invalid tx hash')
-
-    const index = utxo.tx_index
-    const input = csl.TransactionInput.new(txHash, index)
-    // Use normalizeToAddress to handle Byron (base58), Shelley (bech32), and hex addresses
-    const address = normalizeToAddress(csl, utxo.receiver)
-    if (!address) throw new Error('Invalid address')
-
-    const amount = csl.BigNum.fromStr(utxo.amount)
-    if (!amount) throw new Error('Invalid amount')
-
-    const collateral = csl.Value.new(amount)
-    const output = csl.TransactionOutput.new(address, collateral)
-    const transactionUnspentOutput = csl.TransactionUnspentOutput.new(
-      input,
-      output,
-    )
-
-    return transactionUnspentOutput.toHex()
+  const amounts = amountsFromRemote(utxo)
+  return transactionUnspentOutputHex({
+    txHashHex: utxo.tx_hash,
+    index: String(utxo.tx_index),
+    address: utxo.receiver,
+    lovelace: utxo.amount,
+    assets: cmlAssetsFromAmounts(amounts, defaultPrimaryTokenId),
   })
-}
-
-export const copyFromCSL = <T extends {toHex: () => string}>(
-  creator: {fromHex: (hex: string) => T},
-  value: T,
-): T => {
-  return creator.fromHex(value.toHex())
-}
-
-export const copyMultipleFromCSL = <T extends {toHex: () => string}>(
-  items: T[],
-  creator: {fromHex: (hex: string) => T},
-) => {
-  return items.map((item) => copyFromCSL(creator, item))
 }
 
 export const getHexAddressingMap = async (wallet: YoroiWallet) => {
@@ -238,28 +209,26 @@ export const getAddressedUtxos = (wallet: YoroiWallet) => {
   // Use wallet.utxos to exclude collateral UTXO from transaction operations
   // Collateral should not be used in regular transactions
   const primaryTokenId = wallet.portfolioPrimaryTokenInfo.id
-  return wallet
-    .utxos()
-    .map((utxo: RawUtxo): CardanoTypes.CardanoAddressedUtxo => {
-      const addressing = wallet.getAddressing(utxo.receiver)
+  return wallet.utxos().map((utxo: RawUtxo): CardanoAddressedUtxo => {
+    const addressing = wallet.getAddressing(utxo.receiver)
 
-      // Convert to modern Balance.Amounts format
-      const balance: Balance.Amounts = {
-        [primaryTokenId]: utxo.amount as Balance.Quantity,
-      }
-      for (const asset of utxo.assets) {
-        balance[asset.tokenId] = asset.amount as Balance.Quantity
-      }
+    // Convert to modern Balance.Amounts format
+    const balance: Balance.Amounts = {
+      [primaryTokenId]: utxo.amount as Balance.Quantity,
+    }
+    for (const asset of utxo.assets) {
+      balance[asset.tokenId] = asset.amount as Balance.Quantity
+    }
 
-      return {
-        addressing,
-        txIndex: utxo.tx_index,
-        txHash: utxo.tx_hash,
-        receiver: utxo.receiver,
-        utxoId: utxo.utxo_id,
-        balance,
-      }
-    })
+    return {
+      addressing,
+      txIndex: utxo.tx_index,
+      txHash: utxo.tx_hash,
+      receiver: utxo.receiver,
+      utxoId: utxo.utxo_id,
+      balance,
+    }
+  })
 }
 
 export const getPublicKeyHex = (wallet: YoroiWallet) => {

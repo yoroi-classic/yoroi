@@ -26,7 +26,7 @@ export function addProposal(
 
   // For now, we'll add the proposal information to metadata
   // The actual governance action structure would be more complex
-  // and may require CSL GovernanceAction types
+  // and may require additional CML governance-action support
 
   const governanceMetadata = {
     governanceAction: proposal.governanceAction,

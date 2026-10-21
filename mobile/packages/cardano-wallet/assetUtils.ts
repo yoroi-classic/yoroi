@@ -15,7 +15,7 @@ import BigNumber from 'bignumber.js'
 import {minimumAdaForAssetsCml} from './cml/minimumAda'
 
 // Re-export from assetHelpers to maintain backward compatibility
-export {identifierToCardanoAsset} from './assetHelpers'
+export {identifierToAssetHex} from './assetHelpers'
 
 /**
  * Calculates locked deposit for remaining UTXOs after excluding those being spent.

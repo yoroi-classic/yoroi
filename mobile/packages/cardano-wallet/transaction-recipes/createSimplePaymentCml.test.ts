@@ -1,14 +1,17 @@
 import {
   buildSimplePaymentTransaction,
   minimumCoinForAssets,
-} from '@yoroi-classic/csl-mobile-bridge'
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import {
   buildSimplePaymentCml,
   minimumAdaForAssetsCml,
 } from './createSimplePaymentCml'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressToHex: jest.fn((address: string) =>
+    address.includes('byron') ? '82' : '01',
+  ),
   addressInfoFromAddress: jest.fn((address: string) => ({bech32: address})),
   buildSimplePaymentTransaction: jest.fn(() => ({
     cborHex: '84a0a0f5',
@@ -26,7 +29,6 @@ describe('buildSimplePaymentCml', () => {
         txIndex: 0,
         balance: {'.': '10000000'},
         toTransactionUnspentOutputHex: jest.fn(),
-        toTransactionUnspentOutput: jest.fn(),
       },
     ],
     outputs: [
@@ -58,6 +60,8 @@ describe('buildSimplePaymentCml', () => {
             transactionHashHex: 'ab'.repeat(32),
             index: '0',
             address: 'addr_test_input',
+            addressHex: '01',
+            isBootstrap: false,
             lovelace: '10000000',
             assets: [],
           },
@@ -169,7 +173,7 @@ describe('buildSimplePaymentCml', () => {
 
   it('normalizes legacy hex Shelley addresses before CML minimum-coin parsing', () => {
     const {addressInfoFromAddress, minimumCoinForAssets} = jest.requireMock(
-      '@yoroi-classic/csl-mobile-bridge',
+      '@yoroi-classic/cml-mobile-bridge',
     )
     addressInfoFromAddress.mockReturnValueOnce({bech32: 'addr_test_normalized'})
 

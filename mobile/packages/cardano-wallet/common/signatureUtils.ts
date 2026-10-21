@@ -1,65 +1,37 @@
 import {cardanoConfig, derivationConfig} from '@yoroi/blockchains'
 import {getLogger, throwLoggedError} from '@yoroi/logger'
-import {Addressing, createLedgerPlutusPayload, getAllSigners} from '@yoroi/tx'
+import {Addressing} from '@yoroi/tx'
 import {Balance, Branded, Wallet} from '@yoroi/types'
 
-import {SignTransactionRequest} from '@cardano-foundation/ledgerjs-hw-app-cardano'
-import * as CSL_TYPES from '@emurgo/cross-csl-core'
-import {Buffer} from 'buffer'
+import {
+  addressToHex,
+  transactionSigningRequirementsJson,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {uniqWith} from 'lodash'
 
+import {getSpendingKey} from '../addressInfo/addressInfo'
 import {CardanoTypes, YoroiWallet} from '../types'
-import {CardanoMobile} from '../wrappedCsl'
-
-export const createSwapCancellationLedgerPayload = async (
-  cbor: string,
-  wallet: YoroiWallet,
-  chainId: number,
-  protocolMagic: number,
-  getAddressing: (address: string) => Addressing,
-  stakeVKHash: CSL_TYPES.Ed25519KeyHash,
-): Promise<SignTransactionRequest> => {
-  const changeAddrs = [
-    ...wallet.internalAddresses(),
-    ...wallet.internalAddresses(),
-  ].map((address) => ({
-    addressing: getAddressing(address),
-    address,
-  }))
-  const getAddressingByTxIdAndIndex = (txId: string, index: number) => {
-    const utxo = wallet
-      .allUtxos()
-      .find((utxo) => utxo.tx_hash === txId && utxo.tx_index === index)
-    return utxo ? getAddressing(utxo.receiver) : null
-  }
-  return await createLedgerPlutusPayload({
-    cbor,
-    addresses: changeAddrs,
-    networkId: chainId,
-    protocolMagic,
-    purpose: harden(1852),
-    stakeVKHash,
-    getUtxoAddressing: getAddressingByTxIdAndIndex,
-    getAddressAddressing: getAddressing,
-  })
-}
 
 export const convertBech32ToHex = (bech32Address: string) => {
-  const address = CardanoMobile.Address.fromBech32(bech32Address)
-  const bytes = address.toBytes()
-  return Buffer.from(bytes).toString('hex')
+  return addressToHex(bech32Address)
 }
 
-export const harden = (num: number) => derivationConfig.hardStart + num
+type TransactionSigningRequirements = {
+  inputs: Array<{transactionIdHex: string; index: string}>
+  collateralInputs: Array<{transactionIdHex: string; index: string}>
+  requiredSigners: string[]
+  hasStakingCertificate: boolean
+  withdrawals: Array<{rewardAddressHex: string; amount: string}>
+  nativeScriptKeyHashesHex: string[]
+}
 
 const getRequiredSigners = async (
-  tx: CSL_TYPES.Transaction,
+  requirements: TransactionSigningRequirements,
   wallet: YoroiWallet,
   meta: Wallet.Meta,
   partial = true,
 ): Promise<number[][]> => {
-  const stakeVKHash = wallet.getStakingKey().hash()
-  const txBody = tx.body()
+  const stakeVKHash = wallet.getStakingKey().hash().toHex()
 
   const implementation = meta.implementation
 
@@ -103,123 +75,59 @@ const getRequiredSigners = async (
       }
     })
 
-  const getAddressAddressing = (bech32Address: string) => {
-    // Check if wallet actually controls this address (payment key)
-    const addressBranded = Branded.asAddress(bech32Address)
-    const internalIndex = wallet.internalAddresses().indexOf(addressBranded)
-    const externalIndex = wallet.externalAddresses().indexOf(addressBranded)
-    const walletControlsAddress = internalIndex !== -1 || externalIndex !== -1
-
-    // If wallet doesn't control the address and we're in strict mode, return null
-    if (!walletControlsAddress && !partial) {
-      return null
+  const signers: Addressing[] = []
+  const controlledAddresses = [
+    ...wallet.externalAddresses(),
+    ...wallet.internalAddresses(),
+  ]
+  const signerKeyHashes = [
+    ...requirements.requiredSigners,
+    ...requirements.nativeScriptKeyHashesHex,
+  ]
+  for (const keyHashHex of new Set(signerKeyHashes)) {
+    if (stakingKeyPath && keyHashHex === stakeVKHash) {
+      signers.push({path: stakingKeyPath, startLevel})
+      continue
     }
 
-    // If wallet doesn't control the address, don't return addressing even in partial mode
-    // This prevents signing for addresses we don't control (e.g., Minswap payment key + our staking key)
-    if (!walletControlsAddress) {
-      return null
-    }
-
-    const path = getDerivationPathForAddress(
-      bech32Address,
-      wallet,
-      meta,
-      partial,
+    const address = controlledAddresses.find(
+      (candidate) => getSpendingKey(candidate)?.toLowerCase() === keyHashHex,
     )
-    return {path, startLevel}
-  }
-
-  // Adapter to convert TransactionBody to the format expected by getAllSigners
-  // TransactionBody.requiredSigners() returns Ed25519KeyHashes | null
-  // TransactionBody.collateral() returns TransactionInputs | null
-  const bodyAdapter = {
-    requiredSigners() {
-      const signers = txBody.requiredSigners()
-      if (!signers) return null
-      return {
-        len: () => signers.len(),
-        get: (index: number) => signers.get(index),
+    if (!address) {
+      if (!partial) {
+        throw new Error(
+          `Could not find addressing for required signer: ${keyHashHex}`,
+        )
       }
-    },
-    inputs: () => txBody.inputs(),
-    collateral: () => {
-      // collateral() returns Optional<TransactionInputs> | TransactionInputs | null
-      const collateralOpt = txBody.collateral()
-      if (!collateralOpt) return null
-      // Check if it's Optional (has hasValue method)
-      // WASM types don't have proper TypeScript definitions for Optional types
-      type OptionalLike = {hasValue: () => boolean; value: () => unknown}
-      type TransactionInputsLike = ReturnType<typeof txBody.inputs>
-      if (
-        typeof (collateralOpt as unknown as OptionalLike).hasValue ===
-        'function'
-      ) {
-        const opt = collateralOpt as unknown as OptionalLike
-        if (!opt.hasValue()) return null
-        // When Optional has a value, the Optional itself IS the TransactionInputs
-        // No need to call .value() - use it directly
-        return opt as unknown as TransactionInputsLike
-      }
-      // If it's already TransactionInputs, return it directly
-      return collateralOpt as TransactionInputsLike
-    },
-  }
-
-  const signers = await getAllSigners({
-    body: bodyAdapter,
-    networkId: wallet.networkManager.chainId,
-    stakeVKHash,
-    getAddressAddressing,
-    utxos: addressedUtxos,
-    partial,
-    stakingKeyPath,
-  })
-
-  // Extract key hashes from native scripts in witness set
-  // According to Cardano protocol, native scripts using ScriptPubkey ALWAYS require
-  // signatures from the key hash, regardless of context (minting, payment, staking, etc.)
-  // This is a fundamental protocol requirement, not specific to minting
-  const witnessSet = tx.witnessSet()
-  if (witnessSet) {
-    const nativeScripts = witnessSet.nativeScripts()
-    if (nativeScripts) {
-      for (let i = 0; i < nativeScripts.len(); i++) {
-        const nativeScript = nativeScripts.get(i)
-        if (!nativeScript) continue
-
-        try {
-          // Check if it's a ScriptPubkey (requires signature)
-          const scriptPubkey = nativeScript.asScriptPubkey()
-          if (scriptPubkey) {
-            const keyHash = scriptPubkey.addrKeyhash()
-            if (keyHash) {
-              // Check if this key hash corresponds to one of our addresses
-              const paymentCredential =
-                CardanoMobile.Credential.fromKeyhash(keyHash)
-              const stakeCredential =
-                CardanoMobile.Credential.fromKeyhash(stakeVKHash)
-              const baseAddress = CardanoMobile.BaseAddress.new(
-                wallet.networkManager.chainId,
-                paymentCredential,
-                stakeCredential,
-              )
-              const bech32Address = baseAddress.toAddress().toBech32(undefined)
-              const addressing = getAddressAddressing(bech32Address)
-              if (addressing) {
-                signers.push(addressing)
-              }
-            }
-          }
-          // Note: Other native script types (ScriptAll, ScriptAny, ScriptNOfK, TimelockStart, TimelockExpiry)
-          // don't require signatures directly, but their nested scripts might
-          // For now, we only handle ScriptPubkey which is the most common case
-        } catch {
-          // Ignore if script parsing fails
-        }
-      }
+      continue
     }
+    signers.push({
+      path: getDerivationPathForAddress(address, wallet, meta, partial),
+      startLevel,
+    })
   }
+
+  const addInputAddressing = (input: {
+    transactionIdHex: string
+    index: string
+  }) => {
+    const index = Number(input.index)
+    const matchingUtxo = addressedUtxos.find(
+      (utxo) =>
+        utxo.txHash === input.transactionIdHex && utxo.txIndex === index,
+    )
+    if (!matchingUtxo) {
+      if (!partial) {
+        throw new Error(
+          `Could not find input utxo: ${input.transactionIdHex}:${input.index}`,
+        )
+      }
+      return
+    }
+    signers.push(matchingUtxo.addressing)
+  }
+  requirements.inputs.forEach(addInputAddressing)
+  requirements.collateralInputs.forEach(addInputAddressing)
 
   return getUniquePaths(signers.map((s: {path: number[]}) => s.path))
 }
@@ -282,13 +190,14 @@ export const getTransactionSigners = async (
   meta: Wallet.Meta,
   partial = true,
 ): Promise<number[][]> => {
-  const tx = CardanoMobile.Transaction.fromHex(cbor)
-
-  const signers = await getRequiredSigners(tx, wallet, meta, partial)
+  const requirements = JSON.parse(
+    transactionSigningRequirementsJson(cbor),
+  ) as TransactionSigningRequirements
+  const signers = await getRequiredSigners(requirements, wallet, meta, partial)
   const implementation = meta.implementation
   if (
     implementation === 'cardano-cip1852' &&
-    needsToSignWithStakingKey(tx, wallet)
+    needsToSignWithStakingKey(requirements, wallet)
   ) {
     const implementationConfig = cardanoConfig.implementations[implementation]
     const additionalSigner: number[] = Array.from(
@@ -313,31 +222,13 @@ export const assertHasAllSigners = async (
 }
 
 const needsToSignWithStakingKey = (
-  tx: CSL_TYPES.Transaction,
+  requirements: TransactionSigningRequirements,
   wallet: YoroiWallet,
 ) => {
-  const body = tx.body()
-  const [certificates, withdrawals] = [body.certs(), body.withdrawals()]
-
-  for (let i = 0; certificates && i < certificates.len(); i++) {
-    const certificate = certificates.get(i)
-    if (certificate.asStakeRegistration()?.hasValue()) return true
-    if (certificate.asStakeDeregistration()?.hasValue()) return true
-    if (certificate.asStakeDelegation()?.hasValue()) return true
-    if (certificate.asStakeRegistrationAndDelegation()?.hasValue()) return true
-    if (certificate.asStakeAndVoteDelegation()?.hasValue()) return true
-    if (certificate.asVoteDelegation()?.hasValue()) return true
-    if (certificate.asVoteRegistrationAndDelegation()?.hasValue()) return true
-  }
-
-  // Only require staking key if any withdrawal targets our wallet's reward address
-  if (withdrawals && wallet.rewardAddressHex) {
-    const keys = withdrawals.keys()
-    for (let i = 0; i < keys.len(); i++) {
-      const rewardAddress = keys.get(i)
-      const rewardAddressHex = rewardAddress.toAddress().toHex()
-      if (rewardAddressHex === wallet.rewardAddressHex) return true
-    }
-  }
-  return false
+  return (
+    requirements.hasStakingCertificate ||
+    requirements.withdrawals.some(
+      ({rewardAddressHex}) => rewardAddressHex === wallet.rewardAddressHex,
+    )
+  )
 }

@@ -3,6 +3,7 @@ import {createTypeGuardFromSchema, isKeyOf, isRecord} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {Chain} from '@yoroi/types'
 
+import {valueFromHexInfoJson} from '@yoroi-classic/cml-mobile-bridge'
 import BigNumber from 'bignumber.js'
 import {z} from 'zod'
 
@@ -166,7 +167,10 @@ export const resolver: Resolver = {
 
         if (!hasPendingCollateral) {
           const balance = await context.wallet.getBalance('*')
-          const coin = new BigNumber(await (await balance.coin()).toStr())
+          const decodedBalance = JSON.parse(valueFromHexInfoJson(balance)) as {
+            coin: string
+          }
+          const coin = new BigNumber(decodedBalance.coin)
           if (coin.isGreaterThan(new BigNumber(value))) {
             await context.wallet.sendReorganisationTx(value)
           }
@@ -175,13 +179,13 @@ export const resolver: Resolver = {
         return null
       }
 
-      return Promise.all(result.map((u) => u.toHex()))
+      return result
     },
     getUnusedAddresses: async (_params: unknown, context: Context) => {
       assertOriginsMatch(context)
       await assertWalletAcceptedConnection(context)
       const addresses = await context.wallet.getUnusedAddresses()
-      return Promise.all(addresses.map((a) => a.toHex()))
+      return addresses
     },
     getExtensions: async (_params: unknown, context: Context) => {
       assertOriginsMatch(context)
@@ -198,13 +202,13 @@ export const resolver: Resolver = {
       if (!isGetBalanceParams(params)) throw new Error('Invalid params')
       const [tokenId = '*'] = params.args
       const balance = await context.wallet.getBalance(tokenId)
-      return balance.toHex()
+      return balance
     },
     getChangeAddress: async (_params: unknown, context: Context) => {
       assertOriginsMatch(context)
       await assertWalletAcceptedConnection(context)
       const address = await context.wallet.getChangeAddress()
-      return address.toHex()
+      return address
     },
     getNetworkId: async (_params: unknown, context: Context) => {
       assertOriginsMatch(context)
@@ -215,7 +219,7 @@ export const resolver: Resolver = {
       assertOriginsMatch(context)
       await assertWalletAcceptedConnection(context)
       const addresses = await context.wallet.getRewardAddresses()
-      return Promise.all(addresses.map((a) => a.toHex()))
+      return addresses
     },
     getUtxos: async (params: unknown, context: Context) => {
       assertOriginsMatch(context)
@@ -235,7 +239,7 @@ export const resolver: Resolver = {
       const utxos = await context.wallet.getUtxos(value, pagination)
       if (utxos === null || (utxos.length === 0 && typeof value === 'string'))
         return null
-      return Promise.all(utxos.map((u) => u.toHex()))
+      return utxos
     },
     getUsedAddresses: async (params: unknown, context: Context) => {
       assertOriginsMatch(context)
@@ -247,7 +251,7 @@ export const resolver: Resolver = {
           ? params.args[0]
           : undefined
       const addresses = await context.wallet.getUsedAddresses(pagination)
-      return Promise.all(addresses.map((a) => a.toHex()))
+      return addresses
     },
     cip95: {
       getPubDRepKey: async (_params: unknown, context: Context) => {
@@ -578,16 +582,16 @@ export type ResolverWallet = {
   networkId: number
   network: Chain.SupportedNetworks
   confirmConnection: (dappOrigin: string) => Promise<boolean>
-  getBalance: (tokenId?: string) => HexBalance
-  getUnusedAddresses: () => HexSerializable[]
-  getUsedAddresses: (pagination?: Pagination) => HexSerializable[]
-  getChangeAddress: () => HexSerializable
-  getRewardAddresses: () => HexSerializable[]
+  getBalance: (tokenId?: string) => string
+  getUnusedAddresses: () => string[]
+  getUsedAddresses: (pagination?: Pagination) => string[]
+  getChangeAddress: () => string
+  getRewardAddresses: () => string[]
   getUtxos: (
     value?: string,
     pagination?: Pagination,
-  ) => Promise<HexSerializable[] | null>
-  getCollateral: (value?: string) => Promise<HexSerializable[] | null>
+  ) => Promise<string[] | null>
+  getCollateral: (value?: string) => Promise<string[] | null>
   getCollateralInfo: () => {
     collateralId: string
     isConfirmed: boolean
@@ -602,10 +606,6 @@ export type ResolverWallet = {
   cip95?: CIP95ResolverWallet
   cip103?: CIP103ResolverWallet
 }
-
-/** CIP-30 resolver consumes serialized hex, not the underlying ledger objects. */
-type HexSerializable = {toHex: () => string}
-type HexBalance = HexSerializable & {coin: () => {toStr: () => string}}
 
 type CIP95ResolverWallet = {
   getPubDRepKey: () => Promise<string>

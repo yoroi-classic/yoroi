@@ -8,16 +8,14 @@ import {
   createCIP36VotingMetadata,
   createCardanoHaskellConfig,
   createTransactionBuilder,
+  normalizeAddressToHex,
   selectUtxosForAmount,
   setChangeAddress,
   setTTLWithBuffer,
 } from '@yoroi/tx'
-import {Address, Portfolio, PublicKeyHex, Wallet} from '@yoroi/types'
+import {Address, Portfolio, Wallet} from '@yoroi/types'
 
-import type {BaseAddress, PublicKey} from '@emurgo/cross-csl-core'
-import {Buffer} from 'buffer'
-
-import {CardanoMobile} from '../wrappedCsl'
+import {publicKeyHexFromPrivateKeyHex} from '@yoroi-classic/cml-mobile-bridge'
 
 export type CreateVotingRegTxParams = {
   utxos: ModernUtxo[]
@@ -31,10 +29,10 @@ export type CreateVotingRegTxParams = {
   networkId: number
   getAbsoluteSlotNumber: () => Promise<BigNumber>
   getChangeAddress: (addressMode: Wallet.AddressMode) => Address | string
-  getStakingKey: () => PublicKey
-  getFirstPaymentAddress: () => BaseAddress
+  stakingPublicKeyHex: string
+  getFirstPaymentAddress: () => Address | string
   supportsCIP36: boolean
-  catalystKeyHex: PublicKeyHex | string
+  catalystKeyHex: string
   addressMode: Wallet.AddressMode
 }
 
@@ -45,29 +43,14 @@ export async function createVotingRegTx({
   networkId,
   getAbsoluteSlotNumber,
   getChangeAddress,
-  getStakingKey,
+  stakingPublicKeyHex,
   getFirstPaymentAddress,
   supportsCIP36,
   catalystKeyHex,
   addressMode,
 }: CreateVotingRegTxParams): Promise<{votingRegTx: {cbor: string}}> {
   const absSlotNumber = await getAbsoluteSlotNumber()
-  const catalystKeyHexStr =
-    typeof catalystKeyHex === 'string' ? catalystKeyHex : catalystKeyHex
-  const votingPrivateKey = CardanoMobile.PrivateKey.fromExtendedBytes(
-    new Uint8Array(Buffer.from(catalystKeyHexStr, 'hex')),
-  )
-  if (!votingPrivateKey) {
-    throw new Error('Failed to create voting private key from catalystKeyHex')
-  }
-  const votingPublicKey = votingPrivateKey.toPublic()
-  if (!votingPublicKey) {
-    throw new Error('Failed to get public key from voting private key')
-  }
-  const stakingPublicKey = getStakingKey()
-  if (!stakingPublicKey) {
-    throw new Error('Failed to get staking public key')
-  }
+  const votingPublicKeyHex = publicKeyHexFromPrivateKeyHex(catalystKeyHex)
   const changeAddressRaw = getChangeAddress(addressMode)
   const changeAddress =
     typeof changeAddressRaw === 'string'
@@ -81,26 +64,13 @@ export async function createVotingRegTx({
 
   const nonce = absSlotNumber.toNumber()
 
-  const baseAddr = getFirstPaymentAddress()
-  if (!baseAddr) {
-    throw new Error('getFirstPaymentAddress returned null')
-  }
-  const baseAddrObj = baseAddr.toAddress()
-  if (!baseAddrObj) {
-    throw new Error('Failed to convert base address to Address')
-  }
-  // Convert addresses to hex format (bech32 strings are too long for metadata)
-  const paymentAddressHex = baseAddrObj.toHex()
+  const paymentAddress = getFirstPaymentAddress()
+  const paymentAddressHex = normalizeAddressToHex(paymentAddress)
   if (!paymentAddressHex) {
     throw new Error('Failed to convert payment address to hex')
   }
 
-  // Derive reward address from base address
-  const rewardAddr = baseAddrObj
-  const rewardAddressHex = rewardAddr.toHex()
-  if (!rewardAddressHex) {
-    throw new Error('Failed to convert reward address to hex')
-  }
+  const rewardAddressHex = paymentAddressHex
 
   // Estimate fee for voting registration transaction
   // CIP-36 metadata with hex addresses can be larger (~600-800 bytes)
@@ -127,15 +97,7 @@ export async function createVotingRegTx({
   // Add only selected UTXOs as inputs
   builderState = addInputs(builderState, selectedUtxos)
 
-  // Create and add voting metadata
-  // Convert public keys to hex format (bech32 strings are too long for metadata)
-  const votingPublicKeyHex = Buffer.from(votingPublicKey.asBytes()).toString(
-    'hex',
-  )
-  const stakingPublicKeyHex = Buffer.from(stakingPublicKey.asBytes()).toString(
-    'hex',
-  )
-
+  // Create and add voting metadata from CML-derived raw public key bytes.
   const votingMetadata = supportsCIP36
     ? createCIP36VotingMetadata(
         votingPublicKeyHex,

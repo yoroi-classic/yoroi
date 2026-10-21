@@ -1,14 +1,14 @@
 import {
   signWalletTransactionHex,
   signWalletTransactionPathsHex,
-} from '@yoroi-classic/csl-mobile-bridge'
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import {
   signWalletTransaction,
   signWalletTransactionWithPaths,
 } from './signing-operations'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   signWalletTransactionHex: jest.fn(() => '0304'),
   signWalletTransactionPathsHex: jest.fn(() => '0506'),
 }))

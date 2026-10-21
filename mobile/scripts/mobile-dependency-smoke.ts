@@ -14,7 +14,7 @@ const smokeTests = [
   'packages/api/cardano/api/best-block.test.ts',
   'packages/api/cardano/api/utxo-data.test.ts',
   'packages/cardano-wallet/cip30/cip30.test.ts',
-  'packages/tx/utils/signing.test.ts',
+  'packages/cardano-wallet/common/signatureUtils.test.ts',
   'packages/dapp-connector/dapp-connector.test.ts',
 ]
 
@@ -22,9 +22,7 @@ const additionalSmokeInputs = ['packages/cardano-wallet/mocks/mocks/wallet.ts']
 
 const pinnedDependencySmokeInputs = [
   '@cardano-foundation/ledgerjs-hw-app-cardano',
-  '@emurgo/cross-csl-core',
-  '@emurgo/cross-csl-mobile',
-  '@emurgo/cross-csl-nodejs',
+  '@yoroi-classic/cml-mobile-bridge',
   '@ledgerhq/hw-transport-web-ble',
   '@ledgerhq/hw-transport-webhid',
   '@ledgerhq/react-native-hid',
@@ -106,6 +104,23 @@ function validatePinnedDependencyLock() {
     rootLockPackage.devDependencies,
   ] as Array<Record<string, string> | undefined>
   const failures: Array<string> = []
+  const forbiddenCslDependencies = [
+    '@emurgo/cardano-serialization-lib-browser',
+    '@emurgo/cardano-serialization-lib-nodejs',
+    '@emurgo/cross-csl-core',
+    '@emurgo/cross-csl-mobile',
+    '@emurgo/cross-csl-nodejs',
+    '@emurgo/csl-mobile-bridge-jsi',
+  ]
+
+  for (const dependencyName of forbiddenCslDependencies) {
+    if (getPackageVersion(packageJson, dependencyName)) {
+      failures.push(`${dependencyName} remains in package.json`)
+    }
+    if (packageLock.packages?.[`node_modules/${dependencyName}`]) {
+      failures.push(`${dependencyName} remains in package-lock.json`)
+    }
+  }
 
   for (const dependencyName of pinnedDependencySmokeInputs) {
     const packageJsonVersion = getPackageVersion(packageJson, dependencyName)
@@ -118,8 +133,8 @@ function validatePinnedDependencyLock() {
     const lockRootVersion = rootLockDependencyGroups
       .map((dependencies) => dependencies?.[dependencyName])
       .find(Boolean)
-    const resolvedVersion =
-      packageLock.packages?.[`node_modules/${dependencyName}`]?.version
+    const resolvedPackage = packageLock.packages?.[`node_modules/${dependencyName}`]
+    const resolvedVersion = resolvedPackage?.version
 
     if (lockRootVersion !== packageJsonVersion) {
       failures.push(
@@ -127,10 +142,13 @@ function validatePinnedDependencyLock() {
       )
     }
 
-    if (resolvedVersion !== packageJsonVersion) {
+    if (dependencyName !== '@yoroi-classic/cml-mobile-bridge' && resolvedVersion !== packageJsonVersion) {
       failures.push(
         `${dependencyName} package-lock resolved version ${resolvedVersion ?? '<missing>'} does not match package.json ${packageJsonVersion}`,
       )
+    }
+    if (dependencyName === '@yoroi-classic/cml-mobile-bridge' && !resolvedPackage) {
+      failures.push(`${dependencyName} has no package-lock entry`)
     }
   }
 

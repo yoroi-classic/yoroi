@@ -7,6 +7,9 @@ import {makeCnsCardanoApi} from './cardano-api-maker'
 import {inlineDatumMock, metadataMock} from './cardano-api-maker.mocks'
 
 jest.mock('@yoroi/api')
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  resolveCnsAddressRecord: jest.fn(),
+}))
 
 describe('getAssetAddress', () => {
   it('returns the address', async () => {

@@ -1,30 +1,16 @@
-import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {scriptHashHexFromCbor} from '@yoroi-classic/cml-mobile-bridge'
 
 import type {MintingScript} from './types'
 
 /**
  * Calculate policy ID from script
  */
-export function calculatePolicyId(
-  csl: WasmModuleProxy,
-  script: MintingScript,
-): string {
-  if (script.type === 'native') {
-    const nativeScript = csl.NativeScript.fromHex(script.script)
-    if (!nativeScript) {
-      throw new Error('Invalid native script')
-    }
-    // NativeScript has hash() method that returns ScriptHash
-    return nativeScript.hash().toHex()
-  } else {
-    // Plutus script
-    const plutusScript = csl.PlutusScript.fromHex(script.script)
-    if (!plutusScript) {
-      throw new Error('Invalid Plutus script')
-    }
-    // PlutusScript has hash() method that returns ScriptHash
-    return plutusScript.hash().toHex()
+export function calculatePolicyId(script: MintingScript): string {
+  const scriptType = script.type === 'native' ? 'native' : script.plutusVersion
+  if (!scriptType) {
+    throw new Error('Plutus script version is required to calculate policy ID')
   }
+  return scriptHashHexFromCbor(scriptType, script.script)
 }
 
 /**
@@ -44,6 +30,13 @@ export function validateMintingScript(script: MintingScript): {
 
   if (!/^[0-9a-fA-F]+$/.test(script.script)) {
     return {valid: false, error: 'Script must be valid hex'}
+  }
+
+  if (
+    script.type === 'plutus' &&
+    !['plutusV1', 'plutusV2', 'plutusV3'].includes(script.plutusVersion ?? '')
+  ) {
+    return {valid: false, error: 'Plutus script version is required'}
   }
 
   return {valid: true}

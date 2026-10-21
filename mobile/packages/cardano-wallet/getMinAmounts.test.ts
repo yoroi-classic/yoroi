@@ -4,7 +4,7 @@ import {Balance, TokenId} from '@yoroi/types'
 import {getMinAmounts, withMinAmounts, withPrimaryToken} from './getMinAmounts'
 import {mocks as walletMocks} from './mocks/mocks/wallet'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressInfoFromAddress: jest.fn((address: string) => {
     if (address === 'really-bad-address') throw new Error('invalid address')
     return {bech32: address}
@@ -127,7 +127,7 @@ describe('getMinAmounts()', () => {
     })
 
     const {minimumCoinForAssets} = jest.requireMock(
-      '@yoroi-classic/csl-mobile-bridge',
+      '@yoroi-classic/cml-mobile-bridge',
     )
     expect(minimumCoinForAssets).toHaveBeenCalledWith(
       address,

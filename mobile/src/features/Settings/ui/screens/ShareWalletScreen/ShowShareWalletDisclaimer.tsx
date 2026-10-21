@@ -36,7 +36,7 @@ export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
   const strings = useStrings()
   const navigation = useNavigation()
   const [showed, setShowed] = React.useState(false)
-  const {atoms: ta, palette: p, basePalette} = useTheme()
+  const {atoms: ta, palette: p} = useTheme()
   const {data: disclaimerText, isLoading} = useDisclaimerText({
     languageCode,
   })
@@ -48,8 +48,6 @@ export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
       content: (
         <Modal.Content>
           <Markdown
-            colorScheme={basePalette}
-            backgroundColor={ta.bg_color_max.backgroundColor}
             value={disclaimerText || ''}
             flatListProps={{
               scrollEnabled: false,
@@ -114,7 +112,6 @@ export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
     strings.global.accept,
     strings.global.cancel,
     strings.global.proceed,
-    basePalette,
     ta,
     p.bg_color_max,
     navigation,

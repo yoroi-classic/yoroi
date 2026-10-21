@@ -1,8 +1,8 @@
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
-
+import {transactionReviewInfoJson} from '@yoroi-classic/cml-mobile-bridge'
 import * as React from 'react'
 
-import {TransactionBody} from '../types'
+import {cmlReviewBodyToTransactionBody} from '../review-info'
+import {CmlTransactionReviewInfo, TransactionBody} from '../types'
 
 export const useTxBody = ({
   cbor,
@@ -16,10 +16,9 @@ export const useTxBody = ({
     return null
   }, [cbor])
 }
-const getCborTxBody = (cbor: string) => {
-  return CardanoMobileWrapped.cslScope((csl) => {
-    const tx = csl.Transaction.fromHex(cbor)
-    const jsonString = tx.toJson()
-    return JSON.parse(jsonString).body
-  })
+const getCborTxBody = (cbor: string): TransactionBody => {
+  const reviewInfo = JSON.parse(
+    transactionReviewInfoJson(cbor),
+  ) as CmlTransactionReviewInfo
+  return cmlReviewBodyToTransactionBody(reviewInfo)
 }

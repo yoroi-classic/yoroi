@@ -1,4 +1,8 @@
-import {getAddressUtxos, getUtxosByRef} from '@yoroi/cardano-wallet'
+import {
+  getAddressUtxos,
+  getUtxosByRef,
+  resolvedUtxoToModernUtxo,
+} from '@yoroi/cardano-wallet'
 import {Chain} from '@yoroi/types'
 
 import {logger} from '~/kernel/logger/logger'
@@ -80,6 +84,18 @@ export async function discoverEscrowUtxo(
     )
   }
 
+  // Carry the CWB response through the shared wallet→transaction UTxO adapter
+  // so script bytes/hash/size are validated and retained in ModernUtxo.
+  const modernReferenceOutput = resolvedUtxoToModernUtxo(referenceOutput)
+  const referenceScript = modernReferenceOutput.referenceScript
+  if (
+    !referenceScript?.bytes ||
+    referenceScript.size == null ||
+    referenceScript.type == null
+  ) {
+    throw new Error('CWB reference script metadata is inconsistent')
+  }
+
   return {
     txHash: escrowUtxo.txHash,
     txIndex: escrowUtxo.outputIndex,
@@ -93,10 +109,10 @@ export async function discoverEscrowUtxo(
       txIndex: referenceOutput.outputIndex,
       address: referenceOutput.address,
       value: referenceOutput.value,
-      referenceScriptHash: referenceOutput.referenceScript.hash,
-      referenceScriptSize: referenceOutput.referenceScript.size,
-      referenceScriptType: referenceOutput.referenceScript.type,
-      referenceScriptCborHex: referenceOutput.referenceScript.bytes,
+      referenceScriptHash: referenceScript.hash,
+      referenceScriptSize: referenceScript.size,
+      referenceScriptType: referenceScript.type,
+      referenceScriptCborHex: referenceScript.bytes,
       assets: referenceOutput.assets.map(({policyId, assetName, quantity}) => ({
         policyIdHex: policyId,
         assetNameHex: assetName,

@@ -3,7 +3,7 @@ import type {CardanoHaskellConfig} from '@yoroi/tx'
 import type {ModernUtxo} from '@yoroi/tx'
 import type {Balance, Portfolio} from '@yoroi/types'
 
-import {buildEscrowRedeemTransactionCml} from '@yoroi-classic/csl-mobile-bridge'
+import {buildEscrowRedeemTransactionCml} from '@yoroi-classic/cml-mobile-bridge'
 
 import {logger} from '~/kernel/logger/logger'
 
@@ -49,9 +49,6 @@ function escrowToModernUtxo(
     balance,
     inlineDatumCborHex: escrowUtxo.datumHex,
     toTransactionUnspentOutputHex: () => {
-      throw new Error('Not needed for script inputs')
-    },
-    toTransactionUnspentOutput: () => {
       throw new Error('Not needed for script inputs')
     },
   } as unknown as ModernUtxo
@@ -151,7 +148,7 @@ export async function buildEscrowRedeemTx(
 
   // Output 2: Escrow change (if thaws remaining > 1)
   if (datum.thawsRemaining > 1n) {
-    const updatedDatumHex = buildUpdatedDatumHex(datum)
+    const updatedDatumHex = buildUpdatedDatumHex(escrowUtxo.datumHex)
     const escrowChangeAmounts: Balance.Amounts = {
       [primaryTokenId]: escrowUtxo.adaAmount as Balance.Quantity,
       [NIGHT_TOKEN_ID]: remainingNight.toString() as Balance.Quantity,

@@ -1,5 +1,5 @@
 import type {TransactionBuilderState} from '../transaction-builder/builder'
-import type {MintAction} from './types'
+import type {MintAction, MintingScript} from './types'
 
 /**
  * Add mint action to transaction builder
@@ -22,15 +22,34 @@ export function addMint(
   if (existingIndex >= 0) {
     // Merge with existing mint action for same policy
     const existing = mints[existingIndex]!
-    const updatedMints = [...mints]
-    updatedMints[existingIndex] = {
-      ...existing,
-      assets: [...existing.assets, ...mintAction.assets],
-      // Use redeemer from new action if provided, otherwise keep existing
-      redeemer: mintAction.redeemer || existing.redeemer,
-      // Use reference script from new action if provided, otherwise keep existing
-      referenceScript: mintAction.referenceScript || existing.referenceScript,
+    if (existing.script.type !== mintAction.script.type) {
+      throw new Error('Cannot merge mint actions with different script types')
     }
+    const updatedMints = [...mints]
+    const mergedAssets = [...existing.assets, ...mintAction.assets]
+    let merged: MintAction
+    if (existing.script.type === 'native' && mintAction.script.type === 'native') {
+      const referenceScript = mintAction.referenceScript ?? existing.referenceScript
+      merged = {
+        ...existing,
+        assets: mergedAssets,
+        ...(referenceScript ? {referenceScript} : {}),
+      }
+    } else if (existing.script.type === 'plutus' && mintAction.script.type === 'plutus') {
+      const existingPlutus = existing as Extract<MintAction, {script: {type: 'plutus'}}>
+      const mintPlutus = mintAction as Extract<MintAction, {script: {type: 'plutus'}}>
+      const referenceScript = mintPlutus.referenceScript ?? existingPlutus.referenceScript
+      merged = {
+        ...existingPlutus,
+        assets: mergedAssets,
+        redeemer: mintPlutus.redeemer || existingPlutus.redeemer,
+        redeemerExUnits: mintPlutus.redeemerExUnits || existingPlutus.redeemerExUnits,
+        ...(referenceScript ? {referenceScript} : {}),
+      }
+    } else {
+      throw new Error('Cannot merge mint actions with different script types')
+    }
+    updatedMints[existingIndex] = merged as MintAction
 
     return {
       ...state,
@@ -72,16 +91,32 @@ export function createMintAction(
   policyId: string,
   assetName: string,
   amount: string,
-  script: {type: 'native' | 'plutus'; script: string},
+  script: MintingScript,
   redeemer?: string,
-  referenceScript?: {txHash: string; txIndex: number},
+  referenceScript?: NonNullable<MintAction['referenceScript']>,
+  redeemerExUnits?: {mem: string; steps: string},
 ): MintAction {
+  if (script.type === 'plutus' && (!redeemer || !redeemerExUnits)) {
+    throw new Error('Plutus mint creation requires redeemer and execution units')
+  }
+  if (script.type === 'native' && (redeemer !== undefined || redeemerExUnits !== undefined)) {
+    throw new Error('Native mint creation cannot include Plutus redeemer data')
+  }
+  if (script.type === 'native') {
+    return {
+      policyId,
+      assets: [{assetName, amount}],
+      script,
+      ...(referenceScript ? {referenceScript} : {}),
+    }
+  }
   return {
     policyId,
     assets: [{assetName, amount}],
     script,
-    redeemer,
-    referenceScript,
+    redeemer: redeemer!,
+    redeemerExUnits: redeemerExUnits!,
+    ...(referenceScript ? {referenceScript} : {}),
   }
 }
 
@@ -92,9 +127,10 @@ export function createBurnAction(
   policyId: string,
   assetName: string,
   amount: string,
-  script: {type: 'native' | 'plutus'; script: string},
+  script: MintingScript,
   redeemer?: string,
-  referenceScript?: {txHash: string; txIndex: number},
+  referenceScript?: NonNullable<MintAction['referenceScript']>,
+  redeemerExUnits?: {mem: string; steps: string},
 ): MintAction {
   // Ensure amount is negative
   const burnAmount = amount.startsWith('-') ? amount : `-${amount}`
@@ -105,6 +141,7 @@ export function createBurnAction(
     script,
     redeemer,
     referenceScript,
+    redeemerExUnits,
   )
 }
 
@@ -116,9 +153,10 @@ export function addBurn(
   policyId: string,
   assetName: string,
   amount: string,
-  script: {type: 'native' | 'plutus'; script: string},
+  script: MintingScript,
   redeemer?: string,
-  referenceScript?: {txHash: string; txIndex: number},
+  referenceScript?: NonNullable<MintAction['referenceScript']>,
+  redeemerExUnits?: {mem: string; steps: string},
 ): TransactionBuilderState {
   const burnAction = createBurnAction(
     policyId,
@@ -127,6 +165,7 @@ export function addBurn(
     script,
     redeemer,
     referenceScript,
+    redeemerExUnits,
   )
   return addMint(state, burnAction)
 }

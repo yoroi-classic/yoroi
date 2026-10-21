@@ -1,6 +1,6 @@
 import {isLeft} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
-import {App, Branded, Chain} from '@yoroi/types'
+import {App, Branded, Chain, DRepValue, KeyHash} from '@yoroi/types'
 
 import {CardanoTypes} from '../types'
 import {GovernanceApi} from './api'
@@ -10,12 +10,22 @@ import {StakingKeyState} from './types'
 export type Config = {
   network: Chain.SupportedNetworks
   walletId: string
-  cardano: CardanoTypes.Wasm
   storage: App.Storage
   api: GovernanceApi
 }
 
 export type VoteKind = 'abstain' | 'no-confidence'
+
+export type GovernanceCertificate =
+  | {
+      kind: 'VoteDelegation'
+      stakeCredentialKeyHashHex: KeyHash
+      drep: DRepValue
+    }
+  | {
+      kind: 'StakeRegistration'
+      stakeCredentialKeyHashHex: KeyHash
+    }
 
 export type GovernanceAction =
   | {
@@ -37,7 +47,7 @@ export type GovernanceManager = {
     hash: string,
     type: 'script' | 'key',
     stakingKey: CardanoTypes.PublicKey,
-  ) => CardanoTypes.Certificate
+  ) => GovernanceCertificate
   createLedgerDelegationPayload: (
     hash: string,
     type: 'script' | 'key',
@@ -46,14 +56,14 @@ export type GovernanceManager = {
   createVotingCertificate: (
     vote: VoteKind,
     stakingKey: CardanoTypes.PublicKey,
-  ) => CardanoTypes.Certificate
+  ) => GovernanceCertificate
   createLedgerVotingPayload: (
     vote: VoteKind,
     stakingKey: CardanoTypes.PublicKey,
   ) => Promise<object>
   createStakeRegistrationCertificate: (
     stakingKey: CardanoTypes.PublicKey,
-  ) => CardanoTypes.Certificate
+  ) => GovernanceCertificate
 
   // latest governance action to be used only to check the "pending" transaction that is not yet confirmed on the blockchain
   setLatestGovernanceAction: (action: GovernanceAction | null) => Promise<void>
@@ -74,7 +84,7 @@ class Manager implements GovernanceManager {
   }
 
   convertHexKeyHashToBech32Format(hexKeyHash: string): string {
-    return convertHexKeyHashToBech32Format(hexKeyHash, this.config.cardano)
+    return convertHexKeyHashToBech32Format(hexKeyHash)
   }
 
   async getStakingKeyState(stakeKeyHash: string): Promise<StakingKeyState> {
@@ -134,42 +144,28 @@ class Manager implements GovernanceManager {
     hash: string,
     type: 'script' | 'key',
     stakingKey: CardanoTypes.PublicKey,
-  ): CardanoTypes.Certificate {
-    const {
-      Certificate,
-      Ed25519KeyHash,
-      Credential,
-      VoteDelegation,
-      DRep,
-      ScriptHash,
-    } = this.config.cardano
-
-    const stakingCredential = Credential.fromKeyhash(stakingKey.hash())
-
-    const votingDelegation =
-      type === 'key'
-        ? DRep.newKeyHash(Ed25519KeyHash.fromBytes(Buffer.from(hash, 'hex')))
-        : DRep.newScriptHash(ScriptHash.fromBytes(Buffer.from(hash, 'hex')))
-
-    return Certificate.newVoteDelegation(
-      VoteDelegation.new(stakingCredential, votingDelegation),
-    )
+  ): GovernanceCertificate {
+    return {
+      kind: 'VoteDelegation',
+      stakeCredentialKeyHashHex: Branded.asKeyHash(stakingKey.hash().toHex()),
+      drep:
+        type === 'key'
+          ? {KeyHash: Branded.asKeyHash(hash)}
+          : {ScriptHash: Branded.asScriptHash(hash)},
+    }
   }
 
   createStakeRegistrationCertificate(
     stakingKey: CardanoTypes.PublicKey,
-  ): CardanoTypes.Certificate {
-    const {Certificate, Credential, StakeRegistration} = this.config.cardano
-
-    const stakingCredential = Credential.fromKeyhash(stakingKey.hash())
-
-    return Certificate.newStakeRegistration(
-      StakeRegistration.new(stakingCredential),
-    )
+  ): GovernanceCertificate {
+    return {
+      kind: 'StakeRegistration',
+      stakeCredentialKeyHashHex: Branded.asKeyHash(stakingKey.hash().toHex()),
+    }
   }
 
   async validateDRepID(drepId: string): Promise<boolean> {
-    const {hash} = parseDrepId(drepId, this.config.cardano)
+    const {hash} = parseDrepId(drepId)
     const response = await this.config.api.getDRepById(Branded.asDRepId(hash))
 
     if (isLeft(response)) {
@@ -200,24 +196,15 @@ class Manager implements GovernanceManager {
   createVotingCertificate(
     vote: VoteKind,
     stakingKey: CardanoTypes.PublicKey,
-  ): CardanoTypes.Certificate {
-    const {Certificate, Credential, VoteDelegation, DRep} = this.config.cardano
-
-    const stakingCredential = Credential.fromKeyhash(stakingKey.hash())
-
-    if (vote === 'abstain') {
-      return Certificate.newVoteDelegation(
-        VoteDelegation.new(stakingCredential, DRep.newAlwaysAbstain()),
-      )
+  ): GovernanceCertificate {
+    if (vote !== 'abstain' && vote !== 'no-confidence') {
+      throw new Error('Invalid vote')
     }
-
-    if (vote === 'no-confidence') {
-      return Certificate.newVoteDelegation(
-        VoteDelegation.new(stakingCredential, DRep.newAlwaysNoConfidence()),
-      )
+    return {
+      kind: 'VoteDelegation',
+      stakeCredentialKeyHashHex: Branded.asKeyHash(stakingKey.hash().toHex()),
+      drep: vote === 'abstain' ? 'AlwaysAbstain' : 'AlwaysNoConfidence',
     }
-
-    throw new Error('Invalid vote')
   }
 
   async createLedgerVotingPayload(

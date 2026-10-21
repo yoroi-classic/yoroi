@@ -4,7 +4,7 @@ import {Portfolio} from '@yoroi/types'
 import {
   addressInfoFromAddress,
   minimumCoinForAssets,
-} from '@yoroi-classic/csl-mobile-bridge'
+} from '@yoroi-classic/cml-mobile-bridge'
 
 /** Calculate the ledger minimum coin for an output using CML. */
 export const minimumAdaForAssetsCml = ({

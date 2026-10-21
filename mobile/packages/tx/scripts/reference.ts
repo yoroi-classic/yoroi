@@ -1,101 +1,41 @@
-import {Address, Balance, Branded, ScriptHash} from '@yoroi/types'
+import {Address, Balance, Branded} from '@yoroi/types'
 
-import type {
-  NativeScript,
-  PlutusScript,
-  WasmModuleProxy,
-} from '@emurgo/cross-csl-core'
-
-import {calculatePolicyId} from '../minting/policies'
 import {TransactionBuilderState} from '../transaction-builder/builder'
 import {ModernUtxo} from '../utxo/models'
 import type {ReferenceScript} from './types'
 
 /**
- * Calculate script hash from NativeScript
- */
-function hashNativeScript(csl: WasmModuleProxy, script: NativeScript): string {
-  return calculatePolicyId(csl, {type: 'native', script: script.toHex()})
-}
-
-/**
- * Calculate script hash from PlutusScript
- */
-function hashPlutusScript(csl: WasmModuleProxy, script: PlutusScript): string {
-  return calculatePolicyId(csl, {type: 'plutus', script: script.toHex()})
-}
-
-/**
- * Detect reference script in UTXO
+ * Read a validated CWB reference-script object carried by the UTxO adapter.
  */
 export function detectReferenceScript(
-  csl: WasmModuleProxy,
   utxo: ModernUtxo,
 ): ReferenceScript | null {
-  try {
-    // Convert UTXO to CSL TransactionUnspentOutput
-    const cslUtxo = utxo.toTransactionUnspentOutput(csl)
-    const output = cslUtxo.output()
-    const scriptRef = output.scriptRef()
-
-    if (!scriptRef) {
-      return null
-    }
-
-    // Determine script type and hash
-    let scriptHash: ScriptHash
-    let scriptType: 'native' | 'plutus'
-
-    // Check script type and extract hash
-    if (scriptRef.isNativeScript()) {
-      // Extract native script bytes and hash
-      const scriptBytes = scriptRef.toBytes()
-      const nativeScript = csl.NativeScript.fromBytes(scriptBytes)
-      if (nativeScript) {
-        scriptHash = Branded.asScriptHash(hashNativeScript(csl, nativeScript))
-        scriptType = 'native'
-      } else {
-        return null
-      }
-    } else if (scriptRef.isPlutusScript()) {
-      // Extract Plutus script bytes and hash
-      const scriptBytes = scriptRef.toBytes()
-      const plutusScript = csl.PlutusScript.fromBytes(scriptBytes)
-      if (plutusScript) {
-        scriptHash = Branded.asScriptHash(hashPlutusScript(csl, plutusScript))
-        scriptType = 'plutus'
-      } else {
-        return null
-      }
-    } else {
-      return null
-    }
-
-    const scriptSize = scriptRef.toBytes().length
-
-    return {
-      txHash: utxo.txHash,
-      txIndex: utxo.txIndex,
-      scriptHash,
-      scriptType,
-      scriptSize,
-    }
-  } catch {
+  const script = utxo.referenceScript
+  if (!script || !/^[0-9a-fA-F]{56}$/.test(script.hash)) return null
+  if (!script.bytes || !/^(?:[0-9a-fA-F]{2})+$/.test(script.bytes)) return null
+  if (script.size !== script.bytes.length / 2) return null
+  const scriptType = script.type === 'native' ? 'native' : 'plutus'
+  if (scriptType === 'plutus' && !/^plutusV[123]$/.test(script.type ?? '')) {
     return null
+  }
+
+  return {
+    txHash: utxo.txHash,
+    txIndex: utxo.txIndex,
+    scriptHash: Branded.asScriptHash(script.hash),
+    scriptType,
+    scriptSize: script.size,
   }
 }
 
 /**
  * Find reference scripts in UTXOs
  */
-export function findReferenceScripts(
-  csl: WasmModuleProxy,
-  utxos: ModernUtxo[],
-): ReferenceScript[] {
+export function findReferenceScripts(utxos: ModernUtxo[]): ReferenceScript[] {
   const scripts: ReferenceScript[] = []
 
   for (const utxo of utxos) {
-    const script = detectReferenceScript(csl, utxo)
+    const script = detectReferenceScript(utxo)
     if (script) {
       scripts.push(script)
     }
@@ -108,11 +48,10 @@ export function findReferenceScripts(
  * Find reference script by hash
  */
 export function findReferenceScriptByHash(
-  csl: WasmModuleProxy,
   utxos: ModernUtxo[],
   scriptHash: string,
 ): ReferenceScript | null {
-  const scripts = findReferenceScripts(csl, utxos)
+  const scripts = findReferenceScripts(utxos)
   return scripts.find((s) => s.scriptHash === scriptHash) || null
 }
 
@@ -173,9 +112,6 @@ export function addReferenceScriptUsage(
     balance: {} as Balance.Amounts,
     toTransactionUnspentOutputHex: () => {
       throw new Error('Cannot serialize reference script UTXO')
-    },
-    toTransactionUnspentOutput: () => {
-      throw new Error('Cannot convert reference script UTXO')
     },
   }
 

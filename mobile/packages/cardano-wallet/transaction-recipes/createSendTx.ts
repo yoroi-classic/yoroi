@@ -201,7 +201,7 @@ export async function createSendTx({
     }
 
     // Estimate fee (rough estimate: base fee + per-byte fee for a typical transaction)
-    // This is conservative - actual fee will be calculated by CSL
+    // This is conservative; the CML builder calculates the final fee.
     const estimatedFee = (
       BigInt(protocolParams.linearFee.constant) +
       BigInt(protocolParams.linearFee.coefficient) * BigInt(500)
@@ -463,7 +463,7 @@ export async function createSendTx({
 
         const spendableAda = totalInputAda
 
-        // Calculate accurate minimum ADA for change output using CSL
+        // Calculate minimum ADA for change output using CML.
         const minAdaForChange = await calculateMinAdaForChange(
           hasNonAdaAssetsInChange,
           changeOutputTokens,
@@ -795,7 +795,7 @@ export async function createSendTx({
             BigInt(protocolParams.linearFee.coefficient) *
               BigInt(CONSERVATIVE_TX_BYTE_ESTIMATE)
 
-          // Calculate accurate minimum ADA for change output using CSL
+          // Calculate minimum ADA for change output using CML.
           const minAdaForChange = await calculateMinAdaForChange(
             hasNonAdaAssetsInChange,
             changeOutputTokens,

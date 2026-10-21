@@ -59,6 +59,10 @@ export const getAddressedUtxos = (
         policyId: asset.policyId,
         name: asset.name,
       })),
+      datumHash: utxo.datumHash,
+      inlineDatum: utxo.inlineDatum,
+      referenceScriptHash: utxo.referenceScriptHash,
+      referenceScript: utxo.referenceScript,
     }
 
     return rawUtxoToModernUtxo(

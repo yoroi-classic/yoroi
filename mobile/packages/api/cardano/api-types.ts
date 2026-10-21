@@ -35,6 +35,15 @@ export type RawUtxo = {
   readonly tx_index: number
   readonly utxo_id: UtxoId
   readonly assets: ReadonlyArray<RemoteAsset>
+  readonly datumHash?: string
+  readonly inlineDatum?: string
+  readonly referenceScriptHash?: string
+  readonly referenceScript?: {
+    readonly hash: string
+    readonly size?: number
+    readonly type?: string
+    readonly bytes?: string
+  }
 }
 
 /** UTxO resolved by a transaction reference through CWB. */

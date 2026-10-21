@@ -1,4 +1,8 @@
-import {getAddressUtxos, getUtxosByRef} from '@yoroi/cardano-wallet'
+import {
+  getAddressUtxos,
+  getUtxosByRef,
+  resolvedUtxoToModernUtxo,
+} from '@yoroi/cardano-wallet'
 import {Chain} from '@yoroi/types'
 
 import {
@@ -12,6 +16,9 @@ import {discoverEscrowUtxo} from './discovery'
 jest.mock('@yoroi/cardano-wallet', () => ({
   getAddressUtxos: jest.fn(),
   getUtxosByRef: jest.fn(),
+  resolvedUtxoToModernUtxo: jest.fn((utxo) => ({
+    referenceScript: utxo.referenceScript,
+  })),
 }))
 
 jest.mock('./datumParser', () => ({
@@ -61,11 +68,18 @@ const escrowOutput = {
 describe('discoverEscrowUtxo', () => {
   const getAddressUtxosMock = jest.mocked(getAddressUtxos)
   const getUtxosByRefMock = jest.mocked(getUtxosByRef)
+  const resolvedUtxoToModernUtxoMock = jest.mocked(resolvedUtxoToModernUtxo)
 
   beforeEach(() => {
     jest.clearAllMocks()
     getAddressUtxosMock.mockResolvedValue([escrowOutput] as never)
     getUtxosByRefMock.mockResolvedValue([referenceOutput] as never)
+    resolvedUtxoToModernUtxoMock.mockImplementation(
+      (utxo) =>
+        ({
+          referenceScript: utxo.referenceScript,
+        }) as never,
+    )
   })
 
   it('loads an escrow output and its CWB-resolved reference script output', async () => {

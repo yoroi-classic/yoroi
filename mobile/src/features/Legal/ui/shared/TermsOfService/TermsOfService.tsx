@@ -24,14 +24,13 @@ export const TermsOfService = ({
   languageCode: LanguageCode
 }) => {
   const tos = useLoadTos({languageCode})
-  const {atoms: ta, basePaletteInverted, basePalette} = useTheme()
+  const {atoms: ta, basePaletteInverted} = useTheme()
   const color = basePaletteInverted === 'light' ? 'white' : 'black'
 
   return tos != null ? (
     <Markdown
       value={tos}
-      colorScheme={basePalette}
-      backgroundColor={ta.bg_color_max.backgroundColor}
+      flatListProps={{style: {backgroundColor: ta.bg_color_max.backgroundColor}}}
       styles={{
         strong: {
           ...ta.text_gray_max,

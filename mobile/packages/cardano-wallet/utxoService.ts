@@ -264,7 +264,7 @@ export async function selectUtxosForTransfer(
       }
     }
 
-    // Calculate minimum ADA for change output using CSL
+    // Calculate minimum ADA for change output using the CML-backed helper
     const changeOutputMinAda = await calculateChangeOutputMinAda(
       changeAddress,
       changeOutputTokens,
@@ -669,7 +669,7 @@ export async function calculateCntTransferRequirements(
 }
 
 /**
- * Calculate minimum ADA for change output using CSL
+ * Calculate minimum ADA for change output using the CML-backed helper
  * Exported for use in transaction building
  */
 export async function calculateChangeOutputMinAda(

@@ -3,14 +3,9 @@
 import {primaryTokenId as defaultPrimaryTokenId} from '@yoroi/portfolio'
 import {Balance, Branded, Portfolio, TokenId} from '@yoroi/types'
 
-import type {
-  TransactionUnspentOutput,
-  WasmModuleProxy,
-} from '@emurgo/cross-csl-core'
-import {Buffer} from 'buffer'
+import {transactionUnspentOutputHex} from '@yoroi-classic/cml-mobile-bridge'
 
 import {Addressing} from '../types'
-import {normalizeToAddress} from '../utils/addresses'
 import {ModernUtxo} from '../utxo/models'
 
 // RawUtxo type from wallet types
@@ -26,20 +21,15 @@ export type RawUtxo = {
     readonly policyId: string
     readonly name: string
   }>
-}
-
-/**
- * Extract policy ID from token ID (first 56 hex chars before the dot)
- */
-function toPolicyId(tokenId: Portfolio.Token.Id): string {
-  return tokenId.split('.')[0] ?? ''
-}
-
-/**
- * Extract asset name hex from token ID (part after the dot)
- */
-function toAssetNameHex(tokenId: Portfolio.Token.Id): string {
-  return tokenId.split('.')[1] ?? ''
+  readonly datumHash?: string
+  readonly inlineDatum?: string
+  readonly referenceScriptHash?: string
+  readonly referenceScript?: {
+    readonly hash: string
+    readonly size?: number
+    readonly type?: string
+    readonly bytes?: string
+  }
 }
 
 /**
@@ -62,6 +52,15 @@ export function rawUtxoToModernUtxo(
       readonly policyId: string
       readonly name: string
     }>
+    readonly datumHash?: string
+    readonly inlineDatum?: string
+    readonly referenceScriptHash?: string
+    readonly referenceScript?: {
+      readonly hash: string
+      readonly size?: number
+      readonly type?: string
+      readonly bytes?: string
+    }
   },
   addressing?: Addressing,
   derivationPath?: string,
@@ -70,7 +69,7 @@ export function rawUtxoToModernUtxo(
   const balance: Balance.Amounts = {}
 
   // Add primary token (ADA)
-  if (Number(rawUtxo.amount) > 0) {
+  if (BigInt(rawUtxo.amount) > 0n) {
     balance[primaryTokenId as TokenId] = rawUtxo.amount as Balance.Quantity
   }
 
@@ -85,101 +84,67 @@ export function rawUtxoToModernUtxo(
     txHash: Branded.asTransactionHash(rawUtxo.tx_hash),
     txIndex: rawUtxo.tx_index,
     balance,
+    datumHashHex: rawUtxo.datumHash,
+    inlineDatumCborHex: rawUtxo.inlineDatum,
+    referenceScript: isReferenceScriptConsistent(rawUtxo)
+      ? rawUtxo.referenceScript
+      : undefined,
     derivationPath,
     addressing,
     toTransactionUnspentOutputHex,
-    toTransactionUnspentOutput,
   }
 
   // Bind methods to the object
   modernUtxo.toTransactionUnspentOutputHex =
     toTransactionUnspentOutputHex.bind(modernUtxo)
-  modernUtxo.toTransactionUnspentOutput =
-    toTransactionUnspentOutput.bind(modernUtxo)
 
   return modernUtxo
+}
+
+const isReferenceScriptConsistent = (utxo: {
+  referenceScriptHash?: string
+  referenceScript?: {hash: string; size?: number; bytes?: string}
+}): boolean => {
+  const refScript = utxo.referenceScript
+  if (!refScript) return false
+  return (
+    /^[0-9a-fA-F]{56}$/.test(refScript.hash) &&
+    (utxo.referenceScriptHash == null ||
+      utxo.referenceScriptHash.toLowerCase() ===
+        refScript.hash.toLowerCase()) &&
+    (refScript.bytes == null ||
+      (/^(?:[0-9a-fA-F]{2})+$/.test(refScript.bytes) &&
+        refScript.size === refScript.bytes.length / 2))
+  )
 }
 
 /**
  * Convert ModernUtxo to TransactionUnspentOutput hex
  */
 function toTransactionUnspentOutputHex(this: ModernUtxo): string {
-  // This requires WASM, so we'll need to call it with a WASM instance
-  // For now, we'll throw an error - this should be called via toTransactionUnspentOutput
-  throw new Error(
-    'toTransactionUnspentOutputHex requires WASM instance. Use toTransactionUnspentOutput instead.',
-  )
-}
-
-/**
- * Convert ModernUtxo to TransactionUnspentOutput using WASM
- *
- * @param csl - WasmModuleProxy instance. Must be provided from the calling scope.
- *
- * WARNING: Returns a WASM TransactionUnspentOutput object that will be freed when
- * the cslScope exits. Only use the returned object within the same scope where
- * it was created, or extract primitive values before the scope exits.
- */
-function toTransactionUnspentOutput(
-  this: ModernUtxo,
-  csl: WasmModuleProxy,
-): TransactionUnspentOutput {
-  const input = csl.TransactionInput.new(
-    csl.TransactionHash.fromHex(this.txHash),
-    this.txIndex,
-  )
-
-  const adaAmount = this.balance[defaultPrimaryTokenId] ?? '0'
-  const value = csl.Value.new(csl.BigNum.fromStr(adaAmount))
-
-  // Get all token IDs except primary token
-  const tokenIds = Object.keys(this.balance).filter(
-    (id) => id !== defaultPrimaryTokenId,
-  ) as Portfolio.Token.Id[]
-
-  if (tokenIds.length > 0) {
-    const multiAsset = csl.MultiAsset.new()
-
-    // Group tokens by policy ID
-    const groupedByPolicyId = tokenIds.reduce(
-      (acc, tokenId) => {
-        const policyId = toPolicyId(tokenId)
-        acc[policyId] = acc[policyId] ?? []
-        acc[policyId]!.push(tokenId)
-        return acc
-      },
-      {} as Record<string, Array<Portfolio.Token.Id>>,
-    )
-
-    // Create MultiAsset structure
-    for (const policyIdStr of Object.keys(groupedByPolicyId)) {
-      const tokenGroup = groupedByPolicyId[policyIdStr]
-      if (!tokenGroup) continue
-
-      const policyId = csl.ScriptHash.fromBytes(
-        new Uint8Array(Buffer.from(policyIdStr, 'hex')),
-      )
-      const assets = csl.Assets.new()
-
-      for (const tokenId of tokenGroup) {
-        const assetNameHex = toAssetNameHex(tokenId)
-        const name = csl.AssetName.new(
-          new Uint8Array(Buffer.from(assetNameHex, 'hex')),
-        )
-        const amount = csl.BigNum.fromStr(this.balance[tokenId] ?? '0')
-        assets.insert(name, amount)
-      }
-
-      multiAsset.insert(policyId, assets)
-    }
-
-    value.setMultiasset(multiAsset)
+  if (!Number.isSafeInteger(this.txIndex) || this.txIndex < 0) {
+    throw new Error('Invalid UTxO output index')
   }
+  const primaryAmount = this.balance[defaultPrimaryTokenId] ?? '0'
+  const assets = Object.entries(this.balance)
+    .filter(([tokenId]) => tokenId !== defaultPrimaryTokenId)
+    .map(([tokenId, quantity]) => {
+      const subject = tokenId.replace('.', '')
+      if (!/^[0-9a-fA-F]{56,120}$/.test(subject)) {
+        throw new Error(`Invalid asset identifier: ${tokenId}`)
+      }
+      return {
+        policyIdHex: subject.slice(0, 56),
+        assetNameHex: subject.slice(56),
+        quantity,
+      }
+    })
 
-  // Use normalizeToAddress to handle Byron (base58), Shelley (bech32), and hex addresses
-  const receiver = normalizeToAddress(csl, this.receiver)
-  if (!receiver) throw new Error('Invalid receiver address')
-  const output = csl.TransactionOutput.new(receiver, value)
-
-  return csl.TransactionUnspentOutput.new(input, output)
+  return transactionUnspentOutputHex({
+    txHashHex: this.txHash,
+    index: String(this.txIndex),
+    address: this.receiver,
+    lovelace: primaryAmount,
+    assets,
+  })
 }

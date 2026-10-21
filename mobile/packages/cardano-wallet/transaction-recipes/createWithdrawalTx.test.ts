@@ -59,7 +59,6 @@ describe('createWithdrawalTx', () => {
     networkId: 0,
     getAbsoluteSlotNumber: async () => ({toNumber: () => 123}) as never,
     getChangeAddress: () => 'addr_test1change' as never,
-    getStakingKey: jest.fn(() => ({hash: jest.fn()})) as never,
     getAccountState: async () =>
       ({
         [rewardAddressHex]: {remainingAmount: '1234567'},

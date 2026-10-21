@@ -1,11 +1,12 @@
 import {Balance, Branded, Portfolio, Wallet} from '@yoroi/types'
 
-import {buildSimplePaymentTransaction} from '@yoroi-classic/csl-mobile-bridge'
+import {buildSimplePaymentTransaction} from '@yoroi-classic/cml-mobile-bridge'
 import BigNumber from 'bignumber.js'
 
 import {createSendTx} from './createSendTx'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressToHex: jest.fn(() => '01'),
   buildSimplePaymentTransaction: jest.fn(() => ({
     cborHex: '84a0a0f5',
     fee: '177381',
@@ -32,7 +33,6 @@ describe('createSendTx CML route', () => {
           txIndex: 0,
           balance: {[primaryTokenId]: '4000000' as Balance.Quantity},
           toTransactionUnspentOutputHex: () => '',
-          toTransactionUnspentOutput: () => undefined as never,
         },
       ],
       entries: [

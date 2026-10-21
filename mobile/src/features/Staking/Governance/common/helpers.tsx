@@ -1,4 +1,4 @@
-import {CardanoMobile, isByron} from '@yoroi/cardano-wallet'
+import {isByron} from '@yoroi/cardano-wallet'
 import {isNonNullable, isString, useAsyncStorage} from '@yoroi/common'
 import {
   type StakingKeyState,
@@ -103,7 +103,6 @@ export const useGovernanceManagerMaker = () => {
         walletId,
         network,
         api: governanceApiMaker({network}),
-        cardano: CardanoMobile,
         storage: governanceStorage,
       }),
     [governanceStorage, network, walletId],

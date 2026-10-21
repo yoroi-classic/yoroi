@@ -1,6 +1,6 @@
 import {BalanceQuantity} from '@yoroi/types'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   transactionIdHex: jest.fn((hex: string) => `id:${hex}`),
   transactionValidationInfoJson: jest.fn(() => JSON.stringify({fee: '170000'})),
   transactionWitnessSetHex: jest.fn((hex: string) => `witnesses:${hex}`),
@@ -53,7 +53,7 @@ describe('transaction utils', () => {
 
     it('rejects malformed CML fee output rather than rounding', () => {
       const {transactionValidationInfoJson} = jest.requireMock(
-        '@yoroi-classic/csl-mobile-bridge',
+        '@yoroi-classic/cml-mobile-bridge',
       )
       transactionValidationInfoJson.mockReturnValueOnce(
         JSON.stringify({fee: '1.5'}),
@@ -79,7 +79,7 @@ describe('transaction utils', () => {
     })
 
     it('should handle invalid addresses gracefully', async () => {
-      const {stakeCredentialHexFromAddress} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+      const {stakeCredentialHexFromAddress} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
       stakeCredentialHexFromAddress.mockImplementationOnce(() => {
         throw new Error('Invalid address')
       })
@@ -104,7 +104,7 @@ describe('transaction utils', () => {
         },
       ]
 
-      const {stakeCredentialHexFromAddress} = jest.requireMock('@yoroi-classic/csl-mobile-bridge')
+      const {stakeCredentialHexFromAddress} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
       stakeCredentialHexFromAddress.mockImplementationOnce(() => {
         throw new Error('not a base address')
       })

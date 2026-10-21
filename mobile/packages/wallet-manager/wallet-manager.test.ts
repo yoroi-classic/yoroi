@@ -12,7 +12,7 @@ import {makeWalletManager} from './wallet-manager'
 // Wallet-manager tests exercise storage/orchestration, not the native JSI
 // registration boundary. Inject deterministic CML adapter results so Jest
 // doesn't require React Native's TurboModule runtime during module loading.
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressToHex: jest.fn(() => 'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40'),
   rewardAddressFromAddress: jest.fn(() => 'stake_test1fixture'),
   rewardAddressHexFromAccountPublicKey: jest.fn(

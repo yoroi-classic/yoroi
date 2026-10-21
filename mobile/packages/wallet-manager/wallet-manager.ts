@@ -17,7 +17,7 @@ import {walletChecksum} from '@emurgo/cip4-js'
 import {
   addressToHex as cmlAddressToHex,
   rewardAddressFromAddress,
-} from '@yoroi-classic/csl-mobile-bridge'
+} from '@yoroi-classic/cml-mobile-bridge'
 import {Buffer} from 'buffer'
 import {freeze} from 'immer'
 import {BehaviorSubject, Observable, Subscription} from 'rxjs'
@@ -1601,13 +1601,7 @@ export const makeWalletManager = (
       mnemonic: string,
       accountVisual?: number,
     ) {
-      return CardanoMobileWrapped.cslScope((csl: WasmModuleProxy) =>
-        keyManager(walletImplementation)({
-          csl,
-          mnemonic,
-          accountVisual,
-        }),
-      )
+      return keyManager(walletImplementation)({mnemonic, accountVisual})
     },
 
     subscribe(subscription: (event: WalletManagerEvent | WalletEvent) => void) {

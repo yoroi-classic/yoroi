@@ -6,7 +6,6 @@ import {Wallet} from '@yoroi/types'
 import {useSelectedNetwork} from '@yoroi/wallet-manager'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import {init} from '@emurgo/cross-csl-mobile'
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
 
@@ -55,7 +54,7 @@ export const usePoolTransition = () => {
     queryKey: [wallet.id, 'poolTransition', currentPoolId],
     queryFn: () => {
       return features.poolTransition
-        ? poolInfoApi.getTransition(currentPoolId, init)
+        ? poolInfoApi.getTransition(currentPoolId)
         : null
     },
   })

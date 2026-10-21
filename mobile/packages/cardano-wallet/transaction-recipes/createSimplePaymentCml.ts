@@ -1,13 +1,14 @@
-import {toAssetNameHex, toPolicyId} from '@yoroi/api'
 import {
+  cmlAssetsFromAmounts,
+  cmlPaymentInputFromUtxo,
   CardanoHaskellConfig,
   ModernUtxo,
   TransactionMetadata,
   TransactionOutput,
 } from '@yoroi/tx'
-import {Balance, Portfolio} from '@yoroi/types'
+import {Portfolio} from '@yoroi/types'
 
-import {buildSimplePaymentTransaction} from '@yoroi-classic/csl-mobile-bridge'
+import {buildSimplePaymentTransaction} from '@yoroi-classic/cml-mobile-bridge'
 
 import {minimumAdaForAssetsCml} from '../cml/minimumAda'
 
@@ -28,17 +29,6 @@ export const buildSimplePaymentCml = ({
   primaryTokenId: Portfolio.Token.Id
   metadata?: Array<{label: string; data: TransactionMetadata['data']}>
 }): {cbor: string; fee: bigint} | undefined => {
-  const assetsFromAmounts = (amounts: Balance.Amounts) =>
-    Object.entries(amounts)
-      .filter(
-        ([tokenId, quantity]) =>
-          tokenId !== primaryTokenId && BigInt(quantity) !== 0n,
-      )
-      .map(([tokenId, quantity]) => ({
-        policyIdHex: toPolicyId(tokenId),
-        assetNameHex: toAssetNameHex(tokenId),
-        quantity: String(quantity),
-      }))
   // Byron source inputs require bootstrap witnesses. Keep those on the current
   // signing path until CML signing receives the source UTxO addressing path.
   if (
@@ -51,17 +41,11 @@ export const buildSimplePaymentCml = ({
   }
 
   const result = buildSimplePaymentTransaction({
-    inputs: inputs.map((input) => ({
-      transactionHashHex: input.txHash,
-      index: String(input.txIndex),
-      address: input.receiver,
-      lovelace: String(input.balance[primaryTokenId] ?? '0'),
-      assets: assetsFromAmounts(input.balance),
-    })),
+    inputs: inputs.map((input) => cmlPaymentInputFromUtxo(input, primaryTokenId)),
     outputs: outputs.map((output) => ({
       address: output.address,
       lovelace: String(output.amounts[primaryTokenId] ?? '0'),
-      assets: assetsFromAmounts(output.amounts),
+      assets: cmlAssetsFromAmounts(output.amounts, primaryTokenId),
       datum: output.datum
         ? 'hash' in output.datum
           ? {kind: 'hash' as const, hex: output.datum.hash}

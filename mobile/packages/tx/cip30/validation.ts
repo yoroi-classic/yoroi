@@ -1,4 +1,4 @@
-import {transactionValidationInfoJson} from '@yoroi-classic/csl-mobile-bridge'
+import {transactionValidationInfoJson} from '@yoroi-classic/cml-mobile-bridge'
 
 /** Transaction validation result. */
 export type TransactionValidationResult = {

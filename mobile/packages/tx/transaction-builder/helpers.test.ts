@@ -25,6 +25,8 @@ import {
   sortUtxosByAda,
 } from './helpers'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({}))
+
 describe('transaction builder helpers', () => {
   const createMockUtxo = (
     balance: Balance.Amounts,
@@ -36,7 +38,6 @@ describe('transaction builder helpers', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   describe('createMetadataEntry', () => {
@@ -112,12 +113,20 @@ describe('transaction builder helpers', () => {
     it('should create CardanoHaskellConfig from protocol params', () => {
       const protocolParams: Pick<
         Chain.Cardano.ProtocolParams,
-        'keyDeposit' | 'linearFee' | 'coinsPerUtxoByte' | 'poolDeposit'
+        | 'keyDeposit'
+        | 'linearFee'
+        | 'coinsPerUtxoByte'
+        | 'poolDeposit'
+        | 'scriptExecutionPrices'
       > = {
         keyDeposit: '2000000',
         linearFee: {coefficient: '44', constant: '155381'},
         coinsPerUtxoByte: '4310',
         poolDeposit: '500000000',
+        scriptExecutionPrices: {
+          memory: {numerator: '577', denominator: '10000'},
+          cpu: {numerator: '721', denominator: '10000000'},
+        },
       }
 
       const result = createCardanoHaskellConfig(protocolParams, 0)
@@ -127,6 +136,9 @@ describe('transaction builder helpers', () => {
       expect(result.coinsPerUtxoByte).toBe('4310')
       expect(result.poolDeposit).toBe('500000000')
       expect(result.networkId).toBe(0)
+      expect(result.scriptExecutionPrices).toEqual(
+        protocolParams.scriptExecutionPrices,
+      )
     })
   })
 
@@ -281,166 +293,33 @@ describe('transaction builder helpers', () => {
     })
   })
 
-  describe('createStakeRegistrationCertificate', () => {
-    it('should create stake registration certificate', () => {
-      const mockStakingKey = {
-        hash: jest.fn(() => ({
-          toBytes: jest.fn(() => Buffer.from('key_hash', 'hex')),
-        })),
-      }
-      const mockStakeCred = {}
-      const mockStakeReg = {}
-      const mockCert = {}
-      const mockCsl = {
-        Credential: {
-          fromKeyhash: jest.fn(() => mockStakeCred),
-        },
-        StakeRegistration: {
-          new: jest.fn(() => mockStakeReg),
-        },
-        Certificate: {
-          newStakeRegistration: jest.fn(() => mockCert),
-        },
-      }
-
-      const result = createStakeRegistrationCertificate(
-        mockCsl as any,
-        mockStakingKey as any,
-      )
-
-      expect(result).toBe(mockCert)
-      expect(mockCsl.StakeRegistration.new).toHaveBeenCalled()
-    })
-  })
-
-  describe('createStakeDeregistrationCertificate', () => {
-    it('should create stake deregistration certificate', () => {
-      const mockStakingKey = {
-        hash: jest.fn(() => ({
-          toBytes: jest.fn(() => Buffer.from('key_hash', 'hex')),
-        })),
-      }
-      const mockStakeCred = {}
-      const mockStakeDereg = {}
-      const mockCert = {}
-      const mockCsl = {
-        Credential: {
-          fromKeyhash: jest.fn(() => mockStakeCred),
-        },
-        StakeDeregistration: {
-          new: jest.fn(() => mockStakeDereg),
-        },
-        Certificate: {
-          newStakeDeregistration: jest.fn(() => mockCert),
-        },
-      }
-
-      const result = createStakeDeregistrationCertificate(
-        mockCsl as any,
-        mockStakingKey as any,
-      )
-
-      expect(result).toBe(mockCert)
-    })
-  })
-
-  describe('createStakeDelegationCertificate', () => {
-    it('should create stake delegation certificate', () => {
-      const mockStakingKey = {
-        hash: jest.fn(() => ({
-          toBytes: jest.fn(() => Buffer.from('key_hash', 'hex')),
-        })),
-      }
-      const mockStakeCred = {}
-      const mockPoolKeyHash = {}
-      const mockStakeDeleg = {}
-      const mockCert = {}
-      const mockCsl = {
-        Credential: {
-          fromKeyhash: jest.fn(() => mockStakeCred),
-        },
-        StakeDelegation: {
-          new: jest.fn(() => mockStakeDeleg),
-        },
-        Certificate: {
-          newStakeDelegation: jest.fn(() => mockCert),
-        },
-        Ed25519KeyHash: {
-          fromBytes: jest.fn(() => mockPoolKeyHash),
-        },
-      }
-
-      const result = createStakeDelegationCertificate(
-        mockCsl as any,
-        mockStakingKey as any,
-        'pool_key_hash',
-      )
-
-      expect(result).toBe(mockCert)
-      expect(mockCsl.Ed25519KeyHash.fromBytes).toHaveBeenCalled()
-    })
-  })
-
-  describe('createVoteDelegationCertificate', () => {
-    it('should create vote delegation certificate with hex DRep ID', () => {
-      const mockStakingKey = {
-        hash: jest.fn(() => ({
-          toBytes: jest.fn(() => Buffer.from('key_hash', 'hex')),
-        })),
-      }
-      const mockStakeCred = {}
-      const mockDrep = {}
-      const mockVoteDeleg = {}
-      const mockCert = {}
-      const mockCsl = {
-        Credential: {
-          fromKeyhash: jest.fn(() => mockStakeCred),
-        },
-        DRep: {
-          newKeyHash: jest.fn(() => mockDrep),
-        },
-        VoteDelegation: {
-          new: jest.fn(() => mockVoteDeleg),
-        },
-        Certificate: {
-          newVoteDelegation: jest.fn(() => mockCert),
-        },
-        Ed25519KeyHash: {
-          fromBytes: jest.fn(),
-        },
-      }
-
-      const result = createVoteDelegationCertificate(
-        mockCsl as any,
-        mockStakingKey as any,
-        'abcdef123456', // Hex format (doesn't start with 'drep')
-        false,
-      )
-
-      expect(result).toBe(mockCert)
-      expect(mockCsl.DRep.newKeyHash).toHaveBeenCalled()
+  describe('plain-data certificate constructors', () => {
+    it('constructs registration and delegation certificates without CSL objects', () => {
+      const stakeHash = '11'.repeat(28) as never
+      const poolHash = '22'.repeat(28) as never
+      expect(createStakeRegistrationCertificate(stakeHash)).toEqual({
+        kind: 'StakeRegistration',
+        stakeCredentialKeyHashHex: stakeHash,
+      })
+      expect(createStakeDeregistrationCertificate(stakeHash)).toEqual({
+        kind: 'StakeDeregistration',
+        stakeCredentialKeyHashHex: stakeHash,
+      })
+      expect(createStakeDelegationCertificate(stakeHash, poolHash)).toEqual({
+        kind: 'StakeDelegation',
+        stakeCredentialKeyHashHex: stakeHash,
+        poolKeyHash: poolHash,
+      })
+      expect(createVoteDelegationCertificate(stakeHash, poolHash)).toEqual({
+        kind: 'VoteDelegation',
+        stakeCredentialKeyHashHex: stakeHash,
+        drep: {KeyHash: poolHash},
+      })
     })
 
-    it('should throw error for bech32 DRep ID', () => {
-      const mockStakingKey = {
-        hash: jest.fn(() => ({
-          toBytes: jest.fn(() => Buffer.from('key_hash', 'hex')),
-        })),
-      }
-      const mockStakeCred = {}
-      const mockCsl = {
-        Credential: {
-          fromKeyhash: jest.fn(() => mockStakeCred),
-        },
-      }
-
+    it('rejects unsupported bech32 DRep identifiers explicitly', () => {
       expect(() =>
-        createVoteDelegationCertificate(
-          mockCsl as any,
-          mockStakingKey as any,
-          'drep1...',
-          false,
-        ),
+        createVoteDelegationCertificate('11'.repeat(28), 'drep1unsupported'),
       ).toThrow('Bech32 DRep ID format not yet supported')
     })
   })

@@ -1,5 +1,18 @@
+import {scriptHashHexFromCbor} from '@yoroi-classic/cml-mobile-bridge'
+
 import {calculatePolicyId, validateMintingScript} from './policies'
 import type {MintingScript} from './types'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  scriptHashHexFromCbor: jest.fn(
+    (_scriptType: string, scriptCborHex: string) => {
+      if (!/^(?:[0-9a-f]{2})+$/i.test(scriptCborHex)) {
+        throw new Error('Invalid script CBOR hex')
+      }
+      return 'policy_id_hex'
+    },
+  ),
+}))
 
 describe('minting policies', () => {
   describe('validateMintingScript', () => {
@@ -17,6 +30,7 @@ describe('minting policies', () => {
       const script: MintingScript = {
         type: 'plutus',
         script: 'abcdef123456',
+        plutusVersion: 'plutusV2',
       }
       const result = validateMintingScript(script)
 
@@ -57,43 +71,28 @@ describe('minting policies', () => {
         type: 'native',
         script: 'abcdef123456',
       }
-      const mockNativeScript = {
-        hash: jest.fn(() => ({
-          toHex: () => 'policy_id_hex',
-        })),
-      }
-      const mockCsl = {
-        NativeScript: {
-          fromHex: jest.fn(() => mockNativeScript),
-        },
-      }
-
-      const result = calculatePolicyId(mockCsl as any, script)
+      const result = calculatePolicyId(script)
 
       expect(result).toBe('policy_id_hex')
-      expect(mockCsl.NativeScript.fromHex).toHaveBeenCalledWith('abcdef123456')
+      expect(scriptHashHexFromCbor).toHaveBeenCalledWith(
+        'native',
+        'abcdef123456',
+      )
     })
 
     it('should calculate policy ID for plutus script', () => {
       const script: MintingScript = {
         type: 'plutus',
         script: 'abcdef123456',
+        plutusVersion: 'plutusV3',
       }
-      const mockPlutusScript = {
-        hash: jest.fn(() => ({
-          toHex: () => 'policy_id_hex',
-        })),
-      }
-      const mockCsl = {
-        PlutusScript: {
-          fromHex: jest.fn(() => mockPlutusScript),
-        },
-      }
-
-      const result = calculatePolicyId(mockCsl as any, script)
+      const result = calculatePolicyId(script)
 
       expect(result).toBe('policy_id_hex')
-      expect(mockCsl.PlutusScript.fromHex).toHaveBeenCalledWith('abcdef123456')
+      expect(scriptHashHexFromCbor).toHaveBeenCalledWith(
+        'plutusV3',
+        'abcdef123456',
+      )
     })
 
     it('should throw error for invalid native script', () => {
@@ -101,31 +100,16 @@ describe('minting policies', () => {
         type: 'native',
         script: 'invalid',
       }
-      const mockCsl = {
-        NativeScript: {
-          fromHex: jest.fn(() => null),
-        },
-      }
-
-      expect(() => calculatePolicyId(mockCsl as any, script)).toThrow(
-        'Invalid native script',
-      )
+      expect(() => calculatePolicyId(script)).toThrow()
     })
 
     it('should throw error for invalid plutus script', () => {
       const script: MintingScript = {
         type: 'plutus',
         script: 'invalid',
+        plutusVersion: 'plutusV1',
       }
-      const mockCsl = {
-        PlutusScript: {
-          fromHex: jest.fn(() => null),
-        },
-      }
-
-      expect(() => calculatePolicyId(mockCsl as any, script)).toThrow(
-        'Invalid Plutus script',
-      )
+      expect(() => calculatePolicyId(script)).toThrow()
     })
   })
 })

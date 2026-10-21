@@ -1,5 +1,13 @@
 import {Address} from '@yoroi/types'
 
+import {
+  baseAddressBech32FromPublicKeyHashes,
+  derivePublicKeyFromAccountPathHex,
+  icarusAddressBase58FromAccountPublicKeyHex,
+  publicKeyHashHexFromRawHex,
+  rewardAddressHexFromAccountPublicKey,
+} from '@yoroi-classic/cml-mobile-bridge'
+
 import * as cardanoApi from '../api/api'
 import {
   AddressChain,
@@ -78,6 +86,15 @@ describe('AddressChain', () => {
   })
 
   it('can continue after rehydrating', async () => {
+    const legacyByronAddress =
+      'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bf'
+    jest
+      .mocked(icarusAddressBase58FromAccountPublicKeyHex)
+      .mockImplementation((_accountPubKeyHex, role, index) =>
+        role === 1 && index === 3
+          ? legacyByronAddress
+          : `Ae2tdPwUPEZfixture${index}`,
+      )
     const chainId = 1
     const pubKey44 =
         '7f53efa3c08093db3824235769079e96ef96b6680fc254f6c021ec420e4d1555' +
@@ -97,7 +114,7 @@ describe('AddressChain', () => {
 
     const used = [
       // '2cWKMJemoBaiAKW7iBFgK3prZAK3gAEgkndCUTkGpUAoRofmXJcbmie2qe6JTN44dQ2Ag', // byron testnet
-      'Ae2tdPwUPEZ6ipzynAWN6atmb9LNqEogput2NrMD3Z8UL7phtQLDhrKt1bf', // byron mainnet
+      legacyByronAddress, // byron mainnet
     ]
 
     const filter = (addresses: Address[]) => {
@@ -109,6 +126,78 @@ describe('AddressChain', () => {
     await chain2.sync(filter)
     expect(chain.size()).toBe(10)
     expect(chain2.addresses).toEqual(chain.addresses)
+  })
+})
+
+describe('CML reward address derivation', () => {
+  it('derives the reward address bytes from the account key and configured stake path', () => {
+    jest
+      .mocked(rewardAddressHexFromAccountPublicKey)
+      .mockReturnValue('e1' + 'ab'.repeat(28))
+    const accountPubKeyHex = '01'.repeat(64)
+    const generator = createAddressGenerator(
+      accountPubKeyHex,
+      0,
+      'cardano-cip1852',
+      0,
+    )
+
+    expect(generator.getRewardAddressHex()).toBe('e1' + 'ab'.repeat(28))
+    expect(rewardAddressHexFromAccountPublicKey).toHaveBeenCalledWith(
+      accountPubKeyHex,
+      0,
+      2,
+      0,
+    )
+  })
+
+  it('builds Shelley base addresses from the payment and stake key hashes', () => {
+    jest
+      .mocked(derivePublicKeyFromAccountPathHex)
+      .mockReturnValueOnce('11'.repeat(32))
+      .mockReturnValueOnce('22'.repeat(32))
+    jest
+      .mocked(publicKeyHashHexFromRawHex)
+      .mockReturnValueOnce('33'.repeat(28))
+      .mockReturnValueOnce('44'.repeat(28))
+    jest
+      .mocked(baseAddressBech32FromPublicKeyHashes)
+      .mockReturnValue('addr_test1cmlfixture')
+    const accountPubKeyHex = '01'.repeat(64)
+    const generator = createAddressGenerator(
+      accountPubKeyHex,
+      0,
+      'cardano-cip1852',
+      0,
+    )
+
+    expect(generator.generate([7])).toEqual(['addr_test1cmlfixture'])
+    expect(baseAddressBech32FromPublicKeyHashes).toHaveBeenCalledWith(
+      '33'.repeat(28),
+      '44'.repeat(28),
+      0,
+    )
+  })
+
+  it('builds Byron Icarus addresses with the legacy protocol magic', () => {
+    jest
+      .mocked(icarusAddressBase58FromAccountPublicKeyHex)
+      .mockReturnValue('Ae2tdPwUPEZfixture')
+    const accountPubKeyHex = '01'.repeat(64)
+    const generator = createAddressGenerator(
+      accountPubKeyHex,
+      1,
+      'cardano-bip44',
+      1,
+    )
+
+    expect(generator.generate([4])).toEqual(['Ae2tdPwUPEZfixture'])
+    expect(icarusAddressBase58FromAccountPublicKeyHex).toHaveBeenCalledWith(
+      accountPubKeyHex,
+      1,
+      4,
+      764824073,
+    )
   })
 })
 

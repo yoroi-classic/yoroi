@@ -5,7 +5,7 @@ import {
   transactionIdHex,
   transactionValidationInfoJson,
   transactionWitnessSetHex,
-} from '@yoroi-classic/csl-mobile-bridge'
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import {BigNumber} from 'bignumber.js'
 

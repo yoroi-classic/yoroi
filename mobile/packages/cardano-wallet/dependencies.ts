@@ -5,7 +5,6 @@ import {TransactionOutput} from '@yoroi/tx'
 import {App, Portfolio} from '@yoroi/types'
 
 import {SignTransactionRequest} from '@cardano-foundation/ledgerjs-hw-app-cardano'
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
 
 import {YoroiWallet} from './types'
 
@@ -64,7 +63,6 @@ export type CardanoWalletDependencies = {
    * Used for hardware wallet signing
    */
   toLedgerSignRequest: (
-    csl: WasmModuleProxy,
     cbor: string,
     networkId: number,
     protocolMagic: number,

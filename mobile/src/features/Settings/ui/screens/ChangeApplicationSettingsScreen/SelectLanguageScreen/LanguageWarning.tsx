@@ -9,7 +9,7 @@ import {Icon} from '~/ui/Icon'
 
 export const LanguageWarning = ({enabled}: {enabled?: boolean}) => {
   const strings = useStrings()
-  const {atoms: ta, basePalette} = useTheme()
+  const {atoms: ta} = useTheme()
   const [dismissed, setDismissed] = React.useState(false)
 
   if (!enabled) return null
@@ -30,8 +30,7 @@ export const LanguageWarning = ({enabled}: {enabled?: boolean}) => {
 
       <Markdown
         value={contributors}
-        colorScheme={basePalette}
-        backgroundColor={ta.bg_color_max.backgroundColor}
+        flatListProps={{style: {backgroundColor: ta.bg_color_max.backgroundColor}}}
         styles={{
           paragraph: ta.bg_color_min,
           strong: {

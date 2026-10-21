@@ -2,11 +2,10 @@ import {cardanoConfig, derivationConfig} from '@yoroi/blockchains'
 import {getLogger, throwLoggedError} from '@yoroi/logger'
 import {Address, App, Branded, Wallet} from '@yoroi/types'
 
-import * as CSL from '@emurgo/cross-csl-core'
+import {addressInfoFromAddress} from '@yoroi-classic/cml-mobile-bridge'
 
 import {AccountManager} from '../account-manager/account-manager'
 import type {ReadOnlyAccountManager} from '../account-manager/read-only-account-manager'
-import {CardanoMobile} from '../wrappedCsl'
 
 /**
  * Get change address for a wallet
@@ -142,20 +141,24 @@ export const getAddressing = (
  */
 export const getFirstPaymentAddress = (
   externalAddresses: Address[],
-): CSL.BaseAddress => {
+): Address => {
   const externalAddress = externalAddresses[0]
   if (!externalAddress) {
     throw new App.Errors.InvalidState('No External Address')
   }
-  // Address extends string, so we can use it directly
-  const addr = CardanoMobile.Address.fromBech32(externalAddress)
-  const address = CardanoMobile.BaseAddress.fromAddress(addr)
-  if (!address) {
-    throwLoggedError(getLogger())('getFirstPaymentAddress: invalid address')
-    // This will never be reached, but TypeScript needs it for the return type
-    throw new Error('Invalid address')
+
+  try {
+    const addressInfo = addressInfoFromAddress(externalAddress)
+    const addressKind = Math.floor(
+      Number.parseInt(addressInfo.hex.slice(0, 2), 16) / 16,
+    )
+    if (addressKind <= 3) return externalAddress
+  } catch {
+    // Keep the established wallet-state error for invalid/non-Shelley values.
   }
-  return address as CSL.BaseAddress
+
+  throwLoggedError(getLogger())('getFirstPaymentAddress: invalid address')
+  throw new Error('Invalid address')
 }
 
 /**

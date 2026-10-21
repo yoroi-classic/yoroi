@@ -2,18 +2,22 @@ import {RawUtxo} from '@yoroi/api'
 import {YoroiWallet} from '@yoroi/cardano-wallet'
 import {deriveRewardAddressFromAddress} from '@yoroi/cardano-wallet'
 import {asQuantity} from '@yoroi/cardano-wallet'
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
 import {isNonNullable} from '@yoroi/common'
 import {createUnknownTokenInfo} from '@yoroi/portfolio'
 import {Branded, Portfolio} from '@yoroi/types'
 import {BaseAsset, WalletTransaction} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import {CredKind} from '@emurgo/cross-csl-core'
+import {addressInfoFromAddress} from '@yoroi-classic/cml-mobile-bridge'
 import * as React from 'react'
 
 import {usePortfolioTokenInfos} from '~/features/Portfolio/common/hooks/usePortfolioTokenInfos'
 
+import {
+  AddressCredentialKind as AddressCredentialKindCode,
+  addressCredentialKindFromHex,
+} from '../address-kind'
+import type {AddressCredentialKind} from '../address-kind'
 import {
   CertificateType,
   FormattedCertificate,
@@ -263,7 +267,7 @@ const formatInputsFromWalletTransaction = (
 
     const addressKind = address != null ? getAddressKind(address) : null
     const rewardAddress =
-      address != null && addressKind === CredKind.Key
+      address != null && addressKind === AddressCredentialKindCode.Key
         ? deriveAddress(address, wallet.networkManager.chainId)
         : null
 
@@ -360,7 +364,7 @@ const formatOutputsFromWalletTransaction = (
 
     const addressKind = getAddressKind(address)
     const rewardAddress =
-      addressKind === CredKind.Key
+      addressKind === AddressCredentialKindCode.Key
         ? deriveAddress(address, wallet.networkManager.chainId)
         : null
 
@@ -482,16 +486,15 @@ const deriveAddress = (address: string, chainId: number) => {
   }
 }
 
-const getAddressKind = (addressBech32: string): CredKind | null => {
-  return CardanoMobileWrapped.cslScope((csl) => {
-    try {
-      const address = csl.Address.fromBech32(addressBech32)
-      const addressKind = address.paymentCred()?.kind()
-      return addressKind ?? null
-    } catch (e) {
-      return null
-    }
-  })
+const getAddressKind = (address: string): AddressCredentialKind => {
+  try {
+    const addressInfo = addressInfoFromAddress(address)
+    return addressInfo.isValid
+      ? addressCredentialKindFromHex(addressInfo.hex)
+      : null
+  } catch {
+    return null
+  }
 }
 
 const isOwnedAddress = (

@@ -6,7 +6,6 @@ import {
   Address,
   BalanceQuantity,
   Chain,
-  DRepId,
   KeyHash,
   Lovelace,
   Portfolio,
@@ -15,17 +14,10 @@ import {
   Wallet,
 } from '@yoroi/types'
 
-import type {
-  Certificate,
-  DRep,
-  PublicKey,
-  WasmModuleProxy,
-} from '@emurgo/cross-csl-core'
-import {Buffer} from 'buffer'
-
 import {CardanoHaskellConfig} from '../types'
 import {ModernUtxo} from '../utxo/models'
 import {TransactionBuilderState, buildTransaction} from './builder'
+import {DRepValue, TransactionCertificate} from './types'
 
 // Cardano minimum UTXO value constant (1 ADA = 1,000,000 lovelace)
 // Extracted to avoid circular dependency with @yoroi/blockchains
@@ -35,83 +27,62 @@ const MIN_UTXO_VALUE = '1000000'
  * Create a stake registration certificate
  */
 export function createStakeRegistrationCertificate(
-  wasm: WasmModuleProxy,
-  stakingKey: PublicKey,
-): Certificate {
-  const stakingCredential = wasm.Credential.fromKeyhash(stakingKey.hash())
-  const stakeRegistration = wasm.StakeRegistration.new(stakingCredential)
-  return wasm.Certificate.newStakeRegistration(stakeRegistration)
+  stakingKeyHashHex: KeyHash | string,
+): TransactionCertificate {
+  return {
+    kind: 'StakeRegistration',
+    stakeCredentialKeyHashHex: stakingKeyHashHex as KeyHash,
+  }
 }
 
 /**
  * Create a stake deregistration certificate
  */
 export function createStakeDeregistrationCertificate(
-  wasm: WasmModuleProxy,
-  stakingKey: PublicKey,
-): Certificate {
-  const stakingCredential = wasm.Credential.fromKeyhash(stakingKey.hash())
-  const stakeDeregistration = wasm.StakeDeregistration.new(stakingCredential)
-  return wasm.Certificate.newStakeDeregistration(stakeDeregistration)
+  stakingKeyHashHex: KeyHash | string,
+): TransactionCertificate {
+  return {
+    kind: 'StakeDeregistration',
+    stakeCredentialKeyHashHex: stakingKeyHashHex as KeyHash,
+  }
 }
 
 /**
  * Create a stake delegation certificate
  */
 export function createStakeDelegationCertificate(
-  wasm: WasmModuleProxy,
-  stakingKey: PublicKey,
+  stakingKeyHashHex: KeyHash | string,
   poolKeyHash: KeyHash | string, // Hex string
-): Certificate {
-  const stakingCredential = wasm.Credential.fromKeyhash(stakingKey.hash())
-  const poolKeyHashStr =
-    typeof poolKeyHash === 'string' ? poolKeyHash : poolKeyHash
-  const poolKeyHashBytes = Buffer.from(poolKeyHashStr, 'hex')
-  const poolKeyHashObj = wasm.Ed25519KeyHash.fromBytes(
-    new Uint8Array(poolKeyHashBytes),
-  )
-  const stakeDelegation = wasm.StakeDelegation.new(
-    stakingCredential,
-    poolKeyHashObj,
-  )
-  return wasm.Certificate.newStakeDelegation(stakeDelegation)
+): TransactionCertificate {
+  return {
+    kind: 'StakeDelegation',
+    stakeCredentialKeyHashHex: stakingKeyHashHex as KeyHash,
+    poolKeyHash: poolKeyHash as KeyHash,
+  }
 }
 
 /**
  * Create a vote delegation certificate (CIP-1694)
  */
 export function createVoteDelegationCertificate(
-  wasm: WasmModuleProxy,
-  stakingKey: PublicKey,
-  drepId: DRepId | string, // Hex string or bech32
-  isCIP105: boolean = false,
-): Certificate {
-  const stakingCredential = wasm.Credential.fromKeyhash(stakingKey.hash())
-
-  // Parse DRep ID (can be hex or bech32)
-  const drepIdStr = typeof drepId === 'string' ? drepId : drepId
-  let drep: DRep
+  stakingKeyHashHex: KeyHash | string,
+  drepId: KeyHash | string, // Hex key hash or bech32
+  _isCIP105: boolean = false,
+): TransactionCertificate {
+  const drepIdStr = drepId
+  let drep: DRepValue
   if (drepIdStr.startsWith('drep')) {
     // Bech32 format - need to decode
     // For now, assume hex format
     throw new Error('Bech32 DRep ID format not yet supported in helper')
   } else {
     // Hex format - assume it's a key hash
-    const drepKeyHashBytes = Buffer.from(drepIdStr, 'hex')
-    const keyHash = wasm.Ed25519KeyHash.fromBytes(
-      new Uint8Array(drepKeyHashBytes),
-    )
-    drep = wasm.DRep.newKeyHash(keyHash)
+    drep = {KeyHash: drepIdStr as KeyHash}
   }
-
-  const votingDelegation = wasm.VoteDelegation.new(stakingCredential, drep)
-
-  if (isCIP105) {
-    // CIP-105 format (legacy)
-    return wasm.Certificate.newVoteDelegation(votingDelegation)
-  } else {
-    // CIP-1694 format (new)
-    return wasm.Certificate.newVoteDelegation(votingDelegation)
+  return {
+    kind: 'VoteDelegation',
+    stakeCredentialKeyHashHex: stakingKeyHashHex as KeyHash,
+    drep,
   }
 }
 
@@ -330,7 +301,8 @@ export function selectUtxosForAmounts(
   // Estimate minimum UTXO for change output based on token count
   // When tokens will be in change, the minimum UTXO requirement increases significantly
   // Use a conservative estimate: base minimum + additional ADA per token
-  // This is a heuristic since exact calculation requires CSL
+  // Keep this conservative estimate for selection; the CML transaction builder
+  // validates the serialized change output against protocol parameters.
   const tokenCountInChange = Object.keys(tokensInChange).length
   let estimatedMinUtxoForChange = minUtxoValue
   if (tokenCountInChange > 0) {
@@ -533,7 +505,9 @@ export function createCardanoHaskellConfig(
     Partial<
       Pick<
         Chain.Cardano.ProtocolParams,
-        'collateralPercentage' | 'minFeeReferenceScript'
+        | 'collateralPercentage'
+        | 'minFeeReferenceScript'
+        | 'scriptExecutionPrices'
       >
     >,
   networkId: number,
@@ -547,6 +521,9 @@ export function createCardanoHaskellConfig(
     networkId,
     collateralPercentage: protocolParams.collateralPercentage,
     refScriptCoinsPerByte: protocolParams.minFeeReferenceScript?.coinsPerByte,
+    refScriptTierStepBytes: protocolParams.minFeeReferenceScript?.tierStepBytes,
+    refScriptMultiplier: protocolParams.minFeeReferenceScript?.multiplier,
+    scriptExecutionPrices: protocolParams.scriptExecutionPrices,
   }
 }
 

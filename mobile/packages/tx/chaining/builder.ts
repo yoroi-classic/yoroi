@@ -35,12 +35,9 @@ export function addChainedInput(
         'Cannot serialize chained UTXO - transaction not confirmed',
       )
     },
-    toTransactionUnspentOutput: () => {
-      throw new Error('Cannot convert chained UTXO - transaction not confirmed')
-    },
   }
 
-  // Add as regular input (CSL will handle it as a regular input)
+  // Add as a regular input for the CML transaction builder
   // Note: The actual transaction building will need to handle chained transactions
   // specially, as they reference unconfirmed outputs
   return addInput(state, chainedUtxo)

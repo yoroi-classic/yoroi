@@ -1,13 +1,17 @@
 import {Chain} from '@yoroi/types'
 
-import {init} from '@emurgo/cross-csl-nodejs'
-
 import {Storage, connectionStorageMaker} from './adapters/async-storage'
 import {ResolverWallet, resolverHandleEvent} from './resolver'
 import {storageMock} from './storage.mocks'
 
-const CSL = init('test')
+jest.mock('@yoroi/cardano-wallet', () => ({
+  collateralConfig: {minLovelace: {toString: () => '5000000'}},
+}))
+
 const walletId = 'test-wallet-id'
+
+const serializableHex = (value: string) => ({toHex: () => value})
+const balanceHex = '1a062ea8a0'
 
 const createMockWallet = (
   overrides?: Partial<ResolverWallet>,
@@ -17,13 +21,13 @@ const createMockWallet = (
     networkId: 1,
     network: Chain.Network.Mainnet,
     confirmConnection: jest.fn().mockResolvedValue(true),
-    getBalance: jest.fn().mockResolvedValue(CSL.Value.fromHex('1a062ea8a0')),
+    getBalance: jest.fn().mockResolvedValue(balanceHex),
     getUnusedAddresses: jest.fn().mockReturnValue([]),
     getUsedAddresses: jest.fn().mockReturnValue([]),
     getChangeAddress: jest
       .fn()
       .mockReturnValue(
-        CSL.Address.fromHex(
+        serializableHex(
           '017ef00ee3672330155382a2857573868af466b88aa8c4081f45583e1784d958399bcce03402fd853d43a4e7366f2018932e5aff4eea904693',
         ),
       ),

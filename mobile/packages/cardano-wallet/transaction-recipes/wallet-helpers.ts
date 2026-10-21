@@ -1,18 +1,20 @@
+import {cardanoConfig} from '@yoroi/blockchains'
 import {getLogger} from '@yoroi/logger'
 import type {DRepValue} from '@yoroi/tx'
 import {TransactionOutput} from '@yoroi/tx'
 import type {TransactionMetadata} from '@yoroi/types'
-import {Branded, KeyHash, Network, PublicKeyHex, Wallet} from '@yoroi/types'
+import {Branded, KeyHash, Network, Wallet} from '@yoroi/types'
 
-import type {Certificate} from '@emurgo/cross-csl-core'
+import {derivePublicKeyFromAccountPathHex} from '@yoroi-classic/cml-mobile-bridge'
 import {BigNumber} from 'bignumber.js'
 
 import * as legacyApi from '../api/api'
-import type {CardanoTypes, YoroiWallet} from '../types'
+import type {YoroiWallet} from '../types'
 import {createCombinedDelegationTx} from './createCombinedDelegationTx'
 import {createDelegationTx} from './createDelegationTx'
 import {createSendTx} from './createSendTx'
 import {createUnsignedGovernanceTx} from './createUnsignedGovernanceTx'
+import type {GovernanceCertificateInput} from './createUnsignedGovernanceTx'
 import {createUtxoConsolidationTx} from './createUtxoConsolidationTx'
 import {createVotingRegTx} from './createVotingRegTx'
 import {createWithdrawalTx} from './createWithdrawalTx'
@@ -109,7 +111,8 @@ export async function createDelegationTxFromWallet(
     networkId: wallet.networkManager.chainId,
     getAbsoluteSlotNumber: () => getAbsoluteSlotNumberFromWallet(wallet),
     getChangeAddress: (mode) => wallet.getChangeAddress(mode),
-    getStakingKey: () => wallet.getStakingKey(),
+    getStakingKeyHashHex: () =>
+      Branded.asKeyHash(wallet.getStakingKey().hash().toHex()),
     getDelegationStatus: () => wallet.getDelegationStatus(),
     poolId: params.poolId,
     addressMode: params.addressMode,
@@ -136,7 +139,8 @@ export async function createCombinedDelegationTxFromWallet(
     networkId: wallet.networkManager.chainId,
     getAbsoluteSlotNumber: () => getAbsoluteSlotNumberFromWallet(wallet),
     getChangeAddress: (mode) => wallet.getChangeAddress(mode),
-    getStakingKey: () => wallet.getStakingKey(),
+    getStakingKeyHashHex: () =>
+      Branded.asKeyHash(wallet.getStakingKey().hash().toHex()),
     getDelegationStatus: () => wallet.getDelegationStatus(),
     poolId: params.poolId,
     drepValue: params.drepValue,
@@ -179,7 +183,6 @@ export async function createWithdrawalTxFromWallet(
       networkId: wallet.networkManager.chainId,
       getAbsoluteSlotNumber: () => getAbsoluteSlotNumberFromWallet(wallet),
       getChangeAddress: (mode) => wallet.getChangeAddress(mode),
-      getStakingKey: () => wallet.getStakingKey(),
       getAccountState: (addresses) => {
         // Get wallet context for backend-zero registration
         const walletContextRaw = wallet.getWalletContext?.()
@@ -235,12 +238,24 @@ export async function createWithdrawalTxFromWallet(
 export async function createVotingRegTxFromWallet(
   wallet: YoroiWallet,
   params: {
-    catalystKeyHex: PublicKeyHex | string
+    catalystKeyHex: string
     supportsCIP36: boolean
     addressMode: Wallet.AddressMode
+    implementation: Wallet.Implementation
   },
 ): Promise<{votingRegTx: {cbor: string}}> {
   const modernUtxos = getModernUtxosFromWallet(wallet)
+  const stakingFeature =
+    cardanoConfig.implementations[params.implementation].features.staking
+  const stakingDerivation =
+    stakingFeature === false ? undefined : stakingFeature.derivation
+  if (!stakingDerivation) {
+    throw new Error('Voting registration requires staking support')
+  }
+  const stakingPublicKeyHex = derivePublicKeyFromAccountPathHex(
+    wallet.publicKeyHex,
+    [stakingDerivation.role, stakingDerivation.index],
+  )
 
   return createVotingRegTx({
     utxos: modernUtxos,
@@ -249,7 +264,7 @@ export async function createVotingRegTxFromWallet(
     networkId: wallet.networkManager.chainId,
     getAbsoluteSlotNumber: () => getAbsoluteSlotNumberFromWallet(wallet),
     getChangeAddress: (mode) => wallet.getChangeAddress(mode),
-    getStakingKey: () => wallet.getStakingKey(),
+    stakingPublicKeyHex,
     getFirstPaymentAddress: () => wallet.getFirstPaymentAddress(),
     supportsCIP36: params.supportsCIP36,
     catalystKeyHex: params.catalystKeyHex,
@@ -263,7 +278,7 @@ export async function createVotingRegTxFromWallet(
 export async function createUnsignedGovernanceTxFromWallet(
   wallet: YoroiWallet,
   params: {
-    votingCertificates: Array<Certificate>
+    votingCertificates: GovernanceCertificateInput[]
     addressMode: Wallet.AddressMode
   },
 ): Promise<{cbor: string}> {
@@ -276,7 +291,7 @@ export async function createUnsignedGovernanceTxFromWallet(
     networkId: wallet.networkManager.chainId,
     getAbsoluteSlotNumber: () => getAbsoluteSlotNumberFromWallet(wallet),
     getChangeAddress: (mode) => wallet.getChangeAddress(mode),
-    votingCertificates: params.votingCertificates as CardanoTypes.Certificate[],
+    votingCertificates: params.votingCertificates,
     addressMode: params.addressMode,
   })
 }
@@ -356,7 +371,8 @@ export async function createWithdrawalWithGovernanceTxFromWallet(
       networkId: wallet.networkManager.chainId,
       getAbsoluteSlotNumber: () => getAbsoluteSlotNumberFromWallet(wallet),
       getChangeAddress: (mode) => wallet.getChangeAddress(mode),
-      getStakingKey: () => wallet.getStakingKey(),
+      getStakingKeyHashHex: () =>
+        Branded.asKeyHash(wallet.getStakingKey().hash().toHex()),
       getAccountState: (addresses) => {
         const walletContextRaw = wallet.getWalletContext?.()
         const walletContext = walletContextRaw

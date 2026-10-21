@@ -1,5 +1,5 @@
 import {getDatumHash} from './parsing'
-import {hashPlutusDataCborHex} from '@yoroi-classic/csl-mobile-bridge'
+import {hashPlutusDataCborHex} from '@yoroi-classic/cml-mobile-bridge'
 import type {Datum} from './types'
 
 /**

@@ -1,8 +1,8 @@
-import {buildEscrowRedeemTransactionCml} from '@yoroi-classic/csl-mobile-bridge'
+import {buildEscrowRedeemTransactionCml} from '@yoroi-classic/cml-mobile-bridge'
 
 import {buildEscrowRedeemTx} from './buildRedeemTx'
 
-jest.mock('@yoroi-classic/csl-mobile-bridge', () => ({
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   buildEscrowRedeemTransactionCml: jest.fn(() => ({
     cborHex: 'cml-unsigned-tx',
     fee: '1',
@@ -27,7 +27,6 @@ describe('buildEscrowRedeemTx CML route', () => {
       txIndex: 1,
       balance: {[primaryTokenId]: '10000000'},
       toTransactionUnspentOutputHex: () => '',
-      toTransactionUnspentOutput: () => ({}) as never,
     }
     const collateralUtxo = {
       ...fundingUtxo,

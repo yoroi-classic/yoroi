@@ -1,5 +1,4 @@
 import {cardanoConfig} from '@yoroi/blockchains'
-import {isHex} from '@yoroi/common'
 import {
   CIP30TransactionError,
   createSignedLedgerTxFromCbor,
@@ -11,7 +10,11 @@ import {
   MessageAddressFieldType,
   MessageData,
 } from '@cardano-foundation/ledgerjs-hw-app-cardano'
-import {Address} from '@emurgo/cross-csl-core'
+import {
+  addressInfoFromAddress,
+  addressToHex,
+  rewardAddressFromAddress,
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import {buildCoseSign1FromSignature, makeCip8Key} from '../cip8/cip8'
 import {assertHasAllSigners} from '../common/signatureUtils'
@@ -23,7 +26,6 @@ import {
   getHexAddressingMap,
   getStakeAddressMap,
 } from '../utils'
-import {CardanoMobileWrapped} from '../wrappedCsl'
 
 export type CIP30LedgerExtension = {
   signData(
@@ -53,58 +55,49 @@ export const cip30LedgerExtensionMaker = (
       hwDeviceInfo: HW.DeviceInfo,
       useUSB: boolean,
     ) {
-      return CardanoMobileWrapped.cslScope(async (csl) => {
-        // Create address within this cslScope to avoid pointer issues
-        let normalizedAddress: Address | null = null
-        if (csl.ByronAddress.isValid(address)) {
-          const byronAddr = csl.ByronAddress.fromBase58(address)
-          normalizedAddress = byronAddr.toAddress()
-        } else {
-          const isHexAddr = isHex(address)
-          normalizedAddress = isHexAddr
-            ? csl.Address.fromHex(address)
-            : csl.Address.fromBech32(address)
-        }
+      const addressInfo = addressInfoFromAddress(address)
+      if (!addressInfo.isValid || !addressInfo.bech32) {
+        throw new Error('Invalid address')
+      }
 
-        if (!normalizedAddress || normalizedAddress.isMalformed()) {
-          throw new Error('Invalid address')
-        }
-
-        const rewardAddress = csl.RewardAddress.fromAddress(normalizedAddress)
-        const rewardAddressHex = rewardAddress?.toAddress().toHex()
-
-        const stakingSigningPath =
-          meta.implementation === 'cardano-cip1852'
-            ? cardanoConfig.implementations[meta.implementation].features
-                .staking.addressing
-            : null
-
-        const bech32Address = normalizedAddress.toBech32(undefined)
-        if (!bech32Address) throw new Error('Invalid address')
-        const signingPath =
-          rewardAddressHex === wallet.rewardAddressHex &&
-          Array.isArray(stakingSigningPath)
-            ? stakingSigningPath
-            : wallet.getAddressing(bech32Address).path
-
-        const ledgerPayload: MessageData = {
-          messageHex: payload,
-          signingPath,
-          hashPayload: false,
-          preferHexDisplay: false,
-          addressFieldType: MessageAddressFieldType.KEY_HASH,
-        }
-        const response = await signMessageWithLedger(
-          ledgerPayload,
-          hwDeviceInfo,
-          useUSB,
+      let rewardAddressHex: string | undefined
+      try {
+        rewardAddressHex = addressToHex(
+          rewardAddressFromAddress(address, wallet.networkManager.chainId),
         )
-        return encodeHardwareWalletSignResult({
-          addressHex: response.addressFieldHex,
-          signatureHex: response.signatureHex,
-          payloadHex: payload,
-          signingPublicKeyHex: response.signingPublicKeyHex,
-        })
+      } catch {
+        // Byron and enterprise addresses do not carry a stake credential.
+      }
+
+      const stakingSigningPath =
+        meta.implementation === 'cardano-cip1852'
+          ? cardanoConfig.implementations[meta.implementation].features.staking
+              .addressing
+          : null
+
+      const signingPath =
+        rewardAddressHex === wallet.rewardAddressHex &&
+        Array.isArray(stakingSigningPath)
+          ? stakingSigningPath
+          : wallet.getAddressing(addressInfo.bech32).path
+
+      const ledgerPayload: MessageData = {
+        messageHex: payload,
+        signingPath,
+        hashPayload: false,
+        preferHexDisplay: false,
+        addressFieldType: MessageAddressFieldType.KEY_HASH,
+      }
+      const response = await signMessageWithLedger(
+        ledgerPayload,
+        hwDeviceInfo,
+        useUSB,
+      )
+      return encodeHardwareWalletSignResult({
+        addressHex: response.addressFieldHex,
+        signatureHex: response.signatureHex,
+        payloadHex: payload,
+        signingPublicKeyHex: response.signingPublicKeyHex,
       })
     },
 
@@ -114,58 +107,55 @@ export const cip30LedgerExtensionMaker = (
       hwDeviceInfo: HW.DeviceInfo,
       useUSB: boolean,
     ) {
-      return CardanoMobileWrapped.cslScope(async (csl) => {
-        // Validate transaction CBOR before signing
-        const validation = validateTransactionCbor(cbor)
-        if (!validation.valid) {
-          throw new CIP30TransactionError(
-            `Transaction validation failed: ${validation.errors.join(', ')}`,
-            validation,
-          )
-        }
-
-        if (!partial) await assertHasAllSigners(cbor, wallet, meta)
-
-        const stakingSigningPath =
-          meta.implementation === 'cardano-cip1852'
-            ? Array.from(
-                cardanoConfig.implementations[meta.implementation].features
-                  .staking.addressing,
-              )
-            : undefined
-
-        const addressingMap = await getHexAddressingMap(wallet)
-        const stakeAddressMap = getStakeAddressMap(
-          wallet.rewardAddressHex,
-          stakingSigningPath as number[] | undefined,
+      // Validate transaction CBOR before signing
+      const validation = validateTransactionCbor(cbor)
+      if (!validation.valid) {
+        throw new CIP30TransactionError(
+          `Transaction validation failed: ${validation.errors.join(', ')}`,
+          validation,
         )
-        const payload = await toLedgerSignRequest(
-          csl,
-          cbor,
-          wallet.networkManager.chainId,
-          wallet.networkManager.protocolMagic,
-          addressingMap,
-          stakeAddressMap,
-          getAddressedUtxos(wallet),
-          [],
-          stakingSigningPath as number[] | undefined,
-        )
+      }
 
-        const signedLedgerTx = await signTxWithLedger(
-          payload,
-          hwDeviceInfo,
-          useUSB,
-        )
-        const implementationConfig =
-          cardanoConfig.implementations[meta.implementation]
-        const bytes = await createSignedLedgerTxFromCbor(
-          cbor,
-          signedLedgerTx,
-          implementationConfig.derivations.base.harden.purpose,
-          wallet.publicKeyHex,
-        )
-        return bytes
-      })
+      if (!partial) await assertHasAllSigners(cbor, wallet, meta)
+
+      const stakingSigningPath =
+        meta.implementation === 'cardano-cip1852'
+          ? Array.from(
+              cardanoConfig.implementations[meta.implementation].features
+                .staking.addressing,
+            )
+          : undefined
+
+      const addressingMap = await getHexAddressingMap(wallet)
+      const stakeAddressMap = getStakeAddressMap(
+        wallet.rewardAddressHex,
+        stakingSigningPath as number[] | undefined,
+      )
+      const payload = await toLedgerSignRequest(
+        cbor,
+        wallet.networkManager.chainId,
+        wallet.networkManager.protocolMagic,
+        addressingMap,
+        stakeAddressMap,
+        getAddressedUtxos(wallet),
+        [],
+        stakingSigningPath as number[] | undefined,
+      )
+
+      const signedLedgerTx = await signTxWithLedger(
+        payload,
+        hwDeviceInfo,
+        useUSB,
+      )
+      const implementationConfig =
+        cardanoConfig.implementations[meta.implementation]
+      const bytes = await createSignedLedgerTxFromCbor(
+        cbor,
+        signedLedgerTx,
+        implementationConfig.derivations.base.harden.purpose,
+        wallet.publicKeyHex,
+      )
+      return bytes
     },
   }
 }

@@ -1,9 +1,5 @@
 import {RawUtxo} from '@yoroi/api'
-import {
-  CardanoMobileWrapped,
-  collateralConfig,
-  utxosMaker,
-} from '@yoroi/cardano-wallet'
+import {collateralConfig, utxosMaker} from '@yoroi/cardano-wallet'
 import type {SelectionStrategy} from '@yoroi/tx'
 import {
   getTransactionWitnessSetHex,
@@ -18,6 +14,7 @@ import {Buffer} from 'buffer'
 import React from 'react'
 
 import {persistPrefixKeyword} from '~/kernel/connection/ConnectionProvider'
+import {serializeModernUtxoCml} from '~/kernel/crypto/cml-utxo'
 import {logger} from '~/kernel/logger/logger'
 
 import {redemptionApi} from '../api/redemptionApi'
@@ -71,96 +68,89 @@ export const useRedeemThaw = (allocation?: AddressAllocation) => {
         [primaryTokenId]: '5000000' as Balance.Quantity, // 5 ADA in lovelace
       }
 
-      const {fundingUtxosHex, collateralUtxosHex} =
-        await CardanoMobileWrapped.cslScope(async (csl) => {
-          // Convert RawUtxo[] to ModernUtxo[] using current pattern
-          const rawUtxos = wallet.utxos()
+      const {fundingUtxosHex, collateralUtxosHex} = (() => {
+        // Convert RawUtxo[] to ModernUtxo[] using current pattern
+        const rawUtxos = wallet.utxos()
 
-          const modernUtxos = rawUtxos.map((rawUtxo: RawUtxo) => {
-            const addressing = wallet.getAddressing(rawUtxo.receiver)
-            return rawUtxoToModernUtxo(
-              rawUtxo as Parameters<typeof rawUtxoToModernUtxo>[0],
-              addressing,
-              undefined, // derivationPath
-              primaryTokenId,
-            )
-          })
-
-          // Select UTXOs using keepRelevant strategy (same as swap)
-          const selection = selectUtxos(
-            feeAmount,
-            modernUtxos,
-            'keepRelevant' as SelectionStrategy,
+        const modernUtxos = rawUtxos.map((rawUtxo: RawUtxo) => {
+          const addressing = wallet.getAddressing(rawUtxo.receiver)
+          return rawUtxoToModernUtxo(
+            rawUtxo as Parameters<typeof rawUtxoToModernUtxo>[0],
+            addressing,
+            undefined, // derivationPath
             primaryTokenId,
           )
+        })
 
-          if (
-            selection.selected.length === 0 ||
-            Object.keys(selection.missingAmounts).length > 0
-          ) {
-            logger.info('useRedeemThaw: Insufficient UTXOs', {
-              selectedCount: selection.selected.length,
-              missingAmounts: selection.missingAmounts,
-            })
-            throw new Error('No UTXOs available with sufficient funds')
-          }
+        // Select UTXOs using keepRelevant strategy (same as swap)
+        const selection = selectUtxos(
+          feeAmount,
+          modernUtxos,
+          'keepRelevant' as SelectionStrategy,
+          primaryTokenId,
+        )
 
-          // Track which UTXOs were selected for funding (by utxo_id from RawUtxo)
-          // Match ModernUtxo to RawUtxo by txHash and txIndex
-          const selectedFundingUtxoIds = new Set<string>()
-          selection.selected.forEach((modernUtxo) => {
-            const matchingRawUtxo = rawUtxos.find(
-              (rawUtxo) =>
-                rawUtxo.tx_hash === modernUtxo.txHash &&
-                rawUtxo.tx_index === modernUtxo.txIndex,
-            )
-            if (matchingRawUtxo) {
-              selectedFundingUtxoIds.add(matchingRawUtxo.utxo_id)
-            }
+        if (
+          selection.selected.length === 0 ||
+          Object.keys(selection.missingAmounts).length > 0
+        ) {
+          logger.info('useRedeemThaw: Insufficient UTXOs', {
+            selectedCount: selection.selected.length,
+            missingAmounts: selection.missingAmounts,
           })
+          throw new Error('No UTXOs available with sufficient funds')
+        }
 
-          // Convert ModernUtxo to hex strings using toTransactionUnspentOutput
-          const utxoHexStrings = await Promise.all(
-            selection.selected.map(async (utxo) => {
-              const cslUtxo = utxo.toTransactionUnspentOutput(csl)
-              return Buffer.from(cslUtxo.toBytes()).toString('hex')
-            }),
+        // Track which UTXOs were selected for funding (by utxo_id from RawUtxo)
+        // Match ModernUtxo to RawUtxo by txHash and txIndex
+        const selectedFundingUtxoIds = new Set<string>()
+        selection.selected.forEach((modernUtxo) => {
+          const matchingRawUtxo = rawUtxos.find(
+            (rawUtxo) =>
+              rawUtxo.tx_hash === modernUtxo.txHash &&
+              rawUtxo.tx_index === modernUtxo.txIndex,
           )
-
-          // Find collateral candidates (pure ADA, <= 5 ADA)
-          const utxosList = utxosMaker(rawUtxos, collateralConfig)
-          const collateralCandidates = utxosList.findCollateralCandidates()
-
-          // Filter out UTXOs already selected for funding
-          const availableCollateral = collateralCandidates.filter(
-            (utxo: RawUtxo) => !selectedFundingUtxoIds.has(utxo.utxo_id),
-          )
-
-          // Convert the first available collateral UTXO to hex format
-          let collateralUtxosHex: string[] = []
-          if (availableCollateral.length > 0) {
-            const collateralUtxo = availableCollateral[0]!
-            // Find the corresponding ModernUtxo to convert it
-            const collateralModernUtxo = modernUtxos.find(
-              (utxo) =>
-                utxo.txHash === collateralUtxo.tx_hash &&
-                utxo.txIndex === collateralUtxo.tx_index,
-            )
-
-            if (collateralModernUtxo) {
-              const cslUtxo =
-                collateralModernUtxo.toTransactionUnspentOutput(csl)
-              collateralUtxosHex = [
-                Buffer.from(cslUtxo.toBytes()).toString('hex'),
-              ]
-            }
-          }
-
-          return {
-            fundingUtxosHex: utxoHexStrings,
-            collateralUtxosHex,
+          if (matchingRawUtxo) {
+            selectedFundingUtxoIds.add(matchingRawUtxo.utxo_id)
           }
         })
+
+        const utxoHexStrings = selection.selected.map((utxo) =>
+          serializeModernUtxoCml(utxo, primaryTokenId),
+        )
+
+        // Find collateral candidates (pure ADA, <= 5 ADA)
+        const utxosList = utxosMaker(rawUtxos, collateralConfig)
+        const collateralCandidates = utxosList.findCollateralCandidates()
+
+        // Filter out UTXOs already selected for funding
+        const availableCollateral = collateralCandidates.filter(
+          (utxo: RawUtxo) => !selectedFundingUtxoIds.has(utxo.utxo_id),
+        )
+
+        // Convert the first available collateral UTXO to hex format
+        let collateralUtxosHex: string[] = []
+        if (availableCollateral.length > 0) {
+          const collateralUtxo = availableCollateral[0]!
+          // Find the corresponding ModernUtxo to convert it
+          const collateralModernUtxo = modernUtxos.find(
+            (utxo) =>
+              utxo.txHash === collateralUtxo.tx_hash &&
+              utxo.txIndex === collateralUtxo.tx_index,
+          )
+
+          if (collateralModernUtxo) {
+            collateralUtxosHex = [
+              serializeModernUtxoCml(collateralModernUtxo, primaryTokenId),
+            ]
+          }
+        }
+
+        return {
+          fundingUtxosHex: utxoHexStrings,
+          collateralUtxosHex,
+        }
+      })()
 
       // Get change address (respects wallet's address mode - single uses first address, multiple uses unused address)
       const changeAddress = wallet.getChangeAddress(meta.addressMode)

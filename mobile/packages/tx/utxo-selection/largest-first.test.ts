@@ -15,7 +15,6 @@ describe('largestFirst', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   it('should select largest UTXOs first', () => {

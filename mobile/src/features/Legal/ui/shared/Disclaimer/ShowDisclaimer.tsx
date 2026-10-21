@@ -50,7 +50,7 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
   React.useEffect(() => {
     setShowed(false)
   }, [type])
-  const {atoms: ta, palette: p, basePalette} = useTheme()
+  const {atoms: ta, palette: p} = useTheme()
   const {data: disclaimerText, isLoading} = useDisclaimerText({
     type,
     languageCode,
@@ -63,8 +63,6 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
       content: (
         <View style={[a.flex_1, a.px_lg, {height: 600}]}>
           <Markdown
-            colorScheme={basePalette}
-            backgroundColor={ta.bg_color_max.backgroundColor}
             value={disclaimerText || ''}
             flatListProps={{
               style: {
@@ -127,7 +125,6 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
     strings.global.accept,
     strings.global.cancel,
     strings.global.proceed,
-    basePalette,
     ta,
     p.bg_color_max,
     resetToTxHistory,
