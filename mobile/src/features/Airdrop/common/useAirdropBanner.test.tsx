@@ -15,11 +15,15 @@ jest.mock('@yoroi/notifications', () => ({
   useNotificationManager: () => ({events: {remove: mockRemoveBanner}}),
 }))
 jest.mock('@yoroi/wallet-manager', () => ({
-  useWalletManager: () => ({selected: {network: 'Mainnet', wallet: mockWallet}}),
+  useWalletManager: () => ({
+    selected: {network: 'Mainnet', wallet: mockWallet},
+  }),
   useWalletEvent: jest.fn(),
 }))
 jest.mock('~/common/hooks/useRemoteConfig', () => ({
-  useRemoteConfig: () => ({config: {features: {midnightAirdrop: {enabled: true}}}}),
+  useRemoteConfig: () => ({
+    config: {features: {midnightAirdrop: {enabled: true}}},
+  }),
 }))
 jest.mock('~/kernel/constants', () => ({cardanoWalletBackendUrl: undefined}))
 jest.mock('~/kernel/i18n/useStrings', () => ({
