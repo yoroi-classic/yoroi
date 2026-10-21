@@ -8,7 +8,6 @@ import {
 } from '@yoroi-classic/cml-mobile-bridge'
 import {Buffer} from 'buffer'
 
-
 /**
  * Sign a transaction with a decrypted master key
  */
@@ -56,7 +55,9 @@ export const signWalletTransaction = (
   }
 
   if (needsStakingKey && (!stakingRole || !stakingIndex)) {
-    throw new Error('signWalletTransaction: required staking key but not supported')
+    throw new Error(
+      'signWalletTransaction: required staking key but not supported',
+    )
   }
 
   const signedTransactionHex = signWalletTransactionHex({

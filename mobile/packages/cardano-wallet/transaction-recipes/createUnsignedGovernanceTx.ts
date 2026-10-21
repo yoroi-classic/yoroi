@@ -1,3 +1,4 @@
+import type {GovernanceCertificate} from '@yoroi/staking'
 import {
   CertificateKind,
   ModernUtxo,
@@ -13,36 +14,10 @@ import {
   setChangeAddress,
   setTTLWithBuffer,
 } from '@yoroi/tx'
-import {
-  Address,
-  App,
-  Branded,
-  KeyHash,
-  Portfolio,
-  ScriptHash,
-  Wallet,
-} from '@yoroi/types'
+import {Address, App, Branded, Portfolio, Wallet} from '@yoroi/types'
 
-/** Plain transaction-recipe data for the governance certificates this wallet
- * currently creates. Keeping this boundary independent of serialization
- * library objects lets
- * the staking manager and transaction builder exchange stable, serializable
- * certificate values.
- */
-export type GovernanceCertificateInput =
-  | {
-      kind: 'VoteDelegation'
-      stakeCredentialKeyHashHex: KeyHash
-      drep:
-        | 'AlwaysAbstain'
-        | 'AlwaysNoConfidence'
-        | {KeyHash: KeyHash}
-        | {ScriptHash: ScriptHash}
-    }
-  | {
-      kind: 'StakeRegistration'
-      stakeCredentialKeyHashHex: KeyHash
-    }
+/** Plain certificate data accepted from the staking manager. */
+export type GovernanceCertificateInput = GovernanceCertificate
 
 export type CreateUnsignedGovernanceTxParams = {
   utxos: ModernUtxo[]

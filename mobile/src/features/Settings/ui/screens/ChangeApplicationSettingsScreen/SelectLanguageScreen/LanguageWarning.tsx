@@ -1,7 +1,7 @@
 import {atoms as a, useTheme} from '@yoroi/theme'
 
 import * as React from 'react'
-import {TouchableOpacity, useColorScheme, View} from 'react-native'
+import {TouchableOpacity, View, useColorScheme} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {useStrings} from '~/kernel/i18n/useStrings'
@@ -33,7 +33,9 @@ export const LanguageWarning = ({enabled}: {enabled?: boolean}) => {
         value={contributors}
         colorScheme={colorScheme}
         backgroundColor={ta.bg_color_max.backgroundColor}
-        flatListProps={{style: {backgroundColor: ta.bg_color_max.backgroundColor}}}
+        flatListProps={{
+          style: {backgroundColor: ta.bg_color_max.backgroundColor},
+        }}
         styles={{
           paragraph: ta.bg_color_min,
           strong: {

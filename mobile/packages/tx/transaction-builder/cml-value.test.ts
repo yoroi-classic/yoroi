@@ -30,6 +30,18 @@ describe('CML value DTO conversion', () => {
     ])
   })
 
+  it.each(['ab'.repeat(27), `${policyId}.${'ff'.repeat(33)}`, 'not-hex'])(
+    'rejects malformed token identifier %s',
+    (tokenId) => {
+      expect(() =>
+        cmlAssetsFromAmounts(
+          {[tokenId]: '1' as Balance.Quantity},
+          primaryTokenId,
+        ),
+      ).toThrow('Invalid Cardano asset identifier')
+    },
+  )
+
   it('maps a spendable UTxO without number coercion', () => {
     const tokenId = `${policyId}.00ff`
     const utxo: ModernUtxo = {
@@ -75,5 +87,19 @@ describe('CML value DTO conversion', () => {
       addressHex: `80${'00'.repeat(28)}`,
       isBootstrap: true,
     })
+  })
+
+  it('rejects unsafe UTxO output indices before serializing', () => {
+    const utxo: ModernUtxo = {
+      receiver: 'addr_test1qrecipient' as Address,
+      txHash: 'cd'.repeat(32) as TransactionHash,
+      txIndex: Number.MAX_SAFE_INTEGER + 1,
+      balance: {[primaryTokenId]: '1000000' as Balance.Quantity},
+      toTransactionUnspentOutputHex: () => '',
+    }
+
+    expect(() => cmlPaymentInputFromUtxo(utxo, primaryTokenId)).toThrow(
+      'Invalid UTxO output index',
+    )
   })
 })

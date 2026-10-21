@@ -1,4 +1,7 @@
-import {deriveAccountPublicKeyHex, walletRootKeyHexFromEntropy} from '@yoroi-classic/cml-mobile-bridge'
+import {
+  deriveAccountPublicKeyHex,
+  walletRootKeyHexFromEntropy,
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import {keyManager} from './key-manager'
 

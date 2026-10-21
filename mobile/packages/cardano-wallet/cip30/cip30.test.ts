@@ -5,10 +5,12 @@ import {
   emptyWitnessTransactionHex,
   rewardAddressFromAddress,
   signWalletData,
+  transactionUnspentOutputHex,
 } from '@yoroi-classic/cml-mobile-bridge'
 
 import {createCollateralEntry} from '~/features/Settings/ui/screens/ChangeWalletSettingsScreen/ManageCollateralScreen/helpers'
 
+import {makeCip8DataToSign} from '../cip8/cip8'
 import {getMasterKeyFromMnemonic} from '../mnemonic/mnemonic'
 import {mocks} from '../mocks/mocks/wallet'
 import {YoroiWallet} from '../types'
@@ -111,19 +113,29 @@ describe('cip30ExtensionMaker', () => {
   })
 
   it('serializes CIP-30 UTxOs through CML without losing large quantities', async () => {
-    const policyId = 'ab'.repeat(28)
+    const policyId = '11'.repeat(28)
+    const address =
+      'addr_test1qqqqpvpu82s99aguppk9f02qt84d95hyy6kgn7jt8njpe0cqqzcrcw4q2t63czrv2j75qk026tfwgf4v38ayk08yrjls8jdlam'
+    const serializedFixture =
+      '82825820222222222222222222222222222222222222222222222222222222222222222202825839000000b03c3aa052f51c086c54bd4059ead2d2e426ac89fa4b3ce41cbf0000b03c3aa052f51c086c54bd4059ead2d2e426ac89fa4b3ce41cbf821b0020000000000001a1581c11111111111111111111111111111111111111111111111111111111a1454e494748541b01b69b4ba630f34e'
+    jest
+      .mocked(transactionUnspentOutputHex)
+      .mockReturnValueOnce(serializedFixture)
     const wallet: YoroiWallet = {
       ...mocks.wallet,
       utxos: () => [
         {
           ...mocks.wallet.utxos()[0]!,
-          amount: '900719925474099312345' as never,
+          tx_hash: '22'.repeat(32) as never,
+          tx_index: 2,
+          receiver: address as never,
+          amount: '9007199254740993' as never,
           assets: [
             {
-              tokenId: `${policyId}.00ff` as never,
+              tokenId: `${policyId}.4e49474854` as never,
               policyId: policyId as never,
-              name: '00ff' as never,
-              amount: '900719925474099312346' as never,
+              name: 'NIGHT' as never,
+              amount: '123456789012345678' as never,
             },
           ],
         },
@@ -136,22 +148,20 @@ describe('cip30ExtensionMaker', () => {
     )
 
     const [serialized] = (await cip30.getUtxos()) ?? []
-    const parsed = JSON.parse(serialized!) as {
-      lovelace: string
-      assets: Array<{
-        policyIdHex: string
-        assetNameHex: string
-        quantity: string
-      }>
-    }
-    expect(parsed.lovelace).toBe('900719925474099312345')
-    expect(parsed.assets).toEqual([
-      {
-        policyIdHex: policyId,
-        assetNameHex: '00ff',
-        quantity: '900719925474099312346',
-      },
-    ])
+    expect(serialized).toBe(serializedFixture)
+    expect(transactionUnspentOutputHex).toHaveBeenCalledWith({
+      txHashHex: '22'.repeat(32),
+      index: '2',
+      address,
+      lovelace: '9007199254740993',
+      assets: [
+        {
+          policyIdHex: policyId,
+          assetNameHex: '4e49474854',
+          quantity: '123456789012345678',
+        },
+      ],
+    })
   })
 
   it('should support getBalance', async () => {
@@ -332,6 +342,18 @@ describe('cip30ExtensionMaker', () => {
     expect(rewardAddressFromAddress).toHaveBeenCalledWith(addressBech32, 1)
     expect(addressToHex).toHaveBeenCalledWith('stake1fixture')
     expect(deriveWalletPublicKeyHex).toHaveBeenCalledWith({
+      masterKeyHex: rootKeyHex,
+      signerPath: [2147485500, 2147485463, 2147483648, 0, 0],
+    })
+    expect(signWalletData).toHaveBeenCalledWith({
+      messageHex: makeCip8DataToSign(
+        Buffer.from(
+          '01260c2a2b09aad0061a320042c15f8985449b9e8d5ced8a45e35b37dd42d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+          'hex',
+        ),
+        Buffer.from(message, 'hex'),
+        Buffer.from(publicKeyHex, 'hex'),
+      ).toString('hex'),
       masterKeyHex: rootKeyHex,
       signerPath: [2147485500, 2147485463, 2147483648, 0, 0],
     })

@@ -96,8 +96,13 @@ export function addNativeScriptInput(
   if (!/^(?:[0-9a-fA-F]{2})+$/.test(nativeScriptCborHex)) {
     throw new Error('Native script input requires valid script CBOR hex')
   }
-  if (!Number.isSafeInteger(nativeScriptWitnessCount) || nativeScriptWitnessCount < 0) {
-    throw new Error('Native script input requires a non-negative safe witness count')
+  if (
+    !Number.isSafeInteger(nativeScriptWitnessCount) ||
+    nativeScriptWitnessCount < 0
+  ) {
+    throw new Error(
+      'Native script input requires a non-negative safe witness count',
+    )
   }
   return {
     ...state,
@@ -398,7 +403,11 @@ export async function buildTransaction(
     throw new NoOutputsError()
   }
 
-  const result = buildCmlTransactionRecipe(state, protocolParams, primaryTokenId)
+  const result = buildCmlTransactionRecipe(
+    state,
+    protocolParams,
+    primaryTokenId,
+  )
   return {
     inputs: state.inputs,
     outputs: state.outputs,

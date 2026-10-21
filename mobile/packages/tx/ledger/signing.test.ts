@@ -38,6 +38,9 @@ describe('Ledger witness integration', () => {
       ledgerResponse as never,
       1852 + 0x80000000,
       'ef'.repeat(64),
+      true,
+      undefined,
+      3,
     )
 
     expect(applyLedgerWitnessesToTransactionHex).toHaveBeenCalledWith({
@@ -45,7 +48,7 @@ describe('Ledger witness integration', () => {
       accountPublicKeyHex: 'ef'.repeat(64),
       purpose: String(1852 + 0x80000000),
       coinType: '2147485463',
-      accountIndex: '2147483648',
+      accountIndex: '2147483651',
       witnesses: [
         {
           path: ledgerResponse.witnesses[0]!.path,
@@ -77,6 +80,16 @@ describe('Ledger witness integration', () => {
     expect(applyLedgerWitnessesToTransactionHex).toHaveBeenCalledWith(
       expect.objectContaining({
         transactionHex: '84a0a0f5',
+        accountPublicKeyHex: 'ef'.repeat(64),
+        purpose: String(1852 + 0x80000000),
+        coinType: '2147485463',
+        accountIndex: '2147483648',
+        witnesses: [
+          {
+            path: ledgerResponse.witnesses[0]!.path,
+            signatureHex: 'cd'.repeat(64),
+          },
+        ],
         expectedTxIdHex: 'ab'.repeat(32),
         senderUtxos: [],
       }),

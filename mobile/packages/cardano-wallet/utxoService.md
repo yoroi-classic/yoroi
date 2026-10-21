@@ -241,4 +241,4 @@ Each error includes:
 
 ## Migration Notes
 
-The service wraps existing functions from `assetUtils.ts` and `helpers.ts` to provide a cleaner API.
+The service wraps existing functions from `assetUtils.ts` and `cml/minimumAda.ts` to provide a cleaner API.

@@ -34,6 +34,7 @@ import {
 } from '@yoroi/types'
 
 import {WalletChecksum as WalletChecksumType} from '@emurgo/cip4-js'
+
 import {AddressChain} from './account-manager/account-manager'
 import {ReadOnlyAddressChain} from './account-manager/read-only-account-manager'
 import type {CardanoWalletDependencies} from './dependencies'
@@ -120,10 +121,7 @@ export type YoroiWallet = {
   getManualAddresses(): Promise<Array<ManualAddress>>
 
   // Sending
-  signTx(
-    signRequest: UnsignedTransaction,
-    rootKey: string,
-  ): Promise<Uint8Array>
+  signTx(signRequest: UnsignedTransaction, rootKey: string): Promise<Uint8Array>
   submitTransaction(signedTx: TransactionCborBase64): Promise<void>
 
   // Ledger

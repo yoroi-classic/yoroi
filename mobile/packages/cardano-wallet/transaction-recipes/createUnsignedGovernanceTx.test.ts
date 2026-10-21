@@ -60,15 +60,11 @@ describe('createUnsignedGovernanceTx', () => {
     })
 
     expect(result).toEqual({cbor: '84a0a0f5'})
-    expect(jest.requireMock('@yoroi/tx').addCertificate).toHaveBeenNthCalledWith(
-      1,
-      expect.anything(),
-      certificates[0],
-    )
-    expect(jest.requireMock('@yoroi/tx').addCertificate).toHaveBeenNthCalledWith(
-      2,
-      expect.anything(),
-      certificates[1],
-    )
+    expect(
+      jest.requireMock('@yoroi/tx').addCertificate,
+    ).toHaveBeenNthCalledWith(1, expect.anything(), certificates[0])
+    expect(
+      jest.requireMock('@yoroi/tx').addCertificate,
+    ).toHaveBeenNthCalledWith(2, expect.anything(), certificates[1])
   })
 })

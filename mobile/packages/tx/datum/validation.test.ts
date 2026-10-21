@@ -105,7 +105,9 @@ describe('datum validation', () => {
         type: 'inline',
         data: 'd8799f',
       }
-      const {hashPlutusDataCborHex} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
+      const {hashPlutusDataCborHex} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
       const result = validatePlutusData(datum)
 
       expect(result.valid).toBe(true)
@@ -129,8 +131,12 @@ describe('datum validation', () => {
         type: 'inline',
         data: 'abcdef123456', // Valid hex format but invalid PlutusData
       }
-      const {hashPlutusDataCborHex} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
-      hashPlutusDataCborHex.mockImplementationOnce(() => { throw new Error('Invalid Plutus data CBOR') })
+      const {hashPlutusDataCborHex} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      hashPlutusDataCborHex.mockImplementationOnce(() => {
+        throw new Error('Invalid Plutus data CBOR')
+      })
       const result = validatePlutusData(datum)
 
       expect(result.valid).toBe(false)
@@ -172,8 +178,12 @@ describe('datum validation', () => {
         type: 'inline',
         data: 'invalid',
       }
-      const {hashPlutusDataCborHex} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
-      hashPlutusDataCborHex.mockImplementationOnce(() => { throw new Error('Invalid data') })
+      const {hashPlutusDataCborHex} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      hashPlutusDataCborHex.mockImplementationOnce(() => {
+        throw new Error('Invalid data')
+      })
       const result = validateDatumHash(datum)
 
       expect(result.valid).toBe(false)

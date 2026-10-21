@@ -1,10 +1,11 @@
 import {
-  cmlAssetsFromAmounts,
-  cmlPaymentInputFromUtxo,
   CardanoHaskellConfig,
   ModernUtxo,
   TransactionMetadata,
   TransactionOutput,
+  cmlAssetsFromAmounts,
+  cmlPaymentInputFromUtxo,
+  isByronAddress,
 } from '@yoroi/tx'
 import {Portfolio} from '@yoroi/types'
 
@@ -31,17 +32,14 @@ export const buildSimplePaymentCml = ({
 }): {cbor: string; fee: bigint} | undefined => {
   // Byron source inputs require bootstrap witnesses. Keep those on the current
   // signing path until CML signing receives the source UTxO addressing path.
-  if (
-    inputs.some(
-      (input) =>
-        input.receiver.startsWith('Ae2') || input.receiver.startsWith('DdzFF'),
-    )
-  ) {
+  if (inputs.some((input) => isByronAddress(input.receiver))) {
     return undefined
   }
 
   const result = buildSimplePaymentTransaction({
-    inputs: inputs.map((input) => cmlPaymentInputFromUtxo(input, primaryTokenId)),
+    inputs: inputs.map((input) =>
+      cmlPaymentInputFromUtxo(input, primaryTokenId),
+    ),
     outputs: outputs.map((output) => ({
       address: output.address,
       lovelace: String(output.amounts[primaryTokenId] ?? '0'),

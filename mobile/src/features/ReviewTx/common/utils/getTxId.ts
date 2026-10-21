@@ -38,7 +38,10 @@ export const getTxIdFromArgs = async (
   // 3. Last resort: hash the CML-produced signed transaction bytes.
   if (args?.signedTxBytes) {
     try {
-      return await calculateTxId(Buffer.from(args.signedTxBytes).toString('hex'), 'hex')
+      return await calculateTxId(
+        Buffer.from(args.signedTxBytes).toString('hex'),
+        'hex',
+      )
     } catch (error) {
       // If calculation fails, return undefined
     }

@@ -1,12 +1,5 @@
 import {BalanceQuantity} from '@yoroi/types'
 
-jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
-  transactionIdHex: jest.fn((hex: string) => `id:${hex}`),
-  transactionValidationInfoJson: jest.fn(() => JSON.stringify({fee: '170000'})),
-  transactionWitnessSetHex: jest.fn((hex: string) => `witnesses:${hex}`),
-  stakeCredentialHexFromAddress: jest.fn(() => '8200581c' + 'ab'.repeat(28)),
-}))
-
 import {
   calculateTxId,
   getBalanceForStakingCredentials,
@@ -14,6 +7,13 @@ import {
   getTransactionWitnessSetHex,
   hashTransaction,
 } from './transactions'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  transactionIdHex: jest.fn((hex: string) => `id:${hex}`),
+  transactionValidationInfoJson: jest.fn(() => JSON.stringify({fee: '170000'})),
+  transactionWitnessSetHex: jest.fn((hex: string) => `witnesses:${hex}`),
+  stakeCredentialHexFromAddress: jest.fn(() => '8200581c' + 'ab'.repeat(28)),
+}))
 
 describe('transaction utils', () => {
   describe('hashTransaction', () => {
@@ -79,7 +79,9 @@ describe('transaction utils', () => {
     })
 
     it('should handle invalid addresses gracefully', async () => {
-      const {stakeCredentialHexFromAddress} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
+      const {stakeCredentialHexFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
       stakeCredentialHexFromAddress.mockImplementationOnce(() => {
         throw new Error('Invalid address')
       })
@@ -104,7 +106,9 @@ describe('transaction utils', () => {
         },
       ]
 
-      const {stakeCredentialHexFromAddress} = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
+      const {stakeCredentialHexFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
       stakeCredentialHexFromAddress.mockImplementationOnce(() => {
         throw new Error('not a base address')
       })

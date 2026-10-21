@@ -1,3 +1,5 @@
+import {normalizePoolIdentifier} from '@yoroi-classic/cml-mobile-bridge'
+
 import {
   DEFAULT_SATURATION_THRESHOLD,
   TRANSITION_DATA_STUB,
@@ -5,7 +7,6 @@ import {
   getMaybeNewEntriesByPool,
   normalisePoolIdentifierOrKey,
 } from './pool-info-api'
-import {normalizePoolIdentifier} from '@yoroi-classic/cml-mobile-bridge'
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   normalizePoolIdentifier: jest.fn((poolIdOrHash: string) => {

@@ -68,7 +68,12 @@ describe('signWalletTransaction', () => {
   it('rejects missing transaction CBOR before invoking native signing', () => {
     expect(() =>
       signWalletTransaction(
-        {cbor: undefined, certificates: [], withdrawals: [], outputs: []} as never,
+        {
+          cbor: undefined,
+          certificates: [],
+          withdrawals: [],
+          outputs: [],
+        } as never,
         'aabbcc',
         0,
         'cardano-cip1852',

@@ -1,3 +1,5 @@
+import {CIP30TransactionError} from '@yoroi/types'
+
 import {transactionValidationInfoJson} from '@yoroi-classic/cml-mobile-bridge'
 
 /** Transaction validation result. */
@@ -15,7 +17,9 @@ type TransactionValidationInfo = {
 }
 
 /** Validate transaction CBOR before signing using the native CML parser. */
-export function validateTransactionCbor(cborHex: string): TransactionValidationResult {
+export function validateTransactionCbor(
+  cborHex: string,
+): TransactionValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
 
@@ -25,22 +29,21 @@ export function validateTransactionCbor(cborHex: string): TransactionValidationR
   }
 
   try {
-    const info = JSON.parse(transactionValidationInfoJson(cborHex)) as TransactionValidationInfo
+    const info = JSON.parse(
+      transactionValidationInfoJson(cborHex),
+    ) as TransactionValidationInfo
     if (info.inputsCount === 0) errors.push('Transaction has no inputs')
     if (info.outputsCount === 0) warnings.push('Transaction has no outputs')
     if (info.fee === '0') warnings.push('Transaction fee is zero')
-    if (info.ttl == null || info.ttl === 0) warnings.push('Transaction TTL is not set')
+    if (info.ttl == null || info.ttl === 0)
+      warnings.push('Transaction TTL is not set')
   } catch (error) {
-    errors.push(`Failed to parse transaction: ${error instanceof Error ? error.message : String(error)}`)
+    errors.push(
+      `Failed to parse transaction: ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 
   return {valid: errors.length === 0, errors, warnings}
 }
 
-/** CIP-30 transaction error with structured validation results. */
-export class CIP30TransactionError extends Error {
-  constructor(message: string, public readonly validation: TransactionValidationResult) {
-    super(message)
-    this.name = 'CIP30TransactionError'
-  }
-}
+export {CIP30TransactionError}

@@ -70,18 +70,19 @@ export function createAddressGenerator(
         return getBIP44Addresses(accountPubKeyHex, role, indexes)
       } else {
         const staking = config.features.staking
+        const stakePublicKeyHex = derivePublicKeyFromAccountPathHex(
+          accountPubKeyHex,
+          [staking.derivation.role, staking.derivation.index],
+        )
+        const stakeKeyHashHex = publicKeyHashHexFromRawHex(stakePublicKeyHex)
         return indexes.map((index) => {
           const paymentPublicKeyHex = derivePublicKeyFromAccountPathHex(
             accountPubKeyHex,
             [role, index],
           )
-          const stakePublicKeyHex = derivePublicKeyFromAccountPathHex(
-            accountPubKeyHex,
-            [staking.derivation.role, staking.derivation.index],
-          )
           const baseAddressBech32 = baseAddressBech32FromPublicKeyHashes(
             publicKeyHashHexFromRawHex(paymentPublicKeyHex),
-            publicKeyHashHexFromRawHex(stakePublicKeyHex),
+            stakeKeyHashHex,
             chainId,
           )
 

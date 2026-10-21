@@ -81,6 +81,17 @@ describe('CML address credential extraction', () => {
     expect(toCardanoAddressInfo(byron)).toBeNull()
   })
 
+  it('returns null when CML reports an invalid address without throwing', () => {
+    ;(addressInfoFromAddress as jest.Mock).mockReturnValueOnce({
+      hex: '',
+      networkId: 0,
+      bech32: null,
+      isValid: false,
+    })
+
+    expect(toCardanoAddressInfo('invalid-address')).toBeNull()
+  })
+
   it('matches only the requested stake credential and rejects non-base or malformed addresses', () => {
     expect(addressUsesStakingKey(baseMainnet, stakeHash)).toBe(true)
     expect(addressUsesStakingKey(baseMainnet, keyHash)).toBe(false)

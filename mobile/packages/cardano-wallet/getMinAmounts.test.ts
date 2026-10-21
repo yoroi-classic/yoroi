@@ -129,7 +129,7 @@ describe('getMinAmounts()', () => {
     const {minimumCoinForAssets} = jest.requireMock(
       '@yoroi-classic/cml-mobile-bridge',
     )
-    expect(minimumCoinForAssets).toHaveBeenCalledWith(
+    expect(minimumCoinForAssets).toHaveBeenLastCalledWith(
       address,
       [
         {

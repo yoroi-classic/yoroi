@@ -133,7 +133,8 @@ function validatePinnedDependencyLock() {
     const lockRootVersion = rootLockDependencyGroups
       .map((dependencies) => dependencies?.[dependencyName])
       .find(Boolean)
-    const resolvedPackage = packageLock.packages?.[`node_modules/${dependencyName}`]
+    const resolvedPackage =
+      packageLock.packages?.[`node_modules/${dependencyName}`]
     const resolvedVersion = resolvedPackage?.version
 
     if (lockRootVersion !== packageJsonVersion) {
@@ -142,12 +143,18 @@ function validatePinnedDependencyLock() {
       )
     }
 
-    if (dependencyName !== '@yoroi-classic/cml-mobile-bridge' && resolvedVersion !== packageJsonVersion) {
+    if (
+      dependencyName !== '@yoroi-classic/cml-mobile-bridge' &&
+      resolvedVersion !== packageJsonVersion
+    ) {
       failures.push(
         `${dependencyName} package-lock resolved version ${resolvedVersion ?? '<missing>'} does not match package.json ${packageJsonVersion}`,
       )
     }
-    if (dependencyName === '@yoroi-classic/cml-mobile-bridge' && !resolvedPackage) {
+    if (
+      dependencyName === '@yoroi-classic/cml-mobile-bridge' &&
+      !resolvedPackage
+    ) {
       failures.push(`${dependencyName} has no package-lock entry`)
     }
   }

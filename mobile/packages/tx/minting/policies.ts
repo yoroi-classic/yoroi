@@ -7,7 +7,11 @@ import type {MintingScript} from './types'
  */
 export function calculatePolicyId(script: MintingScript): string {
   const scriptType = script.type === 'native' ? 'native' : script.plutusVersion
-  if (!scriptType) {
+  if (
+    !scriptType ||
+    (script.type === 'plutus' &&
+      !['plutusV1', 'plutusV2', 'plutusV3'].includes(scriptType))
+  ) {
     throw new Error('Plutus script version is required to calculate policy ID')
   }
   return scriptHashHexFromCbor(scriptType, script.script)

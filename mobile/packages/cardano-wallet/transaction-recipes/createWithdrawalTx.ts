@@ -18,7 +18,7 @@ import {Address, Branded, KeyHash, Portfolio, Wallet} from '@yoroi/types'
 
 import BigNumber from 'bignumber.js'
 
-import {deriveRewardAddressDetails, deriveStakeCredentialHex} from '../utils'
+import {deriveRewardAddressDetails} from '../utils'
 
 export type CreateWithdrawalTxParams = {
   utxos: ModernUtxo[]
@@ -96,7 +96,7 @@ export async function createWithdrawalTx({
   } else if (shouldDeregister) {
     // No rewards but deregistering - extract from staking key
     stakeCredentialKeyHashHex = Branded.asKeyHash(
-      deriveStakeCredentialHex(rewardAddrStr),
+      deriveRewardAddressDetails(rewardAddrStr).keyHashHex,
     )
   }
 

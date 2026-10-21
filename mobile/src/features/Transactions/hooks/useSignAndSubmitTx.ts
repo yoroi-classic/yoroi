@@ -16,11 +16,7 @@ export const useSignAndSubmitTx = (
       Error,
       {unsignedTx: UnsignedTransaction; rootKey: string}
     >
-    submitTx?: UseMutationOptions<
-      TxSubmissionStatus,
-      Error,
-      Uint8Array
-    >
+    submitTx?: UseMutationOptions<TxSubmissionStatus, Error, Uint8Array>
   },
 ) => {
   const signTx = useSignTx(

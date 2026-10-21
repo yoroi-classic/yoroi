@@ -6,7 +6,6 @@ import {
   transactionValidationInfoJson,
   transactionWitnessSetHex,
 } from '@yoroi-classic/cml-mobile-bridge'
-
 import {BigNumber} from 'bignumber.js'
 
 /**
@@ -39,7 +38,9 @@ export function getTransactionWitnessSetHex(
 
 /** Read the transaction body's fee with the CML transaction parser. */
 export function getTransactionFee(transactionHex: string): bigint {
-  const parsed: unknown = JSON.parse(transactionValidationInfoJson(transactionHex))
+  const parsed: unknown = JSON.parse(
+    transactionValidationInfoJson(transactionHex),
+  )
   if (
     typeof parsed !== 'object' ||
     parsed === null ||

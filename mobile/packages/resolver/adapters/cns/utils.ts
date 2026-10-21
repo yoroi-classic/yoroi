@@ -2,10 +2,7 @@ import {Api} from '@yoroi/types'
 
 import {resolveCnsAddressRecord} from '@yoroi-classic/cml-mobile-bridge'
 
-import {
-  AssocMap,
-  BuiltinByteString,
-} from './types'
+import {AssocMap, BuiltinByteString} from './types'
 import {CNSUserRecord} from './types'
 
 export const validateCNSUserRecord = (

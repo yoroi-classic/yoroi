@@ -63,6 +63,32 @@ describe('minting', () => {
       const state2 = addMint(state1, mintAction2)
 
       expect(state2.options.mints?.[0]?.redeemer).toBe('new_redeemer')
+      expect(state2.options.mints?.[0]?.redeemerExUnits).toEqual({
+        mem: '1',
+        steps: '2',
+      })
+    })
+
+    it('rejects merging different script types for the same policy', () => {
+      const state = addMint(createTransactionBuilder(), {
+        policyId: 'policy1',
+        assets: [{assetName: 'asset1', amount: '1' as BalanceQuantity}],
+        script: {type: 'native', script: 'script1'},
+      })
+
+      expect(() =>
+        addMint(state, {
+          policyId: 'policy1',
+          assets: [{assetName: 'asset2', amount: '1' as BalanceQuantity}],
+          script: {
+            type: 'plutus',
+            script: 'script2',
+            plutusVersion: 'plutusV3',
+          },
+          redeemer: '00',
+          redeemerExUnits: {mem: '1', steps: '2'},
+        }),
+      ).toThrow('Cannot merge mint actions with different script types')
     })
 
     it('does not permit an incomplete Plutus mint action', () => {
@@ -73,6 +99,21 @@ describe('minting', () => {
           plutusVersion: 'plutusV3',
         }),
       ).toThrow('Plutus mint creation requires redeemer and execution units')
+    })
+
+    it('does not permit Plutus redeemer data on native mint actions', () => {
+      expect(() =>
+        createMintAction(
+          'policy1',
+          'asset1',
+          '100',
+          {
+            type: 'native',
+            script: 'script1',
+          },
+          '00',
+        ),
+      ).toThrow('Native mint creation cannot include Plutus redeemer data')
     })
   })
 

@@ -99,9 +99,7 @@ describe('cip95ExtensionMaker', () => {
       mocks.walletMeta,
     ).getRegisteredPubStakeKeys()
 
-    expect(registeredResult).toEqual([
-      stakingPublicKeyHex,
-    ])
+    expect(registeredResult).toEqual([stakingPublicKeyHex])
 
     const stakedResult = await cip95ExtensionMaker(
       {
@@ -118,9 +116,7 @@ describe('cip95ExtensionMaker', () => {
       mocks.walletMeta,
     ).getRegisteredPubStakeKeys()
 
-    expect(stakedResult).toEqual([
-      stakingPublicKeyHex,
-    ])
+    expect(stakedResult).toEqual([stakingPublicKeyHex])
 
     const notRegisteredResult = await cip95ExtensionMaker(
       {
@@ -173,9 +169,7 @@ describe('cip95ExtensionMaker', () => {
       mocks.walletMeta,
     ).getUnregisteredPubStakeKeys()
 
-    expect(notRegisteredResult).toEqual([
-      stakingPublicKeyHex,
-    ])
+    expect(notRegisteredResult).toEqual([stakingPublicKeyHex])
   })
 })
 

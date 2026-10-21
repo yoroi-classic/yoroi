@@ -15,7 +15,8 @@ export function toCardanoAddressInfo(
   address: Address | string,
 ): ParsedAddress | null {
   try {
-    return addressInfoFromAddress(String(address))
+    const info = addressInfoFromAddress(String(address))
+    return info.isValid ? info : null
   } catch {
     return null
   }
@@ -60,7 +61,7 @@ export function getSpendingKey(address: Address | string): string | null {
   return credentialHashFromAddress(address, 'payment')
 }
 
-/** Extract a stake key hash from Shelley base or reward addresses. */
+/** Extract a stake key hash from Shelley base addresses. */
 export function getStakingKey(address: Address | string): string | null {
   return credentialHashFromAddress(address, 'staking')
 }

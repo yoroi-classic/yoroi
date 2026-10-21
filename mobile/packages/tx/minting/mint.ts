@@ -28,22 +28,37 @@ export function addMint(
     const updatedMints = [...mints]
     const mergedAssets = [...existing.assets, ...mintAction.assets]
     let merged: MintAction
-    if (existing.script.type === 'native' && mintAction.script.type === 'native') {
-      const referenceScript = mintAction.referenceScript ?? existing.referenceScript
+    if (
+      existing.script.type === 'native' &&
+      mintAction.script.type === 'native'
+    ) {
+      const referenceScript =
+        mintAction.referenceScript ?? existing.referenceScript
       merged = {
         ...existing,
         assets: mergedAssets,
         ...(referenceScript ? {referenceScript} : {}),
       }
-    } else if (existing.script.type === 'plutus' && mintAction.script.type === 'plutus') {
-      const existingPlutus = existing as Extract<MintAction, {script: {type: 'plutus'}}>
-      const mintPlutus = mintAction as Extract<MintAction, {script: {type: 'plutus'}}>
-      const referenceScript = mintPlutus.referenceScript ?? existingPlutus.referenceScript
+    } else if (
+      existing.script.type === 'plutus' &&
+      mintAction.script.type === 'plutus'
+    ) {
+      const existingPlutus = existing as Extract<
+        MintAction,
+        {script: {type: 'plutus'}}
+      >
+      const mintPlutus = mintAction as Extract<
+        MintAction,
+        {script: {type: 'plutus'}}
+      >
+      const referenceScript =
+        mintPlutus.referenceScript ?? existingPlutus.referenceScript
       merged = {
         ...existingPlutus,
         assets: mergedAssets,
         redeemer: mintPlutus.redeemer || existingPlutus.redeemer,
-        redeemerExUnits: mintPlutus.redeemerExUnits || existingPlutus.redeemerExUnits,
+        redeemerExUnits:
+          mintPlutus.redeemerExUnits || existingPlutus.redeemerExUnits,
         ...(referenceScript ? {referenceScript} : {}),
       }
     } else {
@@ -97,9 +112,14 @@ export function createMintAction(
   redeemerExUnits?: {mem: string; steps: string},
 ): MintAction {
   if (script.type === 'plutus' && (!redeemer || !redeemerExUnits)) {
-    throw new Error('Plutus mint creation requires redeemer and execution units')
+    throw new Error(
+      'Plutus mint creation requires redeemer and execution units',
+    )
   }
-  if (script.type === 'native' && (redeemer !== undefined || redeemerExUnits !== undefined)) {
+  if (
+    script.type === 'native' &&
+    (redeemer !== undefined || redeemerExUnits !== undefined)
+  ) {
     throw new Error('Native mint creation cannot include Plutus redeemer data')
   }
   if (script.type === 'native') {

@@ -157,7 +157,8 @@ describe('cardanoWalletApiMaker', () => {
       })
 
       expect(cardanoWalletBackendV1Maker).not.toHaveBeenCalled()
-      const managerOptions = jest.mocked(cardanoApiManagerMaker).mock.calls[0]?.[0]
+      const managerOptions = jest.mocked(cardanoApiManagerMaker).mock
+        .calls[0]?.[0]
       expect(managerOptions?.preferences.filterUsedAddresses).toBe('legacy')
       expect(cardanoApiManagerMaker).toHaveBeenCalledWith(
         expect.objectContaining({

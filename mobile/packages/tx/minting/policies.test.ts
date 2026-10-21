@@ -37,6 +37,19 @@ describe('minting policies', () => {
       expect(result.valid).toBe(true)
     })
 
+    it.each([undefined, 'plutusV4'])(
+      'should reject unsupported Plutus version %s',
+      (plutusVersion) => {
+        expect(
+          validateMintingScript({
+            type: 'plutus',
+            script: 'abcdef123456',
+            plutusVersion,
+          } as MintingScript),
+        ).toEqual({valid: false, error: 'Plutus script version is required'})
+      },
+    )
+
     it('should reject invalid script type', () => {
       const script = {type: 'invalid', script: 'abcdef'} as any
       const result = validateMintingScript(script)
@@ -94,6 +107,19 @@ describe('minting policies', () => {
         'abcdef123456',
       )
     })
+
+    it.each([undefined, 'plutusV4'])(
+      'should reject unsupported Plutus version %s when calculating policy ID',
+      (plutusVersion) => {
+        expect(() =>
+          calculatePolicyId({
+            type: 'plutus',
+            script: 'abcdef123456',
+            plutusVersion,
+          } as MintingScript),
+        ).toThrow('Plutus script version is required to calculate policy ID')
+      },
+    )
 
     it('should throw error for invalid native script', () => {
       const script: MintingScript = {

@@ -960,6 +960,7 @@ function createWalletObject(
       state.publicKeyHex,
       true,
       plutusDataHexes,
+      state.accountVisual,
     )
 
     return signedTxResult.encodedTx

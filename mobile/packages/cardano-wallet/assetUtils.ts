@@ -14,7 +14,7 @@ import BigNumber from 'bignumber.js'
 
 import {minimumAdaForAssetsCml} from './cml/minimumAda'
 
-// Re-export from assetHelpers to maintain backward compatibility
+// Re-export the CML-compatible token identifier helper.
 export {identifierToAssetHex} from './assetHelpers'
 
 /**

@@ -12,7 +12,15 @@ jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressToHex: jest.fn((address: string) =>
     address.includes('byron') ? '82' : '01',
   ),
-  addressInfoFromAddress: jest.fn((address: string) => ({bech32: address})),
+  addressInfoFromAddress: jest.fn((address: string) => ({
+    bech32: address,
+    hex:
+      address.startsWith('80') ||
+      address.startsWith('Ae2') ||
+      address.startsWith('DdzFF')
+        ? '82d818'
+        : '01',
+  })),
   buildSimplePaymentTransaction: jest.fn(() => ({
     cborHex: '84a0a0f5',
     fee: '168581',
@@ -261,8 +269,7 @@ describe('buildSimplePaymentCml', () => {
         inputs: [
           {
             ...params.inputs[0],
-            receiver:
-              'Ae2tdPwUPEZ5uzkzh1o2DHECiUi3iugvnnKHRisPgRRP3CTF4KCMvy54Xd3',
+            receiver: '80d818582183581c' + '01'.repeat(28),
           },
         ],
       } as never),

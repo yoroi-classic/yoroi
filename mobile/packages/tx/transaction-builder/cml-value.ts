@@ -30,19 +30,28 @@ export const cmlAssetsFromAmounts = (
       ([tokenId, quantity]) =>
         tokenId !== primaryTokenId && BigInt(quantity) !== 0n,
     )
-    .map(([tokenId, quantity]) => ({
-      // Keep this low-level builder utility independent of @yoroi/api, which
-      // imports @yoroi/tx and would create a runtime cycle here.
-      policyIdHex: tokenId.replace('.', '').slice(0, 56),
-      assetNameHex: tokenId.replace('.', '').slice(56, 120),
-      quantity: String(quantity),
-    }))
+    .map(([tokenId, quantity]) => {
+      const subject = tokenId.replace('.', '')
+      if (!/^[0-9a-fA-F]{56,120}$/.test(subject)) {
+        throw new Error(`Invalid Cardano asset identifier: ${tokenId}`)
+      }
+      return {
+        // Keep this low-level builder utility independent of @yoroi/api, which
+        // imports @yoroi/tx and would create a runtime cycle here.
+        policyIdHex: subject.slice(0, 56),
+        assetNameHex: subject.slice(56),
+        quantity: String(quantity),
+      }
+    })
 
 /** Convert a spendable UTxO into the CML builder DTO without numeric coercion. */
 export const cmlPaymentInputFromUtxo = (
   utxo: ModernUtxo,
   primaryTokenId: Portfolio.Token.Id,
 ): CmlPaymentInput => {
+  if (!Number.isSafeInteger(utxo.txIndex) || utxo.txIndex < 0) {
+    throw new Error(`Invalid UTxO output index: ${utxo.txIndex}`)
+  }
   const addressHex = addressToHex(utxo.receiver)
   const headerByte = Number.parseInt(addressHex.slice(0, 2), 16)
   if (!Number.isFinite(headerByte)) {

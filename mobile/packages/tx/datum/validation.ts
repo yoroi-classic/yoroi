@@ -1,5 +1,6 @@
-import {getDatumHash} from './parsing'
 import {hashPlutusDataCborHex} from '@yoroi-classic/cml-mobile-bridge'
+
+import {getDatumHash} from './parsing'
 import type {Datum} from './types'
 
 /**
@@ -32,9 +33,10 @@ export function validateDatum(datum: Datum): {valid: boolean; error?: string} {
 /**
  * Validate datum can be parsed as PlutusData
  */
-export function validatePlutusData(
-  datum: Datum,
-): {valid: boolean; error?: string} {
+export function validatePlutusData(datum: Datum): {
+  valid: boolean
+  error?: string
+} {
   const validation = validateDatum(datum)
   if (!validation.valid) {
     return validation
@@ -59,9 +61,10 @@ export function validatePlutusData(
 /**
  * Check if datum hash matches datum data
  */
-export function validateDatumHash(
-  datum: Datum,
-): {valid: boolean; error?: string} {
+export function validateDatumHash(datum: Datum): {
+  valid: boolean
+  error?: string
+} {
   if (datum.type === 'hash') {
     // Hash-only datum, cannot validate
     return {valid: true}

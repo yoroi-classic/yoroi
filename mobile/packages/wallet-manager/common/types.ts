@@ -6,7 +6,6 @@ import type {
 } from '@yoroi/cardano-wallet'
 import {App, Chain, HW, Network, Portfolio} from '@yoroi/types'
 
-
 /**
  * KeychainManager interface for managing wallet keys in secure storage
  * This should be provided by the app via WalletManagerOptions

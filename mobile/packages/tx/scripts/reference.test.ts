@@ -10,6 +10,12 @@ import {
   findReferenceScripts,
 } from './reference'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  scriptHashHexFromCbor: jest.fn((type: string) =>
+    type === 'native' ? 'a'.repeat(56) : 'b'.repeat(56),
+  ),
+}))
+
 describe('reference scripts', () => {
   const createMockUtxo = (
     txHash = 'hash1',
@@ -86,6 +92,33 @@ describe('reference scripts', () => {
     expect(findReferenceScripts(utxos)).toHaveLength(1)
     expect(findReferenceScriptByHash(utxos, 'a'.repeat(56))?.txHash).toBe('tx1')
     expect(findReferenceScriptByHash(utxos, 'b'.repeat(56))).toBeNull()
+  })
+
+  it('rejects a reference script whose supplied hash does not match its bytes', () => {
+    expect(
+      detectReferenceScript(
+        createMockUtxo('tx', 0, {
+          hash: 'c'.repeat(56),
+          type: 'native',
+          size: 1,
+          bytes: '00',
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('normalizes reference-script hashes for lookup', () => {
+    const reference = createMockUtxo('tx', 0, {
+      hash: 'A'.repeat(56),
+      type: 'native',
+      size: 2,
+      bytes: '0102',
+    })
+
+    expect(detectReferenceScript(reference)?.scriptHash).toBe('a'.repeat(56))
+    expect(findReferenceScriptByHash([reference], 'a'.repeat(56))?.txHash).toBe(
+      'tx',
+    )
   })
 
   describe('estimateReferenceScriptFee', () => {

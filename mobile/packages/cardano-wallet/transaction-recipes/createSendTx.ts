@@ -309,16 +309,32 @@ export async function createSendTx({
     const buildTxWithEntries = async (
       txEntries: TransactionOutput[],
     ): Promise<{cbor: string; fee: bigint}> => {
-      if (
-        selectedUtxos.length > 0 &&
-        txEntries.length > 0 &&
-        absSlotNumber
-      ) {
+      if (selectedUtxos.length > 0 && txEntries.length > 0 && absSlotNumber) {
+        const adjustedEntries = txEntries.map((entry, index) => {
+          const hasTokens = Object.keys(entry.amounts).some(
+            (tokenId) => tokenId !== primaryTokenId,
+          )
+          if (!hasTokens) return entry
+
+          const minAda = entryMinAda.get(index) ?? minUtxoValue
+          const currentAda = BigInt(
+            entry.amounts[primaryTokenId] ?? Branded.ZERO_QUANTITY,
+          )
+          if (currentAda >= minAda) return entry
+
+          return {
+            ...entry,
+            amounts: {
+              ...entry.amounts,
+              [primaryTokenId]: minAda.toString() as Balance.Quantity,
+            },
+          }
+        })
         const cmlResult = buildSimplePaymentCml({
           inputs: selectedUtxos,
-          outputs: txEntries,
+          outputs: adjustedEntries,
           changeAddress,
-          ttl: absSlotNumber.toNumber(),
+          ttl: absSlotNumber.plus(7200).toNumber(),
           protocolParams: protocolParamsConfig,
           primaryTokenId,
           metadata,

@@ -2,7 +2,7 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
-import {useColorScheme, View} from 'react-native'
+import {View, useColorScheme} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {useLanguage} from '~/kernel/i18n/LanguageProvider'
@@ -122,6 +122,7 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
     setShowed(true)
   }, [
     accepted,
+    colorScheme,
     disclaimerText,
     openModal,
     strings.global.disclaimer,

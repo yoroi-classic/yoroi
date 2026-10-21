@@ -48,10 +48,13 @@ mainnetIntegrationIt(
     const [referenceOutput] = await api.getUtxosByRef([
       '80a146507156745632e5e4b7ae72944fd67a9cc57cb850e826c30151e825be56#0',
     ])
-    if (!referenceOutput) throw new Error('Known reference-script UTxO was not found')
+    if (!referenceOutput)
+      throw new Error('Known reference-script UTxO was not found')
     const referenceScriptBytes = referenceOutput.referenceScript?.bytes
     if (referenceScriptBytes == null) {
-      throw new Error('Known reference-script UTxO did not include script bytes')
+      throw new Error(
+        'Known reference-script UTxO did not include script bytes',
+      )
     }
     expect(referenceOutput.referenceScript).toMatchObject({
       hash: '5986bfcc0cbfc60dec8df87715cc95d03817aac386b0e9d33da03b39',

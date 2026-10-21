@@ -10,12 +10,12 @@ import {
 import {
   AccountStateRequest,
   AccountStateResponse,
+  AddressUtxo,
+  ResolvedUtxo,
   TipStatusResponse,
   TxHistoryRequest,
   TxStatusRequest,
   TxStatusResponse,
-  ResolvedUtxo,
-  AddressUtxo,
 } from './api-types'
 
 export type CardanoBackend =

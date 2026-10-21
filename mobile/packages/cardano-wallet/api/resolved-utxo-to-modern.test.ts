@@ -33,9 +33,9 @@ describe('resolvedUtxoToModernUtxo', () => {
 
     expect(utxo.txIndex).toBe(2)
     expect(utxo.balance[primaryTokenId]).toBe('900719925474099312345')
-    expect(utxo.balance[`${'ef'.repeat(28)}.00ff` as keyof typeof utxo.balance]).toBe(
-      '900719925474099399999',
-    )
+    expect(
+      utxo.balance[`${'ef'.repeat(28)}.00ff` as keyof typeof utxo.balance],
+    ).toBe('900719925474099399999')
     expect(utxo.inlineDatumCborHex).toBe('d87980')
     expect(utxo.datumHashHex).toBe('12'.repeat(32))
     expect(utxo.referenceScript).toEqual(referenceScript)
@@ -49,8 +49,24 @@ describe('resolvedUtxoToModernUtxo', () => {
         'addr_test1qrgpjmyy8zk9nuza24a0f4e7mgp9gd6h3uayp0rqnjnkl54v4dlyj0kwfs0x4e38a7047lymzp37tx0y42glslcdtzhqzp57km',
       value: '1',
       assets: [],
-      referenceScriptHash: 'cd'.repeat(28),
+      referenceScriptHash: referenceScript.hash,
       referenceScript: {...referenceScript, size: 4},
+      spent: false,
+    })
+
+    expect(utxo.referenceScript).toBeUndefined()
+  })
+
+  it('does not expose a reference script with a mismatched hash', () => {
+    const utxo = resolvedUtxoToModernUtxo({
+      txHash: 'cd'.repeat(32),
+      outputIndex: 2,
+      address:
+        'addr_test1qrgpjmyy8zk9nuza24a0f4e7mgp9gd6h3uayp0rqnjnkl54v4dlyj0kwfs0x4e38a7047lymzp37tx0y42glslcdtzhqzp57km',
+      value: '1',
+      assets: [],
+      referenceScriptHash: 'cd'.repeat(28),
+      referenceScript,
       spent: false,
     })
 

@@ -1,4 +1,5 @@
 import {
+  addressInfoFromAddress,
   derivePublicKeyFromAccountPathHex,
   publicKeyHashHexFromRawHex,
 } from '@yoroi-classic/cml-mobile-bridge'
@@ -6,6 +7,7 @@ import {
 import {getStakingKey} from './staking-operations'
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressInfoFromAddress: jest.fn(),
   derivePublicKeyFromAccountPathHex: jest.fn(() => 'ab'.repeat(32)),
   publicKeyHashHexFromRawHex: jest.fn(() => 'cd'.repeat(28)),
 }))
@@ -32,6 +34,55 @@ describe('getStakingKey', () => {
     expect(key.hash().toHex()).toBe('cd'.repeat(28))
     expect(Buffer.from(key.hash().toBytes()).toString('hex')).toBe(
       'cd'.repeat(28),
+    )
+  })
+
+  it('extracts the key stake credential from a read-only Shelley base address', () => {
+    const address = 'addr1readonly-base'
+    jest.mocked(addressInfoFromAddress).mockReturnValue({
+      hex: `01${'11'.repeat(28)}${'22'.repeat(28)}`,
+      networkId: 1,
+      bech32: address,
+      isValid: true,
+    })
+
+    const key = getStakingKey(
+      {
+        publicKeyHex: '',
+        accountVisual: 0,
+        externalAddresses: [address],
+        internalAddresses: [],
+      },
+      'cardano-cip1852',
+      0,
+    )
+
+    expect(key.hash().toHex()).toBe('22'.repeat(28))
+  })
+
+  it('skips script-stake and Byron addresses in a read-only wallet', () => {
+    const scriptStakeAddress = 'addr1readonly-script-stake'
+    const byronAddress = 'Ae2readonly-byron'
+    jest.mocked(addressInfoFromAddress).mockImplementation((address) => ({
+      hex: address === scriptStakeAddress ? `31${'11'.repeat(56)}` : '82d818',
+      networkId: 1,
+      bech32: address,
+      isValid: true,
+    }))
+
+    expect(() =>
+      getStakingKey(
+        {
+          publicKeyHex: '',
+          accountVisual: 0,
+          externalAddresses: [scriptStakeAddress, byronAddress],
+          internalAddresses: [],
+        },
+        'cardano-cip1852',
+        0,
+      ),
+    ).toThrow(
+      'Could not extract staking key from addresses for read-only wallet',
     )
   })
 })

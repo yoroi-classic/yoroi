@@ -152,24 +152,44 @@ describe('cardanoWalletBackendV1Maker', () => {
 
   it.each([
     ['reference-script hash mismatch', {referenceScriptHash: 'd'.repeat(56)}],
-    ['reference-script byte size mismatch', {referenceScript: {hash: 'c'.repeat(56), size: 16, type: 'plutusV3', bytes: '4e4d01000033222220051200120011'}}],
+    [
+      'reference-script byte size mismatch',
+      {
+        referenceScript: {
+          hash: 'c'.repeat(56),
+          size: 16,
+          type: 'plutusV3',
+          bytes: '4e4d01000033222220051200120011',
+        },
+      },
+    ],
   ])('rejects %s from the CWB UTxO response', async (_case, mismatch) => {
     const request: Fetcher = jest
       .fn()
       .mockResolvedValueOnce({network: 'mainnet'})
-      .mockResolvedValueOnce([{
-        txHash: referenceTxHash,
-        outputIndex: 0,
-        address: 'addr1wxyz',
-        value: '18248540',
-        assets: [],
-        referenceScriptHash: 'c'.repeat(56),
-        referenceScript: {hash: 'c'.repeat(56), size: 15, type: 'plutusV3', bytes: '4e4d01000033222220051200120011'},
-        spent: false,
-        ...mismatch,
-      }])
+      .mockResolvedValueOnce([
+        {
+          txHash: referenceTxHash,
+          outputIndex: 0,
+          address: 'addr1wxyz',
+          value: '18248540',
+          assets: [],
+          referenceScriptHash: 'c'.repeat(56),
+          referenceScript: {
+            hash: 'c'.repeat(56),
+            size: 15,
+            type: 'plutusV3',
+            bytes: '4e4d01000033222220051200120011',
+          },
+          spent: false,
+          ...mismatch,
+        },
+      ])
     const api = cardanoWalletBackendV1Maker({
-      config: {baseUrl: 'http://localhost:3000', submitExpectedNetwork: 'mainnet'},
+      config: {
+        baseUrl: 'http://localhost:3000',
+        submitExpectedNetwork: 'mainnet',
+      },
       request,
     })
     await expect(api.getUtxosByRef([`${referenceTxHash}#0`])).rejects.toThrow(
@@ -178,7 +198,7 @@ describe('cardanoWalletBackendV1Maker', () => {
   })
 
   it('fetches current script-address UTxOs through the configured CWB and rejects wrong network', async () => {
-    const scriptAddress = String(mainnet)
+    const scriptAddress = makeShelleyAddress(0x71, Array(28).fill(1))
     const result = [
       {
         txHash: referenceTxHash,
@@ -238,6 +258,31 @@ describe('cardanoWalletBackendV1Maker', () => {
       'getAddressUtxos requires a valid payment address',
     )
     expect(request).not.toHaveBeenCalled()
+  })
+
+  it('rejects malformed datum hashes in address UTxO responses', async () => {
+    const request: Fetcher = jest
+      .fn()
+      .mockResolvedValueOnce({network: 'mainnet'})
+      .mockResolvedValueOnce([
+        {
+          txHash: referenceTxHash,
+          outputIndex: 0,
+          address: String(mainnet),
+          value: '1000000',
+          assets: [],
+          datumHash: 'not-a-hash',
+        },
+      ])
+    const api = cardanoWalletBackendV1Maker({
+      config: {
+        baseUrl: 'http://localhost:3000',
+        submitExpectedNetwork: 'mainnet',
+      },
+      request,
+    })
+
+    await expect(api.getAddressUtxos(String(mainnet))).rejects.toThrow()
   })
 
   it('preserves the upstream distinction when a ref script payload is unavailable', async () => {

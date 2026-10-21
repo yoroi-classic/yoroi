@@ -189,7 +189,11 @@ export type ScriptInput = {
     output?: {
       address: string
       lovelace: string
-      assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
+      assets: Array<{
+        policyIdHex: string
+        assetNameHex: string
+        quantity: string
+      }>
       scriptCborHex: string
     }
   }

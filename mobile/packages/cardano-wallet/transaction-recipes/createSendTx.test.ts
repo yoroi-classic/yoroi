@@ -6,6 +6,7 @@ import BigNumber from 'bignumber.js'
 import {createSendTx} from './createSendTx'
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressInfoFromAddress: jest.fn(() => ({bech32: 'addr_test_normalized'})),
   addressToHex: jest.fn(() => '01'),
   buildSimplePaymentTransaction: jest.fn(() => ({
     cborHex: '84a0a0f5',
@@ -58,9 +59,62 @@ describe('createSendTx CML route', () => {
     expect(buildSimplePaymentTransaction).toHaveBeenCalledTimes(1)
     expect(buildSimplePaymentTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        ttl: '100',
+        ttl: '7300',
         changeAddress,
         outputs: [expect.objectContaining({address: outputAddress})],
+      }),
+    )
+  })
+
+  it('raises token output ADA to CML minimum before using the fast path', async () => {
+    const {minimumCoinForAssets} = jest.requireMock(
+      '@yoroi-classic/cml-mobile-bridge',
+    )
+    minimumCoinForAssets.mockReturnValue('3000000')
+    const changeAddress = Branded.asAddress(
+      'addr_test1qrg0x4sx2wfd3l26zqs658u8vyg8qz4dzqw0zke45lpy0vkr3y3kdut55a40jff00qmg74686vz44v6k363md06qkq0qzplc3l',
+    )
+    const primaryTokenId = '' as Portfolio.Token.Id
+    const tokenId = `${'a'.repeat(56)}01` as Portfolio.Token.Id
+
+    await createSendTx({
+      utxos: [
+        {
+          receiver: changeAddress,
+          txHash: Branded.asTransactionHash('a'.repeat(64)),
+          txIndex: 0,
+          balance: {
+            [primaryTokenId]: '6000000' as Balance.Quantity,
+            [tokenId]: '10' as Balance.Quantity,
+          },
+          toTransactionUnspentOutputHex: () => '',
+        },
+      ],
+      entries: [
+        {
+          address: changeAddress,
+          amounts: {
+            [primaryTokenId]: '1000000' as Balance.Quantity,
+            [tokenId]: '1' as Balance.Quantity,
+          },
+        },
+      ],
+      primaryTokenId,
+      protocolParams: {
+        coinsPerUtxoByte: '4310',
+        keyDeposit: '2000000',
+        linearFee: {constant: '155381', coefficient: '44'},
+        poolDeposit: '500000000',
+      },
+      networkId: 0,
+      getAbsoluteSlotNumber: async () => new BigNumber(100),
+      getChangeAddress: () => changeAddress,
+      addressMode: 'single' as Wallet.AddressMode,
+    })
+
+    expect(buildSimplePaymentTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outputs: [expect.objectContaining({lovelace: '3000000'})],
       }),
     )
   })

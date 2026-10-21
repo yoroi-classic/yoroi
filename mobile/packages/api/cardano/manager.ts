@@ -1,10 +1,10 @@
 import {getLogger} from '@yoroi/logger'
 import {TransactionCborBase64} from '@yoroi/types'
-import type {AddressUtxo, ResolvedUtxo} from './api-types'
 
 import {freeze} from 'immer'
 
 import {CardanoWalletBackendNetworkMismatchError} from './adapters/cardano-wallet-backend/api-maker'
+import type {AddressUtxo, ResolvedUtxo} from './api-types'
 import {
   BACKEND_ZERO_REQUIRES_CONTEXT,
   ENDPOINT_AVAILABILITY,

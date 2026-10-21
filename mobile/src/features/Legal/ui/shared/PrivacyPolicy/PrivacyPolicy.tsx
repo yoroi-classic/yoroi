@@ -29,7 +29,9 @@ export const PrivacyPolicy = ({languageCode}: {languageCode: LanguageCode}) => {
       value={privacyPolicy}
       colorScheme={colorScheme}
       backgroundColor={ta.bg_color_max.backgroundColor}
-      flatListProps={{style: {backgroundColor: ta.bg_color_max.backgroundColor}}}
+      flatListProps={{
+        style: {backgroundColor: ta.bg_color_max.backgroundColor},
+      }}
       styles={{
         text: {...a.body_1_lg_regular, ...ta.text_gray_max, ...a.py_sm},
         h2: {...a.body_1_lg_medium, ...ta.text_gray_max, ...a.py_sm},

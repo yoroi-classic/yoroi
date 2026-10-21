@@ -3,7 +3,7 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 import {useNavigation} from '@react-navigation/native'
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
-import {useColorScheme, View} from 'react-native'
+import {View, useColorScheme} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {Disclaimer} from '~/features/Legal/common/types'
@@ -109,6 +109,7 @@ export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
     })
     setShowed(true)
   }, [
+    colorScheme,
     disclaimerText,
     openModal,
     strings.global.disclaimer,

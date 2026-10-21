@@ -1,7 +1,11 @@
 import type {Wallet} from '@yoroi/types'
 
 import type {YoroiWallet} from '../types'
-import {convertBech32ToHex, getTransactionSigners} from './signatureUtils'
+import {
+  assertHasAllSigners,
+  convertBech32ToHex,
+  getTransactionSigners,
+} from './signatureUtils'
 
 describe('convertBech32ToHex', () => {
   it('returns the address bytes produced by the CML parser', () => {
@@ -20,7 +24,9 @@ describe('convertBech32ToHex', () => {
 describe('getTransactionSigners', () => {
   it('maps required and nested native-script key hashes to the owned address path', async () => {
     const address = 'addr1wallet-owned-fixture'
+    const nativeAddress = 'addr1wallet-native-fixture'
     const paymentKeyHash = '11'.repeat(28)
+    const nativeScriptKeyHash = '33'.repeat(28)
     const stakingKeyHash = '22'.repeat(28)
     const bridge = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
     bridge.transactionSigningRequirementsJson.mockReturnValueOnce(
@@ -30,7 +36,55 @@ describe('getTransactionSigners', () => {
         requiredSigners: [paymentKeyHash],
         hasStakingCertificate: false,
         withdrawals: [],
-        nativeScriptKeyHashesHex: [paymentKeyHash],
+        nativeScriptKeyHashesHex: [nativeScriptKeyHash],
+      }),
+    )
+    bridge.addressInfoFromAddress.mockImplementation((candidate: string) => {
+      const keyHash =
+        candidate === address ? paymentKeyHash : nativeScriptKeyHash
+      return {
+        hex: `01${keyHash}${stakingKeyHash}`,
+        networkId: 1,
+        bech32: candidate,
+        isValid: true,
+      }
+    })
+
+    const wallet = {
+      accountVisual: 0,
+      allUtxos: () => [],
+      externalAddresses: () => [address, nativeAddress],
+      internalAddresses: () => [],
+      portfolioPrimaryTokenInfo: {id: '.'},
+      getStakingKey: () => ({hash: () => ({toHex: () => stakingKeyHash})}),
+    } as unknown as YoroiWallet
+    const meta = {implementation: 'cardano-cip1852'} as Wallet.Meta
+
+    await expect(
+      getTransactionSigners('fixture-cbor', wallet, meta),
+    ).resolves.toEqual([
+      [2_147_485_500, 2_147_485_463, 2_147_483_648, 0, 0],
+      [2_147_485_500, 2_147_485_463, 2_147_483_648, 0, 1],
+    ])
+    expect(bridge.transactionSigningRequirementsJson).toHaveBeenCalledWith(
+      'fixture-cbor',
+    )
+  })
+
+  it('allows native-script keys owned by another party in strict mode', async () => {
+    const address = 'addr1wallet-owned-fixture'
+    const paymentKeyHash = '11'.repeat(28)
+    const foreignNativeKeyHash = '33'.repeat(28)
+    const stakingKeyHash = '22'.repeat(28)
+    const bridge = jest.requireMock('@yoroi-classic/cml-mobile-bridge')
+    bridge.transactionSigningRequirementsJson.mockReturnValueOnce(
+      JSON.stringify({
+        inputs: [],
+        collateralInputs: [],
+        requiredSigners: [paymentKeyHash],
+        hasStakingCertificate: false,
+        withdrawals: [],
+        nativeScriptKeyHashesHex: [foreignNativeKeyHash],
       }),
     )
     bridge.addressInfoFromAddress.mockReturnValueOnce({
@@ -39,7 +93,6 @@ describe('getTransactionSigners', () => {
       bech32: address,
       isValid: true,
     })
-
     const wallet = {
       accountVisual: 0,
       allUtxos: () => [],
@@ -51,10 +104,7 @@ describe('getTransactionSigners', () => {
     const meta = {implementation: 'cardano-cip1852'} as Wallet.Meta
 
     await expect(
-      getTransactionSigners('fixture-cbor', wallet, meta),
-    ).resolves.toEqual([[2_147_485_500, 2_147_485_463, 2_147_483_648, 0, 0]])
-    expect(bridge.transactionSigningRequirementsJson).toHaveBeenCalledWith(
-      'fixture-cbor',
-    )
+      assertHasAllSigners('fixture-cbor', wallet, meta),
+    ).resolves.toBeUndefined()
   })
 })

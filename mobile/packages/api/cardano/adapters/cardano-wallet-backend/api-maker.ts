@@ -61,7 +61,10 @@ const ResolvedUtxoSchema = z
         })
         .strict(),
     ),
-    datumHash: z.string().optional(),
+    datumHash: z
+      .string()
+      .regex(/^[0-9a-fA-F]{64}$/)
+      .optional(),
     inlineDatum: z
       .string()
       .regex(/^(?:[0-9a-fA-F]{2})+$/)
@@ -75,7 +78,10 @@ const ResolvedUtxoSchema = z
         hash: z.string().regex(/^[0-9a-fA-F]{56}$/),
         size: z.number().int().nonnegative().optional(),
         type: z.string().min(1).optional(),
-        bytes: z.string().regex(/^(?:[0-9a-fA-F]{2})+$/).optional(),
+        bytes: z
+          .string()
+          .regex(/^(?:[0-9a-fA-F]{2})+$/)
+          .optional(),
       })
       .strict()
       .optional(),
@@ -92,7 +98,8 @@ const hasConsistentReferenceScript = (utxo: {
   if (!referenceScript) return true
   return (
     (utxo.referenceScriptHash == null ||
-      utxo.referenceScriptHash.toLowerCase() === referenceScript.hash.toLowerCase()) &&
+      utxo.referenceScriptHash.toLowerCase() ===
+        referenceScript.hash.toLowerCase()) &&
     (referenceScript.bytes == null ||
       (referenceScript.size != null &&
         referenceScript.size === referenceScript.bytes.length / 2))
@@ -141,6 +148,26 @@ export const cardanoWalletBackendV1Maker = ({
     throw new Error('cardano-wallet-backend /v1 base URL is required')
   }
 
+  const validateNetwork = async (
+    notConfiguredMessage = 'cardano-wallet-backend network is not configured',
+  ) => {
+    if (submitExpectedNetwork == null) {
+      throw new Error(notConfiguredMessage)
+    }
+    const statusResponse = await request<unknown>({
+      url: `${baseUrl}/v1/status`,
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
+    const status = StatusResponseSchema.safeParse(statusResponse)
+    if (!status.success) {
+      throw new Error('Invalid cardano-wallet-backend status response')
+    }
+    if (status.data.network !== submitExpectedNetwork) {
+      throw new CardanoWalletBackendNetworkMismatchError()
+    }
+  }
+
   return freeze({
     async getAddressUtxos(address: string): Promise<AddressUtxo[]> {
       if (!isCardanoPaymentAddress(address)) {
@@ -148,21 +175,7 @@ export const cardanoWalletBackendV1Maker = ({
           'cardano-wallet-backend getAddressUtxos requires a valid payment address',
         )
       }
-      if (submitExpectedNetwork == null) {
-        throw new Error('cardano-wallet-backend network is not configured')
-      }
-      const statusResponse = await request<unknown>({
-        url: `${baseUrl}/v1/status`,
-        method: 'GET',
-        headers: {Accept: 'application/json'},
-      })
-      const status = StatusResponseSchema.safeParse(statusResponse)
-      if (!status.success) {
-        throw new Error('Invalid cardano-wallet-backend status response')
-      }
-      if (status.data.network !== submitExpectedNetwork) {
-        throw new CardanoWalletBackendNetworkMismatchError()
-      }
+      await validateNetwork()
       const response = await request<unknown>({
         url: `${baseUrl}/v1/addresses/utxos`,
         data: {addresses: [address]},
@@ -173,7 +186,8 @@ export const cardanoWalletBackendV1Maker = ({
       if (
         !parsed.success ||
         parsed.data.some(
-          (utxo) => utxo.address !== address || !hasConsistentReferenceScript(utxo),
+          (utxo) =>
+            utxo.address !== address || !hasConsistentReferenceScript(utxo),
         )
       ) {
         throw new Error('Invalid cardano-wallet-backend address UTxO response')
@@ -191,21 +205,7 @@ export const cardanoWalletBackendV1Maker = ({
           'getUtxosByRef requires between 1 and 100 valid txHash#index references',
         )
       }
-      if (submitExpectedNetwork == null) {
-        throw new Error('cardano-wallet-backend network is not configured')
-      }
-      const statusResponse = await request<unknown>({
-        url: `${baseUrl}/v1/status`,
-        method: 'GET',
-        headers: {Accept: 'application/json'},
-      })
-      const status = StatusResponseSchema.safeParse(statusResponse)
-      if (!status.success) {
-        throw new Error('Invalid cardano-wallet-backend status response')
-      }
-      if (status.data.network !== submitExpectedNetwork) {
-        throw new CardanoWalletBackendNetworkMismatchError()
-      }
+      await validateNetwork()
 
       const response = await request<unknown>({
         url: `${baseUrl}/v1/tx/utxos`,
@@ -246,24 +246,9 @@ export const cardanoWalletBackendV1Maker = ({
         )
       }
 
-      if (submitExpectedNetwork == null) {
-        throw new Error(
-          'cardano-wallet-backend filter-used network is not configured',
-        )
-      }
-
-      const statusResponse = await request<unknown>({
-        url: `${baseUrl}/v1/status`,
-        method: 'GET',
-        headers: {Accept: 'application/json'},
-      })
-      const status = StatusResponseSchema.safeParse(statusResponse)
-      if (!status.success) {
-        throw new Error('Invalid cardano-wallet-backend status response')
-      }
-      if (status.data.network !== submitExpectedNetwork) {
-        throw new CardanoWalletBackendNetworkMismatchError()
-      }
+      await validateNetwork(
+        'cardano-wallet-backend filter-used network is not configured',
+      )
 
       const response = await request<unknown>({
         url: `${baseUrl}/v1/addresses/filter-used`,
@@ -292,24 +277,9 @@ export const cardanoWalletBackendV1Maker = ({
 
     async submitTransaction(signedTx: TransactionCborBase64): Promise<void> {
       const cbor = transactionCborHex(signedTx)
-      if (submitExpectedNetwork == null) {
-        throw new Error(
-          'cardano-wallet-backend submit network is not configured',
-        )
-      }
-
-      const statusResponse = await request<unknown>({
-        url: `${baseUrl}/v1/status`,
-        method: 'GET',
-        headers: {Accept: 'application/json'},
-      })
-      const status = StatusResponseSchema.safeParse(statusResponse)
-      if (!status.success) {
-        throw new Error('Invalid cardano-wallet-backend status response')
-      }
-      if (status.data.network !== submitExpectedNetwork) {
-        throw new Error('cardano-wallet-backend network mismatch')
-      }
+      await validateNetwork(
+        'cardano-wallet-backend submit network is not configured',
+      )
 
       const response = await request<unknown>({
         url: `${baseUrl}/v1/tx/submit`,

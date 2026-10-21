@@ -1,4 +1,7 @@
-import {datumInfoFromOutputCborHex, hashPlutusDataCborHex} from '@yoroi-classic/cml-mobile-bridge'
+import {
+  datumInfoFromOutputCborHex,
+  hashPlutusDataCborHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import type {Datum, DatumInfo} from './types'
 
@@ -8,10 +11,10 @@ import type {Datum, DatumInfo} from './types'
  * @param outputCborHex - serialized transaction output CBOR
  * @returns DatumInfo if datum is present, null otherwise
  */
-export function parseDatumFromOutput(
-  outputCborHex: string,
-): DatumInfo | null {
-  const result = JSON.parse(datumInfoFromOutputCborHex(outputCborHex)) as DatumInfo | null
+export function parseDatumFromOutput(outputCborHex: string): DatumInfo | null {
+  const result = JSON.parse(
+    datumInfoFromOutputCborHex(outputCborHex),
+  ) as DatumInfo | null
   return result
 }
 

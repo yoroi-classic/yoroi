@@ -1,6 +1,6 @@
 import {
-  createUnsignedGovernanceTxFromWallet,
   YoroiWallet,
+  createUnsignedGovernanceTxFromWallet,
 } from '@yoroi/cardano-wallet'
 import {GovernanceCertificate} from '@yoroi/staking'
 import {Wallet} from '@yoroi/types'

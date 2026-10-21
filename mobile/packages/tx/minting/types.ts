@@ -5,7 +5,11 @@ export type MintingScriptType = 'native' | 'plutus'
 
 export type MintingScript =
   | {type: 'native'; script: string; plutusVersion?: never}
-  | {type: 'plutus'; script: string; plutusVersion: 'plutusV1' | 'plutusV2' | 'plutusV3'}
+  | {
+      type: 'plutus'
+      script: string
+      plutusVersion: 'plutusV1' | 'plutusV2' | 'plutusV3'
+    }
 
 export type MintReferenceScript = {
   txHash: string
@@ -37,7 +41,11 @@ type MintActionBase = {
 
 export type MintAction = MintActionBase &
   (
-    | {script: Extract<MintingScript, {type: 'native'}>; redeemer?: never; redeemerExUnits?: never}
+    | {
+        script: Extract<MintingScript, {type: 'native'}>
+        redeemer?: never
+        redeemerExUnits?: never
+      }
     | {
         script: Extract<MintingScript, {type: 'plutus'}>
         redeemer: string

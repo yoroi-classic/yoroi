@@ -124,7 +124,8 @@ describe('createWithdrawalTx', () => {
         }) as never,
     })
 
-    expect(deriveStakeCredentialHex).toHaveBeenCalledWith(rewardAddressHex)
+    expect(deriveRewardAddressDetails).toHaveBeenCalledWith(rewardAddressHex)
+    expect(deriveStakeCredentialHex).not.toHaveBeenCalled()
     expect(addCertificate).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

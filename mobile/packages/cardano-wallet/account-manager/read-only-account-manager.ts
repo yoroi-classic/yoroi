@@ -261,11 +261,9 @@ async function discoverUsedAddressesByStakingCredential({
       if (matches) {
         matchingAddresses.push(Branded.asAddress(addressStr))
       }
-    } catch (error) {
-      getLogger().warn('Failed to check address staking credential', {
-        address: addressStr,
-        error,
-      })
+    } catch {
+      // Transaction history can contain Byron and payment-only addresses.
+      // They do not expose a stake credential and are not candidate matches.
     }
   }
 

@@ -33,7 +33,9 @@ export const TermsOfService = ({
       value={tos}
       colorScheme={colorScheme}
       backgroundColor={ta.bg_color_max.backgroundColor}
-      flatListProps={{style: {backgroundColor: ta.bg_color_max.backgroundColor}}}
+      flatListProps={{
+        style: {backgroundColor: ta.bg_color_max.backgroundColor},
+      }}
       styles={{
         strong: {
           ...ta.text_gray_max,

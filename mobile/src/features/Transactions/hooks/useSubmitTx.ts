@@ -16,11 +16,7 @@ import {signedTransactionBase64} from './transaction-cbor'
 
 export const useSubmitTx = <T extends Uint8Array = Uint8Array>(
   {wallet}: {wallet: YoroiWallet},
-  options: UseMutationOptions<
-    TxSubmissionStatus,
-    Error,
-    T
-  > & {
+  options: UseMutationOptions<TxSubmissionStatus, Error, T> & {
     formattedTx?: FormattedTx
     memo?: string | null
   } = {},
@@ -105,7 +101,10 @@ export const useSubmitTx = <T extends Uint8Array = Uint8Array>(
 
       if (serverStatus.isQueueOnline) {
         if (!txId) {
-          txId = await calculateTxId(Buffer.from(txBytes).toString('hex'), 'hex')
+          txId = await calculateTxId(
+            Buffer.from(txBytes).toString('hex'),
+            'hex',
+          )
         }
 
         // Notify sync manager about transaction submission for fast polling
@@ -120,7 +119,10 @@ export const useSubmitTx = <T extends Uint8Array = Uint8Array>(
       // This ensures fast polling when queue comes back online
       if (!txId) {
         try {
-          txId = await calculateTxId(Buffer.from(txBytes).toString('hex'), 'hex')
+          txId = await calculateTxId(
+            Buffer.from(txBytes).toString('hex'),
+            'hex',
+          )
         } catch (error) {
           logger.error(
             'useSubmitTx: Failed to calculate txId after submission',

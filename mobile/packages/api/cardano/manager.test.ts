@@ -4,7 +4,6 @@ import {Branded, TransactionCborBase64, WalletTransaction} from '@yoroi/types'
 
 import {CardanoWalletBackendNetworkMismatchError} from './adapters/cardano-wallet-backend/api-maker'
 import {cardanoWalletBackendV1Maker} from './adapters/cardano-wallet-backend/api-maker'
-import * as legacyFetch from './utils/fetch'
 import {legacyApiMaker} from './adapters/legacy/api-maker'
 import {
   AccountStateResponse,
@@ -19,6 +18,7 @@ import {
   EndpointPreference,
   WalletContext,
 } from './types'
+import * as legacyFetch from './utils/fetch'
 
 describe('cardanoApiManagerMaker', () => {
   const mockWalletContext: WalletContext = {
@@ -297,9 +297,9 @@ describe('cardanoApiManagerMaker', () => {
       })
 
       try {
-        await expect(api.filterUsedAddresses([mainnetAddress])).resolves.toEqual([
-          mainnetAddress,
-        ])
+        await expect(
+          api.filterUsedAddresses([mainnetAddress]),
+        ).resolves.toEqual([mainnetAddress])
         expect(cwbRequest).toHaveBeenCalledTimes(1)
         expect(cwbRequest).toHaveBeenCalledWith({
           url: 'https://wallet-backend.example.com/v1/status',

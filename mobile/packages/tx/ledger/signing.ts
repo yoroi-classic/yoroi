@@ -10,7 +10,7 @@ import {applyLedgerWitnessesToTransactionHex} from '@yoroi-classic/cml-mobile-br
 import {Addressing} from '../types'
 
 const CARDANO_COIN_TYPE = '2147485463'
-const FIRST_ACCOUNT_INDEX = '2147483648'
+const HARDENED_OFFSET = 2 ** 31
 
 type LedgerInput = {
   receiver: string
@@ -31,6 +31,7 @@ const applyLedgerResponse = (
     witnesses: Array<{path: number[]; witnessSignatureHex: string}>
   },
   purpose: number,
+  accountVisual: number,
   publicKeyHex: string,
   senderUtxos: LedgerInput[] = [],
   plutusDataHexes?: string[],
@@ -40,7 +41,7 @@ const applyLedgerResponse = (
     accountPublicKeyHex: publicKeyHex,
     purpose: String(purpose),
     coinType: CARDANO_COIN_TYPE,
-    accountIndex: FIRST_ACCOUNT_INDEX,
+    accountIndex: String(HARDENED_OFFSET + accountVisual),
     witnesses: signedLedgerTx.witnesses.map(({path, witnessSignatureHex}) => ({
       path,
       signatureHex: witnessSignatureHex,
@@ -66,11 +67,13 @@ export async function buildLedgerSignedTx(
   publicKeyHex: string,
   _useCIP36 = true,
   plutusDataHexes?: string[],
+  accountVisual = 0,
 ): Promise<{id: string; encodedTx: Uint8Array}> {
   const encodedTx = applyLedgerResponse(
     unsignedTx.transactionHex,
     signedLedgerTx,
     purpose,
+    accountVisual,
     publicKeyHex,
     unsignedTx.senderUtxos,
     plutusDataHexes,
@@ -86,5 +89,5 @@ export async function createSignedLedgerTxFromCbor(
   purpose: number,
   publicKeyHex: PublicKeyHex | string,
 ): Promise<Uint8Array> {
-  return applyLedgerResponse(cbor, signedData, purpose, publicKeyHex)
+  return applyLedgerResponse(cbor, signedData, purpose, 0, publicKeyHex)
 }

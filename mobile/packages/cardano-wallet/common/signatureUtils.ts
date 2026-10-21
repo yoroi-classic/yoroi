@@ -84,6 +84,7 @@ const getRequiredSigners = async (
     ...requirements.requiredSigners,
     ...requirements.nativeScriptKeyHashesHex,
   ]
+  const requiredSignerKeyHashes = new Set(requirements.requiredSigners)
   for (const keyHashHex of new Set(signerKeyHashes)) {
     if (stakingKeyPath && keyHashHex === stakeVKHash) {
       signers.push({path: stakingKeyPath, startLevel})
@@ -94,7 +95,7 @@ const getRequiredSigners = async (
       (candidate) => getSpendingKey(candidate)?.toLowerCase() === keyHashHex,
     )
     if (!address) {
-      if (!partial) {
+      if (!partial && requiredSignerKeyHashes.has(keyHashHex)) {
         throw new Error(
           `Could not find addressing for required signer: ${keyHashHex}`,
         )

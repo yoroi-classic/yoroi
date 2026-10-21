@@ -1,5 +1,7 @@
 import {Address, Balance, Branded} from '@yoroi/types'
 
+import {scriptHashHexFromCbor} from '@yoroi-classic/cml-mobile-bridge'
+
 import {TransactionBuilderState} from '../transaction-builder/builder'
 import {ModernUtxo} from '../utxo/models'
 import type {ReferenceScript} from './types'
@@ -15,14 +17,30 @@ export function detectReferenceScript(
   if (!script.bytes || !/^(?:[0-9a-fA-F]{2})+$/.test(script.bytes)) return null
   if (script.size !== script.bytes.length / 2) return null
   const scriptType = script.type === 'native' ? 'native' : 'plutus'
-  if (scriptType === 'plutus' && !/^plutusV[123]$/.test(script.type ?? '')) {
+  const scriptHashType =
+    script.type === 'native'
+      ? 'native'
+      : /^plutusV[123]$/.test(script.type ?? '')
+        ? (script.type as 'plutusV1' | 'plutusV2' | 'plutusV3')
+        : undefined
+  if (!scriptHashType) {
+    return null
+  }
+  try {
+    if (
+      scriptHashHexFromCbor(scriptHashType, script.bytes).toLowerCase() !==
+      script.hash.toLowerCase()
+    ) {
+      return null
+    }
+  } catch {
     return null
   }
 
   return {
     txHash: utxo.txHash,
     txIndex: utxo.txIndex,
-    scriptHash: Branded.asScriptHash(script.hash),
+    scriptHash: Branded.asScriptHash(script.hash.toLowerCase()),
     scriptType,
     scriptSize: script.size,
   }

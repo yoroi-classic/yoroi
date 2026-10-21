@@ -1,7 +1,10 @@
 import {cardanoConfig} from '@yoroi/blockchains'
 import {Wallet} from '@yoroi/types'
 
-import {deriveAccountPublicKeyHex, walletRootKeyHexFromEntropy} from '@yoroi-classic/cml-mobile-bridge'
+import {
+  deriveAccountPublicKeyHex,
+  walletRootKeyHexFromEntropy,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {mnemonicToEntropy} from 'bip39'
 import {freeze} from 'immer'
 
