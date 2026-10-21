@@ -223,8 +223,8 @@ describe('cardanoWalletBackendV1Maker', () => {
 
     await expect(api.getAddressUtxos(scriptAddress)).resolves.toEqual(result)
     expect(request).toHaveBeenLastCalledWith({
-      url: 'http://localhost:3000/v1/addresses/utxos',
-      data: {addresses: [scriptAddress]},
+      url: 'http://localhost:3000/v1/address/utxos',
+      data: {address: scriptAddress},
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
     })
