@@ -1,7 +1,7 @@
 // Functional multiparty transaction utilities
 import {
   addressInfoFromAddress,
-  nativeScriptRequiredKeyHashesJson,
+  nativeScriptKeyHashesJson,
 } from '@yoroi-classic/cml-mobile-bridge'
 
 import {UnsignedTransaction} from './types'
@@ -162,7 +162,7 @@ export async function getRequiredSignersFromTransaction(
     if (mintAction.script.type === 'native') {
       try {
         const keyHashes = JSON.parse(
-          nativeScriptRequiredKeyHashesJson(mintAction.script.script),
+          nativeScriptKeyHashesJson(mintAction.script.script),
         ) as string[]
         keyHashes.forEach(addKeyHash)
       } catch {

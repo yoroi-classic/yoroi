@@ -26,7 +26,7 @@ jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
       isValid: true,
     }
   }),
-  nativeScriptRequiredKeyHashesJson: jest.fn(() => JSON.stringify([])),
+  nativeScriptKeyHashesJson: jest.fn(() => JSON.stringify([])),
 }))
 
 describe('multiparty transaction', () => {
@@ -55,10 +55,10 @@ describe('multiparty transaction', () => {
   it('includes nested native-script key hashes from the CML parser', async () => {
     const inputKeyHash = 'ab'.repeat(28)
     const scriptKeyHash = 'cd'.repeat(28)
-    const nativeScriptRequiredKeyHashesJson = jest.requireMock(
+    const nativeScriptKeyHashesJson = jest.requireMock(
       '@yoroi-classic/cml-mobile-bridge',
-    ).nativeScriptRequiredKeyHashesJson as jest.Mock
-    nativeScriptRequiredKeyHashesJson.mockReturnValueOnce(
+    ).nativeScriptKeyHashesJson as jest.Mock
+    nativeScriptKeyHashesJson.mockReturnValueOnce(
       JSON.stringify([scriptKeyHash, inputKeyHash, scriptKeyHash]),
     )
     const tx = {
@@ -74,7 +74,7 @@ describe('multiparty transaction', () => {
       inputKeyHash,
       scriptKeyHash,
     ])
-    expect(nativeScriptRequiredKeyHashesJson).toHaveBeenCalledWith('8200')
+    expect(nativeScriptKeyHashesJson).toHaveBeenCalledWith('8200')
   })
 
   describe('createWitnessState', () => {

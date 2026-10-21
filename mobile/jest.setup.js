@@ -47,7 +47,7 @@ jest.mock('@yoroi-classic/cml-mobile-bridge', () => {
         'buildSimplePaymentTransaction', 'buildTransactionRecipeCml', 'datumInfoFromOutputCborHex', 'decodePlutusDataCborHex',
         'deriveAccountPublicKeyHex', 'derivePublicKeyFromAccountPathHex', 'deriveWalletPublicKeyHex', 'deriveEscrowAddress',
         'escrowDatumInfoJson', 'hashPlutusDataCborHex', 'minimumCoinForAssets',
-        'nativeScriptRequiredKeyHashesJson',
+        'nativeScriptKeyHashesJson',
         'icarusAddressBase58FromAccountPublicKeyHex', 'normalizePoolIdentifier', 'resolveCnsAddressRecord', 'rewardAddressDetailsFromAddress',
         'rewardAddressFromAddress', 'rewardAddressHexFromAccountPublicKey',
         'signWalletData', 'signWalletTransactionHex', 'signWalletTransactionPathsHex',

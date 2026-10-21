@@ -173,8 +173,8 @@ describe('CML reward address derivation', () => {
 
     expect(generator.generate([7])).toEqual(['addr_test1cmlfixture'])
     expect(baseAddressBech32FromPublicKeyHashes).toHaveBeenCalledWith(
-      '33'.repeat(28),
       '44'.repeat(28),
+      '33'.repeat(28),
       0,
     )
   })
