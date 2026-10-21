@@ -3,7 +3,7 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 import {useNavigation} from '@react-navigation/native'
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
-import {View} from 'react-native'
+import {useColorScheme, View} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {Disclaimer} from '~/features/Legal/common/types'
@@ -31,6 +31,7 @@ const useDisclaimerText = ({languageCode}: {languageCode: LanguageCode}) => {
 }
 
 export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
+  const colorScheme = useColorScheme()
   const {languageCode} = useLanguage()
   const {openModal, closeModal} = useModal()
   const strings = useStrings()
@@ -49,6 +50,8 @@ export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
         <Modal.Content>
           <Markdown
             value={disclaimerText || ''}
+            colorScheme={colorScheme}
+            backgroundColor={p.bg_color_max}
             flatListProps={{
               scrollEnabled: false,
               style: {

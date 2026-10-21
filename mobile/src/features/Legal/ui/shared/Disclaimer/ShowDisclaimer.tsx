@@ -2,7 +2,7 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
-import {View} from 'react-native'
+import {useColorScheme, View} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {useLanguage} from '~/kernel/i18n/LanguageProvider'
@@ -39,6 +39,7 @@ const useDisclaimerText = ({
 }
 
 export const ShowDisclaimer = ({type, disabled}: Props) => {
+  const colorScheme = useColorScheme()
   const {languageCode} = useLanguage()
   const {openModal, closeModal} = useModal()
   const strings = useStrings()
@@ -64,6 +65,8 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
         <View style={[a.flex_1, a.px_lg, {height: 600}]}>
           <Markdown
             value={disclaimerText || ''}
+            colorScheme={colorScheme}
+            backgroundColor={p.bg_color_max}
             flatListProps={{
               style: {
                 backgroundColor: p.bg_color_max,

@@ -2,7 +2,7 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
-import {ActivityIndicator} from 'react-native'
+import {ActivityIndicator, useColorScheme} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {LanguageCode} from '~/kernel/i18n/localization'
@@ -25,11 +25,14 @@ export const TermsOfService = ({
 }) => {
   const tos = useLoadTos({languageCode})
   const {atoms: ta, basePaletteInverted} = useTheme()
+  const colorScheme = useColorScheme()
   const color = basePaletteInverted === 'light' ? 'white' : 'black'
 
   return tos != null ? (
     <Markdown
       value={tos}
+      colorScheme={colorScheme}
+      backgroundColor={ta.bg_color_max.backgroundColor}
       flatListProps={{style: {backgroundColor: ta.bg_color_max.backgroundColor}}}
       styles={{
         strong: {
