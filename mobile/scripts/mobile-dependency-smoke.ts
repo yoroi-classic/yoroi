@@ -113,6 +113,47 @@ function validatePinnedDependencyLock() {
     '@emurgo/csl-mobile-bridge-jsi',
   ]
 
+  const sdkPackageRoot = path.join(mobileRoot, '../scripts/packages')
+  const sdkPackageManifests = fs
+    .readdirSync(sdkPackageRoot, {withFileTypes: true})
+    .filter((entry) => entry.isDirectory())
+    .map((entry) =>
+      path.join('../scripts/packages', entry.name, 'package.json'),
+    )
+
+  for (const manifestPath of sdkPackageManifests) {
+    if (!fs.existsSync(path.join(mobileRoot, manifestPath))) continue
+    const manifest = readJsonFile(manifestPath)
+    const dependencyGroups = [
+      manifest.dependencies,
+      manifest.devDependencies,
+      manifest.peerDependencies,
+      manifest.optionalDependencies,
+    ] as Array<Record<string, string> | undefined>
+
+    for (const dependencyName of forbiddenCslDependencies) {
+      if (
+        dependencyGroups.some((dependencies) => dependencies?.[dependencyName])
+      ) {
+        failures.push(`${manifestPath} still declares ${dependencyName}`)
+      }
+    }
+  }
+
+  for (const entry of fs.readdirSync(sdkPackageRoot, {withFileTypes: true})) {
+    if (!entry.isDirectory()) continue
+    const lockPath = path.join(sdkPackageRoot, entry.name, 'package-lock.json')
+    if (!fs.existsSync(lockPath)) continue
+    const lockSource = fs.readFileSync(lockPath, 'utf8')
+    for (const dependencyName of forbiddenCslDependencies) {
+      if (lockSource.includes(dependencyName)) {
+        failures.push(
+          `${path.relative(mobileRoot, lockPath)} still references ${dependencyName}`,
+        )
+      }
+    }
+  }
+
   for (const dependencyName of forbiddenCslDependencies) {
     if (getPackageVersion(packageJson, dependencyName)) {
       failures.push(`${dependencyName} remains in package.json`)

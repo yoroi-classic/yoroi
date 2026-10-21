@@ -14,12 +14,14 @@ import {
 import {SafeAreaView} from 'react-native-safe-area-context'
 
 import {useRemoteConfig} from '~/common/hooks/useRemoteConfig'
+import {isMidnightAirdropAvailable} from '~/features/Airdrop/common/feature-state'
 import {useHasRedeemableThaws} from '~/features/Airdrop/common/useHasRedeemableThaws'
 import {AirdropNavigator} from '~/features/Airdrop/ui/AirdropNavigator'
 import {usePrefetchStakingInfo} from '~/features/Dashboard/ui/shared/StakePoolInfos'
 import {useCanVote} from '~/features/RegisterCatalyst/common/hooks'
 import {NetworkTag} from '~/features/Settings/ui/shared/NetworkTag'
 import {useIsByronWallet} from '~/features/WalletManager/hooks/useIsByronWallet'
+import {cardanoWalletBackendUrl} from '~/kernel/constants'
 import {useStrings} from '~/kernel/i18n/useStrings'
 import {defaultStackNavigationOptions} from '~/kernel/navigation/common/helpers'
 import {useWalletNavigation} from '~/kernel/navigation/hooks/useWalletNavigation'
@@ -43,7 +45,10 @@ export const MenuNavigator = () => {
   const strings = useStrings()
   const {palette: p} = useTheme()
   const {config} = useRemoteConfig()
-  const isAirdropEnabled = config?.features?.midnightAirdrop?.enabled ?? false
+  const isAirdropEnabled = isMidnightAirdropAvailable(
+    config?.features?.midnightAirdrop?.enabled,
+    cardanoWalletBackendUrl,
+  )
 
   return (
     <MenuStack.Navigator
@@ -110,7 +115,10 @@ export const Menu = () => {
   const navigateTo = useNavigateTo()
   const {isPoolRetiring} = usePoolTransition()
   const {config} = useRemoteConfig()
-  const isAirdropEnabled = config?.features?.midnightAirdrop?.enabled ?? false
+  const isAirdropEnabled = isMidnightAirdropAvailable(
+    config?.features?.midnightAirdrop?.enabled,
+    cardanoWalletBackendUrl,
+  )
   const {hasRedeemableThaws} = useHasRedeemableThaws()
   const isByronWallet = useIsByronWallet()
 

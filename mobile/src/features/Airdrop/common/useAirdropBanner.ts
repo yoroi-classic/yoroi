@@ -7,9 +7,11 @@ import {useQuery, useQueryClient} from '@tanstack/react-query'
 
 import {useRemoteConfig} from '~/common/hooks/useRemoteConfig'
 import {BannerIds, showBanner} from '~/features/Notifications/common/banners'
+import {cardanoWalletBackendUrl} from '~/kernel/constants'
 import {useStrings} from '~/kernel/i18n/useStrings'
 import {logger} from '~/kernel/logger/logger'
 
+import {isMidnightAirdropAvailable} from './feature-state'
 import {useAirdropEligibility} from './useAirdropEligibility'
 import {formatAmount} from './utils'
 
@@ -17,7 +19,10 @@ export const useAirdropBanner = () => {
   const walletManager = useWalletManager()
   const manager = useNotificationManager()
   const {config} = useRemoteConfig()
-  const isAirdropEnabled = config?.features?.midnightAirdrop?.enabled ?? false
+  const isAirdropEnabled = isMidnightAirdropAvailable(
+    config?.features?.midnightAirdrop?.enabled,
+    cardanoWalletBackendUrl,
+  )
   const {
     selected: {network, wallet},
   } = walletManager

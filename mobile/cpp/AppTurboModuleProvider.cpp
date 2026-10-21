@@ -11,7 +11,7 @@ std::shared_ptr<TurboModule> AppTurboModuleProvider::getTurboModule(
     return std::make_shared<facebook::react::NativeMslMobileBridgeModule>(jsInvoker);
   }
   if (name == "CmlMobileBridge") {
-    return std::make_shared<facebook::react::NativeCmlMobileBridgeModule>(jsInvoker);
+    return std::make_shared<NativeCmlMobileBridgeModule>(jsInvoker);
   }
   // Other C++ Turbo Native Modules for you app
   return nullptr;

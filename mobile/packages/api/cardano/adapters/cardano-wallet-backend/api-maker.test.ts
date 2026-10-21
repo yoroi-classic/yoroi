@@ -282,7 +282,9 @@ describe('cardanoWalletBackendV1Maker', () => {
       request,
     })
 
-    await expect(api.getAddressUtxos(String(mainnet))).rejects.toThrow()
+    await expect(api.getAddressUtxos(String(mainnet))).rejects.toThrow(
+      'Invalid cardano-wallet-backend address UTxO response',
+    )
   })
 
   it('preserves the upstream distinction when a ref script payload is unavailable', async () => {

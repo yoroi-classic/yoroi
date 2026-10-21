@@ -40,7 +40,7 @@
         "@tanstack/query-async-storage-persister": "5.90.12",
         "@tanstack/react-query": "5.90.10",
         "@tanstack/react-query-persist-client": "5.90.12",
-        "@yoroi-classic/cml-mobile-bridge": "github:yoroi-classic/csl-mobile-bridge#74ade24894263d9b535393041bde7cc40333d89c",
+        "@yoroi-classic/cml-mobile-bridge": "github:yoroi-classic/csl-mobile-bridge#1a8b3cdd6d9155ae9dd58d38a1ef312d982a0283",
         "axios": "1.10.0",
         "bech32": "1.1.4",
         "bignumber.js": "9.3.0",
@@ -917,7 +917,7 @@
 
     "@yarnpkg/lockfile": ["@yarnpkg/lockfile@1.1.0", "", {}, "sha512-GpSwvyXOcOOlV70vbnzjj4fW5xW/FdUF6nQEt1ENy7m4ZCczi1+/buVUPAqmGfqznsORNFzUMjctTIp8a9tuCQ=="],
 
-    "@yoroi-classic/cml-mobile-bridge": ["@yoroi-classic/cml-mobile-bridge@github:yoroi-classic/csl-mobile-bridge#74ade24894263d9b535393041bde7cc40333d89c", { "peerDependencies": { "react": "*", "react-native": "*" } }, "74ade24894263d9b535393041bde7cc40333d89c"],
+    "@yoroi-classic/cml-mobile-bridge": ["@yoroi-classic/cml-mobile-bridge@github:yoroi-classic/csl-mobile-bridge#1a8b3cdd6d9155ae9dd58d38a1ef312d982a0283", { "peerDependencies": { "react": "*", "react-native": "*" } }, "1a8b3cdd6d9155ae9dd58d38a1ef312d982a0283"],
 
     "abab": ["abab@2.0.6", "", {}, "sha512-j2afSsaIENvHZN2B8GOpF566vZ5WVk5opAiMTvWgaQT8DkbOqsTfvNAvHoRGU2zzP8cPoqys+xHTRDWW8L+/BA=="],
 

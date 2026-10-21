@@ -8,17 +8,22 @@ import * as React from 'react'
 import {useRemoteConfig} from '~/common/hooks/useRemoteConfig'
 import {useIsByronWallet} from '~/features/WalletManager/hooks/useIsByronWallet'
 import {persistPrefixKeyword} from '~/kernel/connection/ConnectionProvider'
+import {cardanoWalletBackendUrl} from '~/kernel/constants'
 import {logger} from '~/kernel/logger/logger'
 
 import {redemptionApi} from '../api/redemptionApi'
 import type {AddressAllocation} from '../types'
 import {useAirdropAddressCache} from './airdropAddressCache'
+import {isMidnightAirdropAvailable} from './feature-state'
 
 export const useAirdropEligibility = () => {
   const walletManager = useWalletManager()
   const wallet = walletManager.selected.wallet
   const {config} = useRemoteConfig()
-  const isAirdropEnabled = config?.features?.midnightAirdrop?.enabled ?? false
+  const isAirdropEnabled = isMidnightAirdropAvailable(
+    config?.features?.midnightAirdrop?.enabled,
+    cardanoWalletBackendUrl,
+  )
   const isByronWallet = useIsByronWallet()
   const addressCache = useAirdropAddressCache()
   const queryClient = useQueryClient()
