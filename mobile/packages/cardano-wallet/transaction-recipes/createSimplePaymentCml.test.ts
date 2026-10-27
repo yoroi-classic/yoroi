@@ -1,6 +1,7 @@
 import {NotEnoughMoneyToSendError} from '@yoroi/types'
 
 import {
+  addressToHex,
   buildSimplePaymentTransaction,
   minimumCoinForAssets,
 } from '@yoroi-classic/cml-mobile-bridge'
@@ -12,7 +13,9 @@ import {
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressToHex: jest.fn((address: string) =>
-    address.includes('byron') ? '82' : '01',
+    address.includes('byron') || address.startsWith('Ae2') || address.startsWith('DdzFF')
+      ? '82d818'
+      : '01',
   ),
   addressInfoFromAddress: jest.fn((address: string) => ({
     bech32: address,
@@ -78,7 +81,7 @@ describe('buildSimplePaymentCml', () => {
         ],
         outputs: [
           {
-            address: 'addr_test_output',
+            address: '01',
             lovelace: '2000000',
             assets: [],
             datum: undefined,
@@ -96,6 +99,24 @@ describe('buildSimplePaymentCml', () => {
     expect(() => buildSimplePaymentCml(params as never)).toThrow(
       NotEnoughMoneyToSendError,
     )
+  })
+
+  it('rejects delimiter-injected output addresses before packing transaction fields', () => {
+    jest.mocked(buildSimplePaymentTransaction).mockClear()
+    jest.mocked(addressToHex).mockImplementationOnce(() => '01')
+    jest.mocked(addressToHex).mockImplementationOnce(() => {
+      throw new Error('Invalid Cardano address')
+    })
+
+    expect(() =>
+      buildSimplePaymentCml({
+        ...params,
+        outputs: [
+          {...params.outputs[0], address: 'R,50000000,-,-;R'},
+        ],
+      } as never),
+    ).toThrow('Invalid Cardano address')
+    expect(buildSimplePaymentTransaction).not.toHaveBeenCalled()
   })
 
   it('preserves unrelated CML transaction errors', () => {
@@ -126,7 +147,7 @@ describe('buildSimplePaymentCml', () => {
           expect.objectContaining({transactionHashHex: 'cd'.repeat(32)}),
         ]),
         outputs: expect.arrayContaining([
-          expect.objectContaining({address: 'addr_test_recipient_2'}),
+          expect.objectContaining({address: '01'}),
         ]),
       }),
     )
@@ -277,8 +298,8 @@ describe('buildSimplePaymentCml', () => {
     expect(buildSimplePaymentTransaction).toHaveBeenLastCalledWith(
       expect.objectContaining({
         inputs: [expect.objectContaining({address: 'addr_test_input'})],
-        outputs: [expect.objectContaining({address: outputAddress})],
-        changeAddress,
+        outputs: [expect.objectContaining({address: '82d818'})],
+        changeAddress: '82d818',
       }),
     )
   })
@@ -311,7 +332,7 @@ describe('buildSimplePaymentCml', () => {
       expect.objectContaining({
         outputs: [
           expect.objectContaining({
-            address: scriptAddress,
+            address: '01',
             datum: {kind: 'inline', hex: 'd87980'},
           }),
         ],

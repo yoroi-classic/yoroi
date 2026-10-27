@@ -9,7 +9,10 @@ import {
 } from '@yoroi/tx'
 import {NotEnoughMoneyToSendError, Portfolio} from '@yoroi/types'
 
-import {buildSimplePaymentTransaction} from '@yoroi-classic/cml-mobile-bridge'
+import {
+  addressToHex,
+  buildSimplePaymentTransaction,
+} from '@yoroi-classic/cml-mobile-bridge'
 
 import {minimumAdaForAssetsCml} from '../cml/minimumAda'
 
@@ -43,7 +46,7 @@ export const buildSimplePaymentCml = ({
         cmlPaymentInputFromUtxo(input, primaryTokenId),
       ),
       outputs: outputs.map((output) => ({
-        address: output.address,
+        address: addressToHex(output.address),
         lovelace: String(output.amounts[primaryTokenId] ?? '0'),
         assets: cmlAssetsFromAmounts(output.amounts, primaryTokenId),
         datum: output.datum
@@ -52,7 +55,7 @@ export const buildSimplePaymentCml = ({
             : {kind: 'inline' as const, hex: output.datum.data}
           : undefined,
       })),
-      changeAddress,
+      changeAddress: addressToHex(changeAddress),
       ttl: String(ttl),
       feeCoefficient: protocolParams.linearFee.coefficient,
       feeConstant: protocolParams.linearFee.constant,
