@@ -60,8 +60,8 @@ describe('createSendTx CML route', () => {
     expect(buildSimplePaymentTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
         ttl: '7300',
-        changeAddress,
-        outputs: [expect.objectContaining({address: outputAddress})],
+        changeAddress: 'addr_test_normalized',
+        outputs: [expect.objectContaining({address: 'addr_test_normalized'})],
       }),
     )
   })
