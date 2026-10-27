@@ -10,7 +10,7 @@ import {cip30LedgerExtensionMaker} from './cip30-ledger'
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressInfoFromAddress: jest.fn(() => ({
     hex: '60aa',
-    bech32: 'addr_test1fixture',
+    bech32: 'addr_test1canonical',
     networkId: 0,
     isValid: true,
   })),
@@ -59,7 +59,7 @@ describe('CIP-30 Ledger extension', () => {
       'addr_test1fixture',
       0,
     )
-    expect(wallet.getAddressing).toHaveBeenCalledWith('addr_test1fixture')
+    expect(wallet.getAddressing).toHaveBeenCalledWith('addr_test1canonical')
     expect(signMessageWithLedger).toHaveBeenCalledWith(
       {
         messageHex: 'deadbeef',

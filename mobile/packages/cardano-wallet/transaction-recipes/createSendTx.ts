@@ -922,6 +922,7 @@ export async function createSendTx({
               const errorMessage =
                 error instanceof Error ? error.message : String(error)
               const isNotEnoughAdaError =
+                error instanceof NotEnoughMoneyToSendError ||
                 errorMessage.includes('Not enough ADA leftover') ||
                 errorMessage.includes('Not enough ADA')
               const isInsufficientInputError =

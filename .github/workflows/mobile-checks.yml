@@ -121,6 +121,9 @@ jobs:
       - name: Install mobile dependencies
         run: npm ci
         working-directory: mobile
+      - name: Test CML bridge Rust vectors
+        run: cargo test --manifest-path node_modules/@yoroi-classic/cml-mobile-bridge/rust/Cargo.toml
+        working-directory: mobile
       - name: Generate Android project
         run: npx expo prebuild --platform android --no-install
         working-directory: mobile

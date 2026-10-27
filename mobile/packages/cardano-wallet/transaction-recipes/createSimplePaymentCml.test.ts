@@ -1,3 +1,5 @@
+import {NotEnoughMoneyToSendError} from '@yoroi/types'
+
 import {
   buildSimplePaymentTransaction,
   minimumCoinForAssets,
@@ -84,6 +86,25 @@ describe('buildSimplePaymentCml', () => {
         ],
       }),
     )
+  })
+
+  it('maps CML insufficient-input failures to the wallet transaction error', () => {
+    jest.mocked(buildSimplePaymentTransaction).mockImplementationOnce(() => {
+      throw new Error('Insufficient input value to cover outputs and fee')
+    })
+
+    expect(() => buildSimplePaymentCml(params as never)).toThrow(
+      NotEnoughMoneyToSendError,
+    )
+  })
+
+  it('preserves unrelated CML transaction errors', () => {
+    const error = new Error('Invalid output address')
+    jest.mocked(buildSimplePaymentTransaction).mockImplementationOnce(() => {
+      throw error
+    })
+
+    expect(() => buildSimplePaymentCml(params as never)).toThrow(error)
   })
 
   it('passes multiple inputs and outputs without narrowing the supported ADA shape', () => {

@@ -7,7 +7,7 @@ import {
   cmlPaymentInputFromUtxo,
   isByronAddress,
 } from '@yoroi/tx'
-import {Portfolio} from '@yoroi/types'
+import {NotEnoughMoneyToSendError, Portfolio} from '@yoroi/types'
 
 import {buildSimplePaymentTransaction} from '@yoroi-classic/cml-mobile-bridge'
 
@@ -36,31 +36,46 @@ export const buildSimplePaymentCml = ({
     return undefined
   }
 
-  const result = buildSimplePaymentTransaction({
-    inputs: inputs.map((input) =>
-      cmlPaymentInputFromUtxo(input, primaryTokenId),
-    ),
-    outputs: outputs.map((output) => ({
-      address: output.address,
-      lovelace: String(output.amounts[primaryTokenId] ?? '0'),
-      assets: cmlAssetsFromAmounts(output.amounts, primaryTokenId),
-      datum: output.datum
-        ? 'hash' in output.datum
-          ? {kind: 'hash' as const, hex: output.datum.hash}
-          : {kind: 'inline' as const, hex: output.datum.data}
-        : undefined,
-    })),
-    changeAddress,
-    ttl: String(ttl),
-    feeCoefficient: protocolParams.linearFee.coefficient,
-    feeConstant: protocolParams.linearFee.constant,
-    coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
-    keyDeposit: protocolParams.keyDeposit,
-    poolDeposit: protocolParams.poolDeposit,
-    maxValueSize: '5000',
-    metadata,
-  })
+  let result: ReturnType<typeof buildSimplePaymentTransaction>
+  try {
+    result = buildSimplePaymentTransaction({
+      inputs: inputs.map((input) =>
+        cmlPaymentInputFromUtxo(input, primaryTokenId),
+      ),
+      outputs: outputs.map((output) => ({
+        address: output.address,
+        lovelace: String(output.amounts[primaryTokenId] ?? '0'),
+        assets: cmlAssetsFromAmounts(output.amounts, primaryTokenId),
+        datum: output.datum
+          ? 'hash' in output.datum
+            ? {kind: 'hash' as const, hex: output.datum.hash}
+            : {kind: 'inline' as const, hex: output.datum.data}
+          : undefined,
+      })),
+      changeAddress,
+      ttl: String(ttl),
+      feeCoefficient: protocolParams.linearFee.coefficient,
+      feeConstant: protocolParams.linearFee.constant,
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+      keyDeposit: protocolParams.keyDeposit,
+      poolDeposit: protocolParams.poolDeposit,
+      maxValueSize: '5000',
+      metadata,
+    })
+  } catch (error) {
+    if (isInsufficientFundsError(error)) {
+      throw new NotEnoughMoneyToSendError()
+    }
+    throw error
+  }
   return {cbor: result.cborHex, fee: BigInt(result.fee)}
 }
 
 export {minimumAdaForAssetsCml}
+
+const isInsufficientFundsError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error)
+  return /(?:insufficient|not enough|shortage).*(?:input|ada|coin|balance|fund)|(?:input|ada|coin|balance|fund).*(?:insufficient|not enough|shortage)|change exceeds input/i.test(
+    message,
+  )
+}
