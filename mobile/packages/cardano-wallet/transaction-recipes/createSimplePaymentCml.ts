@@ -74,8 +74,18 @@ export const buildSimplePaymentCml = ({
 export {minimumAdaForAssetsCml}
 
 const isInsufficientFundsError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error)
-  return /(?:insufficient|not enough|shortage).*(?:input|ada|coin|balance|fund)|(?:input|ada|coin|balance|fund).*(?:insufficient|not enough|shortage)|change exceeds input/i.test(
-    message,
+  const message = (
+    error instanceof Error ? error.message : String(error)
+  ).toLowerCase()
+  return (
+    /(?:insufficient|not enough)\s+(?:input(?: value)?|ada|funds?|balance)\b/.test(
+      message,
+    ) ||
+    /(?:input(?: value)?|ada|funds?|balance)\s+(?:is\s+)?(?:insufficient|not enough)\b/.test(
+      message,
+    ) ||
+    /(?:input|ada|funds?|balance) shortage|shortage of (?:input|ada|funds?|balance)|change exceeds input(?: value)?/.test(
+      message,
+    )
   )
 }

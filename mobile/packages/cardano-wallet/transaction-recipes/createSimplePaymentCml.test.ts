@@ -99,7 +99,7 @@ describe('buildSimplePaymentCml', () => {
   })
 
   it('preserves unrelated CML transaction errors', () => {
-    const error = new Error('Invalid output address')
+    const error = new Error('Invalid input CBOR: not enough bytes')
     jest.mocked(buildSimplePaymentTransaction).mockImplementationOnce(() => {
       throw error
     })
