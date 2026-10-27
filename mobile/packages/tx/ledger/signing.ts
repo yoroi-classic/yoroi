@@ -36,6 +36,15 @@ const applyLedgerResponse = (
   senderUtxos: LedgerInput[] = [],
   plutusDataHexes?: string[],
 ): Uint8Array => {
+  for (const utxo of senderUtxos) {
+    if (utxo.addressing.startLevel !== 1) {
+      throw new Error('Ledger input addressing does not start at BIP-44 root')
+    }
+    if (utxo.addressing.path.length !== 5) {
+      throw new Error('Ledger input addressing must contain five path indexes')
+    }
+  }
+
   const signedHex = applyLedgerWitnessesToTransactionHex({
     transactionHex,
     accountPublicKeyHex: publicKeyHex,

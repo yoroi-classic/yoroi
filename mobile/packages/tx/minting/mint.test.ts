@@ -56,7 +56,7 @@ describe('minting', () => {
         assets: [{assetName: 'asset2', amount: '200' as BalanceQuantity}],
         script: {type: 'plutus', script: 'script1', plutusVersion: 'plutusV3'},
         redeemer: 'new_redeemer',
-        redeemerExUnits: {mem: '1', steps: '2'},
+        redeemerExUnits: {mem: '9', steps: '10'},
       }
 
       const state1 = addMint(state, mintAction1)
@@ -64,8 +64,8 @@ describe('minting', () => {
 
       expect(state2.options.mints?.[0]?.redeemer).toBe('new_redeemer')
       expect(state2.options.mints?.[0]?.redeemerExUnits).toEqual({
-        mem: '1',
-        steps: '2',
+        mem: '9',
+        steps: '10',
       })
     })
 

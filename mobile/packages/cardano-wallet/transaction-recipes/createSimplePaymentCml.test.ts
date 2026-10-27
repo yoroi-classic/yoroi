@@ -290,7 +290,8 @@ describe('buildSimplePaymentCml', () => {
         inputs: [
           {
             ...params.inputs[0],
-            receiver: '80d818582183581c' + '01'.repeat(28),
+            receiver:
+              'Ae2tdPwUPEZ5uzkzh1o2DHECiUi3iugvnnKHRisPgRRP3CTF4KCMvy54Xd3',
           },
         ],
       } as never),

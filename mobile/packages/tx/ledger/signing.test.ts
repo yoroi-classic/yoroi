@@ -20,6 +20,13 @@ describe('Ledger witness integration', () => {
   beforeEach(() => jest.clearAllMocks())
 
   it('merges Ledger signatures into transaction CBOR through the CML bridge', async () => {
+    const accountThreeLedgerResponse = {
+      ...ledgerResponse,
+      witnesses: ledgerResponse.witnesses.map((witness) => ({
+        ...witness,
+        path: [1852 + 0x80000000, 1815 + 0x80000000, 0x80000003, 0, 0],
+      })),
+    }
     const signed = await buildLedgerSignedTx(
       {
         transactionHex: '84a0a0f5',
@@ -29,13 +36,13 @@ describe('Ledger witness integration', () => {
             txHash: '01'.repeat(32),
             txIndex: 2,
             addressing: {
-              path: [1852 + 0x80000000, 1815 + 0x80000000, 0x80000000, 0, 0],
+              path: accountThreeLedgerResponse.witnesses[0]!.path,
               startLevel: 1,
             },
           },
         ],
       },
-      ledgerResponse as never,
+      accountThreeLedgerResponse as never,
       1852 + 0x80000000,
       'ef'.repeat(64),
       true,
@@ -49,9 +56,10 @@ describe('Ledger witness integration', () => {
       purpose: String(1852 + 0x80000000),
       coinType: '2147485463',
       accountIndex: '2147483651',
+      plutusDataHexes: undefined,
       witnesses: [
         {
-          path: ledgerResponse.witnesses[0]!.path,
+          path: accountThreeLedgerResponse.witnesses[0]!.path,
           signatureHex: 'cd'.repeat(64),
         },
       ],
@@ -61,7 +69,7 @@ describe('Ledger witness integration', () => {
           txHashHex: '01'.repeat(32),
           outputIndex: 2,
           address: 'addr_test1source',
-          path: ledgerResponse.witnesses[0]!.path,
+          path: accountThreeLedgerResponse.witnesses[0]!.path,
         },
       ],
     })
@@ -94,5 +102,51 @@ describe('Ledger witness integration', () => {
         senderUtxos: [],
       }),
     )
+  })
+
+  it('rejects sender paths that do not cover the BIP-44 address level', async () => {
+    await expect(
+      buildLedgerSignedTx(
+        {
+          transactionHex: '84a0a0f5',
+          senderUtxos: [
+            {
+              receiver: 'addr_test1source',
+              txHash: '01'.repeat(32),
+              txIndex: 2,
+              addressing: {
+                path: [1852 + 0x80000000, 1815 + 0x80000000, 0x80000000, 0],
+                startLevel: 1,
+              },
+            },
+          ],
+        },
+        ledgerResponse as never,
+        1852 + 0x80000000,
+        'ef'.repeat(64),
+      ),
+    ).rejects.toThrow('must contain five path indexes')
+
+    await expect(
+      buildLedgerSignedTx(
+        {
+          transactionHex: '84a0a0f5',
+          senderUtxos: [
+            {
+              receiver: 'addr_test1source',
+              txHash: '01'.repeat(32),
+              txIndex: 2,
+              addressing: {
+                path: [1852 + 0x80000000, 1815 + 0x80000000, 0x80000000, 0, 0],
+                startLevel: 2,
+              },
+            },
+          ],
+        },
+        ledgerResponse as never,
+        1852 + 0x80000000,
+        'ef'.repeat(64),
+      ),
+    ).rejects.toThrow('does not start at BIP-44 root')
   })
 })
