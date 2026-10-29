@@ -70,9 +70,12 @@ describe('createSendTx CML route', () => {
     const {buildSimplePaymentTransaction} = jest.requireMock(
       '@yoroi-classic/cml-mobile-bridge',
     )
-    buildSimplePaymentTransaction.mockImplementationOnce(() => {
+    const insufficientBalance = () => {
       throw new Error('UTxO Balance Insufficient. Inputs: Value { coin: 0 }')
-    })
+    }
+    buildSimplePaymentTransaction
+      .mockImplementationOnce(insufficientBalance)
+      .mockImplementationOnce(insufficientBalance)
     const address = Branded.asAddress(
       'addr_test1qrg0x4sx2wfd3l26zqs658u8vyg8qz4dzqw0zke45lpy0vkr3y3kdut55a40jff00qmg74686vz44v6k363md06qkq0qzplc3l',
     )
@@ -92,7 +95,7 @@ describe('createSendTx CML route', () => {
         entries: [
           {
             address,
-            amounts: {[primaryTokenId]: '3000000' as Balance.Quantity},
+            amounts: {[primaryTokenId]: '3900000' as Balance.Quantity},
           },
         ],
         primaryTokenId,
@@ -110,7 +113,12 @@ describe('createSendTx CML route', () => {
       }),
     ).resolves.toEqual({cbor: '84a0a0f5'})
 
-    expect(buildSimplePaymentTransaction).toHaveBeenCalledTimes(2)
+    expect(buildSimplePaymentTransaction).toHaveBeenCalledTimes(3)
+    const outputAmounts = buildSimplePaymentTransaction.mock.calls.map(
+      ([args]) => BigInt(args.outputs[0].lovelace),
+    )
+    expect(outputAmounts[1]).toBeLessThan(outputAmounts[0])
+    expect(outputAmounts[2]).toBeLessThan(outputAmounts[1])
   })
 
   it('raises token output ADA to CML minimum before using the fast path', async () => {

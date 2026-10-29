@@ -928,7 +928,6 @@ export async function createSendTx({
                 errorMessage.includes('Not enough ADA leftover') ||
                 errorMessage.includes('Not enough ADA')
               const isInsufficientInputError =
-                error instanceof NotEnoughMoneyToSendError ||
                 errorMessage.includes('Insufficient input') ||
                 errorMessage.includes('UTxO Balance Insufficient') ||
                 errorMessage.includes('shortage')
