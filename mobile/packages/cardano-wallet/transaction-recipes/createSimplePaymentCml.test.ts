@@ -13,7 +13,9 @@ import {
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   addressToHex: jest.fn((address: string) =>
-    address.includes('byron') || address.startsWith('Ae2') || address.startsWith('DdzFF')
+    address.includes('byron') ||
+    address.startsWith('Ae2') ||
+    address.startsWith('DdzFF')
       ? '82d818'
       : '01',
   ),
@@ -111,9 +113,7 @@ describe('buildSimplePaymentCml', () => {
     expect(() =>
       buildSimplePaymentCml({
         ...params,
-        outputs: [
-          {...params.outputs[0], address: 'R,50000000,-,-;R'},
-        ],
+        outputs: [{...params.outputs[0], address: 'R,50000000,-,-;R'}],
       } as never),
     ).toThrow('Invalid Cardano address')
     expect(buildSimplePaymentTransaction).not.toHaveBeenCalled()
@@ -225,7 +225,9 @@ describe('buildSimplePaymentCml', () => {
     const {addressInfoFromAddress, minimumCoinForAssets} = jest.requireMock(
       '@yoroi-classic/cml-mobile-bridge',
     )
-    addressInfoFromAddress.mockReturnValueOnce({bech32: 'addr_test_normalized'})
+    addressInfoFromAddress.mockReturnValueOnce({
+      bech32: 'addr_test_normalized',
+    })
 
     minimumAdaForAssetsCml({
       address: '00'.repeat(57),
@@ -325,7 +327,11 @@ describe('buildSimplePaymentCml', () => {
     buildSimplePaymentCml({
       ...params,
       outputs: [
-        {...params.outputs[0], address: scriptAddress, datum: {data: 'd87980'}},
+        {
+          ...params.outputs[0],
+          address: scriptAddress,
+          datum: {data: 'd87980'},
+        },
       ],
     } as never)
     expect(buildSimplePaymentTransaction).toHaveBeenLastCalledWith(

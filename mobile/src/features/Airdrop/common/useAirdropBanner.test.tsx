@@ -5,6 +5,9 @@ import * as React from 'react'
 import {useAirdropBanner} from './useAirdropBanner'
 
 const mockRemoveBanner = jest.fn().mockResolvedValue(undefined)
+const mockShowBanner = jest.fn()
+const mockAllocations: unknown[] = [{address: 'addr_test', amount: '1'}]
+const mockTotalRedeemableAmount = 1
 const mockWallet = {
   id: 'mainnet-wallet',
   isMainnet: true,
@@ -13,6 +16,10 @@ const mockWallet = {
 
 jest.mock('@yoroi/notifications', () => ({
   useNotificationManager: () => ({events: {remove: mockRemoveBanner}}),
+}))
+jest.mock('~/features/Notifications/common/banners', () => ({
+  BannerIds: {Airdrop: 987654321},
+  showBanner: mockShowBanner,
 }))
 jest.mock('@yoroi/wallet-manager', () => ({
   useWalletManager: () => ({
@@ -31,14 +38,15 @@ jest.mock('~/kernel/i18n/useStrings', () => ({
 }))
 jest.mock('./useAirdropEligibility', () => ({
   useAirdropEligibility: () => ({
-    allocations: [],
-    totalRedeemableAmount: 0,
+    allocations: mockAllocations,
+    totalRedeemableAmount: mockTotalRedeemableAmount,
     isLoading: false,
   }),
 }))
 
 describe('useAirdropBanner', () => {
   it('removes a persisted banner when the backend endpoint is not configured', async () => {
+    mockShowBanner.mockClear()
     const queryClient = new QueryClient()
     const wrapper = ({children}: {children: React.ReactNode}) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -48,6 +56,7 @@ describe('useAirdropBanner', () => {
 
     await waitFor(() => expect(mockRemoveBanner).toHaveBeenCalled())
     expect(mockRemoveBanner).toHaveBeenCalledWith(987654321)
+    expect(mockShowBanner).not.toHaveBeenCalled()
     queryClient.clear()
   })
 })

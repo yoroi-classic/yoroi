@@ -60,10 +60,57 @@ describe('createSendTx CML route', () => {
     expect(buildSimplePaymentTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
         ttl: '7300',
-        changeAddress: 'addr_test_normalized',
-        outputs: [expect.objectContaining({address: 'addr_test_normalized'})],
+        changeAddress: '01',
+        outputs: [expect.objectContaining({address: '01'})],
       }),
     )
+  })
+
+  it('retries send max after CML reports an insufficient UTxO balance', async () => {
+    const {buildSimplePaymentTransaction} = jest.requireMock(
+      '@yoroi-classic/cml-mobile-bridge',
+    )
+    buildSimplePaymentTransaction.mockImplementationOnce(() => {
+      throw new Error('UTxO Balance Insufficient. Inputs: Value { coin: 0 }')
+    })
+    const address = Branded.asAddress(
+      'addr_test1qrg0x4sx2wfd3l26zqs658u8vyg8qz4dzqw0zke45lpy0vkr3y3kdut55a40jff00qmg74686vz44v6k363md06qkq0qzplc3l',
+    )
+    const primaryTokenId = '' as Portfolio.Token.Id
+
+    await expect(
+      createSendTx({
+        utxos: [
+          {
+            receiver: address,
+            txHash: Branded.asTransactionHash('a'.repeat(64)),
+            txIndex: 0,
+            balance: {[primaryTokenId]: '4000000' as Balance.Quantity},
+            toTransactionUnspentOutputHex: () => '',
+          },
+        ],
+        entries: [
+          {
+            address,
+            amounts: {[primaryTokenId]: '3000000' as Balance.Quantity},
+          },
+        ],
+        primaryTokenId,
+        protocolParams: {
+          coinsPerUtxoByte: '4310',
+          keyDeposit: '2000000',
+          linearFee: {constant: '155381', coefficient: '44'},
+          poolDeposit: '500000000',
+        },
+        networkId: 0,
+        getAbsoluteSlotNumber: async () => new BigNumber(100),
+        getChangeAddress: () => address,
+        addressMode: 'single' as Wallet.AddressMode,
+        subtractFeeFromAmount: true,
+      }),
+    ).resolves.toEqual({cbor: '84a0a0f5'})
+
+    expect(buildSimplePaymentTransaction).toHaveBeenCalledTimes(2)
   })
 
   it('raises token output ADA to CML minimum before using the fast path', async () => {

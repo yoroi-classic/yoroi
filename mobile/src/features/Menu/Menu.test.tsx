@@ -1,7 +1,7 @@
 import {render, screen} from '@testing-library/react-native'
 import * as React from 'react'
 
-import {MenuNavigator} from './Menu'
+import {Menu, MenuNavigator} from './Menu'
 
 let mockBackendUrl: string | undefined
 
@@ -24,6 +24,44 @@ jest.mock('@yoroi/theme', () => ({
   atoms: {},
   useTheme: () => ({palette: {}, atoms: {}}),
 }))
+jest.mock('@yoroi/wallet-manager', () => ({
+  useSelectedWallet: () => ({wallet: {}}),
+}))
+jest.mock('~/features/Airdrop/common/useHasRedeemableThaws', () => ({
+  useHasRedeemableThaws: () => ({hasRedeemableThaws: false}),
+}))
+jest.mock('~/features/WalletManager/hooks/useIsByronWallet', () => ({
+  useIsByronWallet: () => false,
+}))
+jest.mock('../Staking/Staking/PoolTransition/usePoolTransition', () => ({
+  usePoolTransition: () => ({isPoolRetiring: false}),
+}))
+jest.mock('~/features/Dashboard/ui/shared/StakePoolInfos', () => ({
+  usePrefetchStakingInfo: () => jest.fn(),
+}))
+jest.mock('~/features/RegisterCatalyst/common/hooks', () => ({
+  useCanVote: () => ({sufficientFunds: true, isLoading: false}),
+}))
+jest.mock('~/kernel/navigation/hooks/useWalletNavigation', () => ({
+  useWalletNavigation: () => ({
+    navigateToSettings: jest.fn(),
+    navigateToGovernanceCentre: jest.fn(),
+    navigateToStakingDashboard: jest.fn(),
+    navigateToCatalystVotingDashboard: jest.fn(),
+    navigateToUtxoList: jest.fn(),
+    navigateToMessageSigning: jest.fn(),
+    navigateToAirdrop: jest.fn(),
+  }),
+}))
+jest.mock('~/ui/Modal/context/ModalContext', () => ({
+  useModal: () => ({openModal: jest.fn()}),
+}))
+jest.mock('~/ui/Space/Space', () => ({
+  Space: {
+    Width: {sm: () => null, lg: () => null},
+    Height: {sm: () => null, lg: () => null},
+  },
+}))
 jest.mock('~/common/hooks/useRemoteConfig', () => ({
   useRemoteConfig: () => ({
     config: {features: {midnightAirdrop: {enabled: true}}},
@@ -36,7 +74,20 @@ jest.mock('~/kernel/constants', () => ({
 }))
 jest.mock('~/kernel/i18n/useStrings', () => ({
   useStrings: () => ({
-    menu: {menu: 'Menu'},
+    menu: {
+      menu: 'Menu',
+      airdrop: 'Airdrop',
+      attention: 'Attention',
+      catalystVoting: 'Catalyst',
+      governanceCentre: 'Governance',
+      knowledgeBase: 'Knowledge base',
+      messageSigning: 'Message signing',
+      settings: 'Settings',
+      stakingCenter: 'Staking',
+      supportLink: 'Support',
+      supportTitle: 'Support',
+      utxoList: 'UTxO list',
+    },
     transactions: {
       utxo: {utxoListTitle: 'UTxOs'},
       utxoConsolidationTitle: 'Consolidate UTxOs',
@@ -88,6 +139,14 @@ describe('MenuNavigator airdrop route', () => {
     render(<MenuNavigator />)
 
     expect(screen.queryByTestId('menu-route-airdrop')).toBeNull()
+  })
+
+  it('does not render the airdrop menu entry when the backend URL is not configured', () => {
+    mockBackendUrl = undefined
+
+    render(<Menu />)
+
+    expect(screen.queryByText('Airdrop')).toBeNull()
   })
 
   it('includes the route when the backend URL is configured', () => {
