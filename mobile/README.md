@@ -421,7 +421,15 @@ EXPO_PUBLIC_UNSTOPPABLE_API_KEY=your_api_key
 
 # Optional cardano-wallet-backend /v1 URL
 EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL=http://device-reachable-host:port
+
+# Enable Midnight redemption only when this CWB deployment returns reference-script bytes
+EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES=true
 ```
+
+Midnight redemption also requires `EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES=true`.
+It defaults to disabled because older CWB deployments return reference-script hashes without script
+bytes, which cannot be used to build a redemption transaction. Set it only after verifying the
+configured backend serves those bytes.
 
 ### Local cardano-wallet-backend Smoke
 

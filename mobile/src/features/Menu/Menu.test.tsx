@@ -4,6 +4,8 @@ import * as React from 'react'
 import {Menu, MenuNavigator} from './Menu'
 
 let mockBackendUrl: string | undefined
+const previousReferenceScriptFlag =
+  process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
 
 jest.mock('@react-navigation/stack', () => {
   const React = require('react')
@@ -133,6 +135,16 @@ jest.mock('../RegisterCatalyst/common/InsufficientFundsModal', () => ({
 }))
 
 describe('MenuNavigator airdrop route', () => {
+  afterEach(() => {
+    if (previousReferenceScriptFlag == null) {
+      delete process.env
+        .EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
+    } else {
+      process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+        previousReferenceScriptFlag
+    }
+  })
+
   it('omits the route when the backend URL is not configured', () => {
     mockBackendUrl = undefined
 
@@ -151,6 +163,8 @@ describe('MenuNavigator airdrop route', () => {
 
   it('includes the route when the backend URL is configured', () => {
     mockBackendUrl = 'https://wallet-backend.example'
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
 
     render(<MenuNavigator />)
 
