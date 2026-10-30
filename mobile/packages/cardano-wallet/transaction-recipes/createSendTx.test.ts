@@ -1,6 +1,9 @@
 import {Balance, Branded, Portfolio, Wallet} from '@yoroi/types'
 
-import {buildSimplePaymentTransaction} from '@yoroi-classic/cml-mobile-bridge'
+import {
+  buildSimplePaymentTransaction,
+  type SimplePaymentBuilderArguments,
+} from '@yoroi-classic/cml-mobile-bridge'
 import BigNumber from 'bignumber.js'
 
 import {createSendTx} from './createSendTx'
@@ -115,7 +118,8 @@ describe('createSendTx CML route', () => {
 
     expect(buildSimplePaymentTransaction).toHaveBeenCalledTimes(3)
     const outputAmounts = buildSimplePaymentTransaction.mock.calls.map(
-      ([args]) => BigInt(args.outputs[0].lovelace),
+      ([args]: [SimplePaymentBuilderArguments]) =>
+        BigInt(args.outputs[0]!.lovelace),
     )
     expect(outputAmounts[1]).toBeLessThan(outputAmounts[0])
     expect(outputAmounts[2]).toBeLessThan(outputAmounts[1])
