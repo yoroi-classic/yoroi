@@ -113,6 +113,48 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     })
   })
 
+  it('rejects UTxOs that duplicate after hexadecimal normalization', async () => {
+    const request = preprodRequest([
+      validAccountUtxo(),
+      {...validAccountUtxo(), txHash: TX_HASH.toUpperCase()},
+    ])
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+      'Duplicate cardano-wallet-backend account UTxO',
+    )
+  })
+
+  it('rejects assets that duplicate after hexadecimal normalization', async () => {
+    const utxo = validAccountUtxo()
+    const request = preprodRequest([
+      {
+        ...utxo,
+        assets: [
+          ...utxo.assets,
+          {
+            ...utxo.assets[0],
+            policyId: POLICY_ID.toUpperCase(),
+            assetName: utxo.assets[0]!.assetName.toUpperCase(),
+          },
+        ],
+      },
+    ])
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+      'Duplicate asset in cardano-wallet-backend account UTxO',
+    )
+  })
+
   it('rejects malformed responses before they reach transaction construction', async () => {
     const request = preprodRequest([
       {

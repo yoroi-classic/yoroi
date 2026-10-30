@@ -144,8 +144,7 @@ export const makeCurrentStateUtxoManager = async ({
       for (const overlay of pending) {
         const observed =
           overlay.spentUtxoIds.length > 0 &&
-          overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId)) &&
-          overlay.createdUtxos.every((utxo) => currentIds.has(utxo.utxoId))
+          overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
         if (observed) {
           await pendingStore.removePendingUtxoOverlay(
             stakeAddress,
@@ -173,6 +172,11 @@ const currentStateSerializer = (utxo: CurrentStateUtxo): RawUtxo => ({
     policyId: asset.policyId,
     name: asset.name,
   })),
+  ...(utxo.datumHash === undefined ? {} : {datumHash: utxo.datumHash}),
+  ...(utxo.inlineDatum === undefined ? {} : {inlineDatum: utxo.inlineDatum}),
+  ...(utxo.referenceScriptHash === undefined
+    ? {}
+    : {referenceScriptHash: utxo.referenceScriptHash}),
 })
 
 export const makeUtxoManagerStorage = (storage: App.Storage) => {

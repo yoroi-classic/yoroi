@@ -252,6 +252,9 @@ export const makeCardanoWallet = (
     // Use global rootStorage instead of legacyRootStorage from networkManager
     // Path matches legacy storage structure: /legacy/${network}/v1/${id}/
     const {network} = networkManager
+    const cardanoWalletBackendUrl = dependencies.cardanoWalletBackendUrl
+      ?.trim()
+      .replace(/\/+$/, '')
     const walletRootStorage = rootStorage.join(`legacy/${network}/v1/${id}/`)
     const accountStorage = walletRootStorage.join(`accounts/${accountVisual}/`)
 
@@ -284,9 +287,9 @@ export const makeCardanoWallet = (
         currentStateSource:
           implementation === 'cardano-cip1852' &&
           dependencies.currentStateUtxoEnabled === true &&
-          dependencies.cardanoWalletBackendUrl
+          cardanoWalletBackendUrl
             ? createCardanoWalletBackendUtxoSource(
-                dependencies.cardanoWalletBackendUrl,
+                cardanoWalletBackendUrl,
                 network,
               )
             : undefined,
@@ -413,7 +416,7 @@ export const makeCardanoWallet = (
 
     const utxoStorage = accountStorage.join('utxos/')
     const utxoBackend = selectUtxoBackend({
-      backendUrl: dependencies.cardanoWalletBackendUrl,
+      backendUrl: cardanoWalletBackendUrl,
       enabled: dependencies.currentStateUtxoEnabled,
       implementation,
       rewardAddressHex: finalRewardAddressHex,
@@ -1055,6 +1058,41 @@ function createWalletObject(
     }
   }
 
+  const updateWalletUtxos = async (
+    newUtxos: RawUtxo[],
+    isForced: boolean = false,
+  ): Promise<boolean> => {
+    if (state.collateralId.length === 0) {
+      const potentialCollateralId = utxosMaker(newUtxos).drawnCollateral()
+      if (potentialCollateralId) {
+        const collateralIdBranded = Branded.asUtxoId(potentialCollateralId)
+        await state.utxoManager.setCollateralId(collateralIdBranded)
+        state.collateralId = potentialCollateralId
+        notify({type: 'collateral-id', collateralId: collateralIdBranded})
+        getLogger().info('syncUtxos: Auto-detected and saved collateral ID', {
+          collateralId: potentialCollateralId,
+        })
+      }
+    }
+
+    if (!didUtxosUpdate(state.utxos, newUtxos) && !isForced) return false
+
+    const spendableUtxos = getSpendableUtxosOp(newUtxos, state.collateralId)
+    const lockedAsStorageCost = await calcLockedDeposit({
+      rawUtxos: spendableUtxos,
+      coinsPerUtxoByteStr: state.protocolParams.coinsPerUtxoByte,
+    })
+    const balancesToSync = state.dependencies.toBalanceManagerSyncArgs(
+      newUtxos,
+      BigInt(lockedAsStorageCost.toString()),
+    )
+
+    state.balanceManager.syncBalances(balancesToSync)
+    state.utxos = newUtxos
+    notify({type: 'utxos', utxos: utxos()})
+    return true
+  }
+
   const submitTransaction = async (base64SignedTx: TransactionCborBase64) => {
     const pendingOverlay =
       state.utxoManager.kind === 'current-state'
@@ -1070,6 +1108,12 @@ function createWalletObject(
         : undefined
     if (pendingOverlay && state.utxoManager.kind === 'current-state') {
       await state.utxoManager.savePendingOverlay(pendingOverlay)
+      try {
+        await updateWalletUtxos(await state.utxoManager.getCachedUtxos(), true)
+      } catch (error) {
+        await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+        throw error
+      }
     }
 
     try {
@@ -1086,6 +1130,7 @@ function createWalletObject(
         walletId: state.id,
       })
       if (pendingOverlay && state.utxoManager.kind === 'current-state') {
+        let submissionFailed = false
         try {
           const status = await legacyApi.fetchTxStatus(
             {txHashes: [pendingOverlay.txHash]},
@@ -1096,10 +1141,24 @@ function createWalletObject(
             submission?.status === 'FAILED' ||
             submission?.status === 'MAX_RETRY_REACHED'
           ) {
-            await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+            submissionFailed = true
           }
         } catch {
           // Keep the overlay when submission outcome cannot be confirmed.
+        }
+        if (submissionFailed) {
+          await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+          try {
+            await updateWalletUtxos(
+              await state.utxoManager.getCachedUtxos(),
+              true,
+            )
+          } catch (refreshError) {
+            logger.error(
+              'cardano-wallet.submitTransaction: Failed to refresh UTxOs after rejection',
+              {error: refreshError, walletId: state.id},
+            )
+          }
         }
       }
       throw error
@@ -1124,50 +1183,7 @@ function createWalletObject(
     await state.utxoManager.sync(addresses)
     const newUtxos = await state.utxoManager.getCachedUtxos()
 
-    // Auto-detect and save collateral ID if not set but a matching UTXO exists
-    // This handles the case where a wallet is restored with an existing collateral UTXO
-    if (state.collateralId.length === 0) {
-      const utxosList = utxosMaker(newUtxos)
-      const potentialCollateralId = utxosList.drawnCollateral()
-      if (potentialCollateralId) {
-        const collateralIdBranded = Branded.asUtxoId(potentialCollateralId)
-        await state.utxoManager.setCollateralId(collateralIdBranded)
-        state.collateralId = potentialCollateralId
-        notify({type: 'collateral-id', collateralId: collateralIdBranded})
-        getLogger().info('syncUtxos: Auto-detected and saved collateral ID', {
-          collateralId: potentialCollateralId,
-        })
-      }
-    }
-
-    // NOTE: wallet is not aware of utxos state
-    // if it crashes, the utxo manager will be out of sync with wallet
-    if (didUtxosUpdate(state.utxos, newUtxos) || isForced) {
-      // Exclude collateral UTXO from locked deposit calculation
-      // Collateral is not a storage cost, it's locked for DApp transactions
-      const spendableUtxos = getSpendableUtxosOp(newUtxos, state.collateralId)
-
-      // NOTE: recalc locked deposit should happen also when epoch changes after conway
-      // Only calculate locked deposit for spendable UTXOs (exclude collateral)
-      const lockedAsStorageCost = await calcLockedDeposit({
-        rawUtxos: spendableUtxos,
-        coinsPerUtxoByteStr: state.protocolParams.coinsPerUtxoByte,
-      })
-
-      // Include all UTXOs (including collateral) in total balance
-      // Collateral is owned by the wallet and should appear in total balance
-      const balancesToSync = state.dependencies.toBalanceManagerSyncArgs(
-        newUtxos,
-        BigInt(lockedAsStorageCost.toString()),
-      )
-
-      state.balanceManager.syncBalances(balancesToSync)
-
-      state.utxos = newUtxos
-      notify({type: 'utxos', utxos: utxos()})
-      return true
-    }
-    return false
+    return updateWalletUtxos(newUtxos, isForced)
   }
 
   const utxos = (): Array<RawUtxo> => {

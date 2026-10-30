@@ -197,7 +197,7 @@ export const createCardanoWalletBackendUtxoSource = (
             'cardano-wallet-backend account UTxO network mismatch',
           )
         }
-        const utxoId = `${utxo.txHash}:${utxo.outputIndex}`
+        const utxoId = `${utxo.txHash.toLowerCase()}:${utxo.outputIndex}`
         if (seenUtxos.has(utxoId)) {
           throw new Error('Duplicate cardano-wallet-backend account UTxO')
         }
@@ -205,7 +205,7 @@ export const createCardanoWalletBackendUtxoSource = (
 
         const seenAssets = new Set<string>()
         for (const asset of utxo.assets) {
-          const assetId = `${asset.policyId}.${asset.assetName}`
+          const assetId = `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`
           if (seenAssets.has(assetId)) {
             throw new Error(
               'Duplicate asset in cardano-wallet-backend account UTxO',

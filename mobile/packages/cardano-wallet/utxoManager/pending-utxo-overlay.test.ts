@@ -84,7 +84,7 @@ describe('createPendingUtxoOverlayFromCbor', () => {
       JSON.stringify({
         isValid: false,
         body: {
-          inputs: [{transactionIdHex: inputHash, index: '0'}],
+          inputs: [{transactionIdHex: 'ef'.repeat(32), index: '0'}],
           outputs: [reviewOutput(otherAddress)],
           collateralInputs: [{transactionIdHex: inputHash, index: '0'}],
           collateralReturn: reviewOutput(walletAddress),

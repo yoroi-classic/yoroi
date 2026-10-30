@@ -1,7 +1,11 @@
 import {buildNetworkManagers} from '@yoroi/blockchains'
 import {createTokenManagerMock} from '@yoroi/portfolio'
-import {createPersistentPendingUtxoOverlayStore} from '@yoroi/tx'
-import {App, Chain} from '@yoroi/types'
+import {
+  PendingUtxoOverlay,
+  PersistentPendingUtxoOverlayStore,
+  createPersistentPendingUtxoOverlayStore,
+} from '@yoroi/tx'
+import {App, Balance, Branded, Chain, TransactionCborBase64} from '@yoroi/types'
 import {
   getWalletFactory,
   initializeWalletFactories,
@@ -10,9 +14,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import * as accountManagerApi from './account-manager/account-manager'
+import * as readOnlyAccountManagerApi from './account-manager/read-only-account-manager'
+import * as legacyApi from './api/api'
 import {selectUtxoBackend} from './cardano-wallet'
 import type {CardanoWalletDependencies} from './dependencies'
 import {keyManager} from './key-manager/key-manager'
+import * as pendingOverlayApi from './utxoManager/pending-utxo-overlay'
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   walletRootKeyHexFromEntropy: jest.fn(() => 'ab'.repeat(96)),
@@ -85,6 +92,7 @@ const mockCardanoWalletDependencies: CardanoWalletDependencies = {
       subscribe: jest.fn(),
       unsubscribe: jest.fn(),
       observable$: {subscribe: jest.fn()},
+      syncBalances: jest.fn(),
       getPrimaryBalance: jest.fn(),
       getBalances: jest.fn(),
       destroy: jest.fn(),
@@ -173,6 +181,128 @@ describe('CardanoWallet', () => {
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }
   })
+
+  it('updates in-memory UTxOs immediately after saving a pending overlay', async () => {
+    mockCardanoWalletDependencies.cardanoWalletBackendUrl =
+      'https://wallet-backend.example.com'
+    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
+    let pendingOverlays: PendingUtxoOverlay[] = []
+    const pendingStore = {
+      getPendingUtxoOverlaysInSubmissionOrder: async () => pendingOverlays,
+      savePendingUtxoOverlay: async (
+        _stakeAddress: string,
+        pending: PendingUtxoOverlay,
+      ) => {
+        pendingOverlays = [...pendingOverlays, pending]
+      },
+      replacePendingUtxoOverlays: async (
+        _stakeAddress: string,
+        pending: ReadonlyArray<PendingUtxoOverlay>,
+      ) => {
+        pendingOverlays = [...pending]
+      },
+      removePendingUtxoOverlay: async (
+        _stakeAddress: string,
+        txHash: PendingUtxoOverlay['txHash'],
+      ) => {
+        pendingOverlays = pendingOverlays.filter(
+          (pending) => pending.txHash !== txHash,
+        )
+      },
+      clearPendingUtxoOverlays: async () => {
+        pendingOverlays = []
+      },
+      clearPendingUtxoOverlaysForFullResync: async () => {
+        pendingOverlays = []
+      },
+    } as PersistentPendingUtxoOverlayStore
+    mockCardanoWalletDependencies.makePendingUtxoOverlayStore = () =>
+      pendingStore
+    const output = {
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1fixture'),
+      amount: '1000000' as Balance.Quantity,
+      assets: [],
+    }
+    const overlay: PendingUtxoOverlay = {
+      txHash: output.txHash,
+      spentUtxoIds: [Branded.asUtxoId(`${'a'.repeat(64)}:0`)],
+      createdUtxos: [output],
+    }
+    const overlaySpy = jest
+      .spyOn(pendingOverlayApi, 'createPendingUtxoOverlayFromCbor')
+      .mockReturnValue(overlay)
+    const submitSpy = jest
+      .spyOn(legacyApi, 'submitTransaction')
+      .mockResolvedValue(undefined)
+
+    try {
+      const ShelleyWalletPreprod = getWalletFactory({
+        implementation: 'cardano-cip1852',
+        network: Chain.Network.Preprod,
+      })
+      const wallet = await ShelleyWalletPreprod.build({
+        id: 'current-state-pending-overlay-wallet',
+        accountPubKeyHex:
+          '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+        accountVisual: 0,
+      })
+      const utxoEvents: Array<Array<{utxo_id: string}>> = []
+      wallet.subscribe((event) => {
+        if (event.type === 'utxos') utxoEvents.push(event.utxos)
+      })
+
+      await wallet.submitTransaction('AQID' as TransactionCborBase64)
+
+      expect(wallet.usesCurrentStateUtxos).toBe(true)
+      expect(overlaySpy).toHaveBeenCalledTimes(1)
+      expect(submitSpy).toHaveBeenCalledTimes(1)
+      expect(wallet.utxos()).toEqual([
+        expect.objectContaining({utxo_id: output.utxoId}),
+      ])
+      expect(utxoEvents.at(-1)).toEqual([
+        expect.objectContaining({utxo_id: output.utxoId}),
+      ])
+      expect(submitSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      overlaySpy.mockRestore()
+      submitSpy.mockRestore()
+      delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
+      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
+      delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
+    }
+  })
+
+  it('does not enable read-only discovery with a whitespace-only backend URL', async () => {
+    const readOnlyAccountManagerSpy = jest.spyOn(
+      readOnlyAccountManagerApi,
+      'readOnlyAccountManagerMaker',
+    )
+    mockCardanoWalletDependencies.cardanoWalletBackendUrl = '   '
+    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
+
+    try {
+      const ShelleyWalletPreprod = getWalletFactory({
+        implementation: 'cardano-cip1852',
+        network: Chain.Network.Preprod,
+      })
+      await ShelleyWalletPreprod.build({
+        id: 'read-only-whitespace-backend',
+        accountVisual: 0,
+        readOnlyAddresses: {knownAddress: 'addr_test1fixture'},
+      })
+
+      expect(readOnlyAccountManagerSpy).toHaveBeenCalledWith(
+        expect.objectContaining({currentStateSource: undefined}),
+      )
+    } finally {
+      readOnlyAccountManagerSpy.mockRestore()
+      delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
+      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
+    }
+  })
 })
 
 describe('selectUtxoBackend', () => {
@@ -209,6 +339,17 @@ describe('selectUtxoBackend', () => {
   it('keeps the explicit legacy path when no backend is configured', () => {
     expect(
       selectUtxoBackend({
+        implementation: 'cardano-cip1852',
+        rewardAddressHex: 'e0c11ef0',
+      }),
+    ).toEqual({kind: 'legacy', reason: 'not-configured'})
+  })
+
+  it('treats whitespace-only backend URLs as not configured', () => {
+    expect(
+      selectUtxoBackend({
+        backendUrl: '   ',
+        enabled: true,
         implementation: 'cardano-cip1852',
         rewardAddressHex: 'e0c11ef0',
       }),

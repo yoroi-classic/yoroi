@@ -208,17 +208,32 @@ export const makeSyncManager = (
       ? await getTipStatusForNetwork(state.currentNetwork, baseApiUrl)
       : null
 
+    const walletsToSync =
+      requiresLegacyTipStatus && !tipStatus
+        ? networkWallets.filter(
+            (wallet) => wallet.usesCurrentStateUtxos === true,
+          )
+        : networkWallets
+
     if (requiresLegacyTipStatus && !tipStatus) {
-      getLogger().warn('syncManager: No tip status available, skipping sync', {
-        network: state.currentNetwork,
-        origin: 'SyncManager',
-      })
+      getLogger().warn(
+        'syncManager: No tip status available, skipping legacy wallet syncs',
+        {
+          network: state.currentNetwork,
+          skippedLegacyWalletCount:
+            networkWallets.length - walletsToSync.length,
+          origin: 'SyncManager',
+        },
+      )
+    }
+
+    if (walletsToSync.length === 0) {
       return
     }
 
     // Prioritize wallets (last selected first)
     const prioritizedWallets = prioritizeWallets(
-      networkWallets,
+      walletsToSync,
       currentSelectedWalletId,
       state,
     )

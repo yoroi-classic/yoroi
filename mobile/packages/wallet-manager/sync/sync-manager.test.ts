@@ -1,10 +1,29 @@
 import {YoroiWallet} from '@yoroi/cardano-wallet'
+import {getTipStatusService} from '@yoroi/cardano-wallet'
 import {Chain} from '@yoroi/types'
 
 import {BehaviorSubject} from 'rxjs'
 
 import {defaultSyncConfig} from './sync-config'
 import {makeSyncManager, needsLegacyTipStatus} from './sync-manager'
+
+jest.mock('@yoroi/cardano-wallet', () => ({
+  getTipStatusService: jest.fn(),
+}))
+
+const mockFetchTipStatus = jest.fn()
+const mockGetTipStatusService = jest.mocked(getTipStatusService)
+
+const waitForWalletSync = (wallet: YoroiWallet) => {
+  let resolve!: () => void
+  const synced = new Promise<void>((done) => {
+    resolve = done
+  })
+  jest.mocked(wallet.sync).mockImplementationOnce(async () => {
+    resolve()
+  })
+  return synced
+}
 
 describe('SyncManager', () => {
   let mockWallets: YoroiWallet[]
@@ -14,10 +33,15 @@ describe('SyncManager', () => {
   let syncManager: ReturnType<typeof makeSyncManager>
 
   beforeEach(() => {
+    mockFetchTipStatus.mockReset().mockResolvedValue({} as never)
+    mockGetTipStatusService.mockReset().mockReturnValue({
+      fetchTipStatus: mockFetchTipStatus,
+    } as unknown as ReturnType<typeof getTipStatusService>)
     mockWallets = [
       {
         id: 'wallet-1',
         sync: jest.fn().mockResolvedValue(undefined),
+        utxos: jest.fn(() => []),
         networkManager: {
           network: Chain.Network.Mainnet,
         },
@@ -25,6 +49,7 @@ describe('SyncManager', () => {
       {
         id: 'wallet-2',
         sync: jest.fn().mockResolvedValue(undefined),
+        utxos: jest.fn(() => []),
         networkManager: {
           network: Chain.Network.Mainnet,
         },
@@ -43,11 +68,20 @@ describe('SyncManager', () => {
       selectedNetwork$.asObservable(),
       defaultSyncConfig,
     )
+    syncManager.updateWallets(mockWallets)
   })
 
   afterEach(() => {
     syncManager.stop()
   })
+
+  const setCurrentStateWallets = (flags: boolean[]) => {
+    mockWallets = mockWallets.map(
+      (wallet, index) =>
+        ({...wallet, usesCurrentStateUtxos: flags[index]}) as YoroiWallet,
+    )
+    syncManager.updateWallets(mockWallets)
+  }
 
   it('fetches legacy tip status only when at least one wallet needs it', () => {
     expect(needsLegacyTipStatus([{usesCurrentStateUtxos: true}])).toBe(false)
@@ -58,6 +92,94 @@ describe('SyncManager', () => {
       ]),
     ).toBe(true)
     expect(needsLegacyTipStatus([{}])).toBe(true)
+  })
+
+  it('does not fetch a legacy tip for performSync when all wallets use current-state UTxOs', async () => {
+    setCurrentStateWallets([true, true])
+    const synced = waitForWalletSync(mockWallets[0]!)
+
+    syncManager.start()
+    await synced
+
+    expect(mockGetTipStatusService).not.toHaveBeenCalled()
+  })
+
+  it('fetches a legacy tip for performSync when a legacy wallet is present', async () => {
+    const synced = waitForWalletSync(mockWallets[0]!)
+
+    syncManager.start()
+    await synced
+
+    expect(mockGetTipStatusService).toHaveBeenCalledTimes(1)
+    expect(mockFetchTipStatus).toHaveBeenCalledWith(false)
+  })
+
+  it('syncs current-state wallets when a mixed network cannot fetch a legacy tip', async () => {
+    setCurrentStateWallets([false, true])
+    mockFetchTipStatus.mockResolvedValue(null)
+    const currentStateSync = waitForWalletSync(mockWallets[1]!)
+
+    syncManager.start()
+    await currentStateSync
+
+    expect(mockWallets[0]!.sync).not.toHaveBeenCalled()
+    expect(mockWallets[1]!.sync).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fetch a legacy tip for a current-state transaction submission', async () => {
+    setCurrentStateWallets([true, true])
+    const initialSync = waitForWalletSync(mockWallets[0]!)
+    syncManager.start()
+    await initialSync
+    const submittedSync = waitForWalletSync(mockWallets[0]!)
+
+    syncManager.notifyTransactionSubmitted({
+      walletId: 'wallet-1',
+      txId: 'tx-current-state',
+      timestamp: Date.now(),
+    })
+    await submittedSync
+
+    expect(mockGetTipStatusService).not.toHaveBeenCalled()
+  })
+
+  it('fetches a legacy tip for a legacy transaction submission', async () => {
+    const initialSync = waitForWalletSync(mockWallets[0]!)
+    syncManager.start()
+    await initialSync
+    mockGetTipStatusService.mockClear()
+    mockFetchTipStatus.mockClear()
+    const submittedSync = waitForWalletSync(mockWallets[0]!)
+
+    syncManager.notifyTransactionSubmitted({
+      walletId: 'wallet-1',
+      txId: 'tx-legacy',
+      timestamp: Date.now(),
+    })
+    await submittedSync
+
+    expect(mockGetTipStatusService).toHaveBeenCalledTimes(1)
+    expect(mockFetchTipStatus).toHaveBeenCalledWith(false)
+  })
+
+  it('does not fetch a legacy tip for a current-state triggerSync', async () => {
+    setCurrentStateWallets([true, false])
+    const synced = waitForWalletSync(mockWallets[0]!)
+
+    syncManager.triggerSync('wallet-1')
+    await synced
+
+    expect(mockGetTipStatusService).not.toHaveBeenCalled()
+  })
+
+  it('fetches a legacy tip for a legacy triggerSync', async () => {
+    const synced = waitForWalletSync(mockWallets[0]!)
+
+    syncManager.triggerSync('wallet-1')
+    await synced
+
+    expect(mockGetTipStatusService).toHaveBeenCalledTimes(1)
+    expect(mockFetchTipStatus).toHaveBeenCalledWith(false)
   })
 
   describe('start', () => {
