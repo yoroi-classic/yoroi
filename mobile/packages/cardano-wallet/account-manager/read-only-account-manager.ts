@@ -1,5 +1,6 @@
 import {time} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
+import type {CurrentStateWalletSource} from '@yoroi/tx'
 import {
   Address,
   App,
@@ -137,11 +138,13 @@ async function discoverUsedAddressesByStakingCredential({
   knownBaseAddress,
   chainId,
   baseApiUrl,
+  currentStateSource,
   walletContext,
 }: {
   knownBaseAddress: string
   chainId: number
   baseApiUrl: string
+  currentStateSource?: CurrentStateWalletSource
   walletContext?: {
     walletId: string
     publicKeyHex?: string
@@ -173,7 +176,9 @@ async function discoverUsedAddressesByStakingCredential({
   const stakingCredentialHex = deriveStakeCredentialHex(knownBaseAddress)
 
   // Step 3: Query transaction history for both addresses
-  const {bestBlock} = await legacyApi.getTipStatus(baseApiUrl)
+  const {bestBlock} = currentStateSource
+    ? await currentStateSource.getChainTip()
+    : await legacyApi.getTipStatus(baseApiUrl)
   if (!bestBlock.hash) {
     throw new Error('Failed to get tip status')
   }
@@ -291,6 +296,7 @@ export const readOnlyAccountManagerMaker = async ({
   rewardAddressHex,
   storage,
   baseApiUrl,
+  currentStateSource,
   enableDiscovery = false,
   walletContext,
 }: {
@@ -301,6 +307,7 @@ export const readOnlyAccountManagerMaker = async ({
   rewardAddressHex?: string
   storage: App.Storage
   baseApiUrl: string
+  currentStateSource?: CurrentStateWalletSource
   enableDiscovery?: boolean
   walletContext?: {
     walletId: string
@@ -330,6 +337,7 @@ export const readOnlyAccountManagerMaker = async ({
         knownBaseAddress: knownAddress,
         chainId,
         baseApiUrl,
+        currentStateSource,
       })
 
       finalInternalAddresses = discovered.internalAddresses
@@ -451,6 +459,7 @@ export const readOnlyAccountManagerMaker = async ({
           knownBaseAddress: knownAddress,
           chainId,
           baseApiUrl,
+          currentStateSource,
           walletContext: effectiveContext,
         })
         // Add newly discovered addresses

@@ -1,5 +1,6 @@
 import {buildNetworkManagers} from '@yoroi/blockchains'
 import {createTokenManagerMock} from '@yoroi/portfolio'
+import {createPersistentPendingUtxoOverlayStore} from '@yoroi/tx'
 import {App, Chain} from '@yoroi/types'
 import {
   getWalletFactory,
@@ -9,6 +10,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import * as accountManagerApi from './account-manager/account-manager'
+import {selectUtxoBackend} from './cardano-wallet'
+import type {CardanoWalletDependencies} from './dependencies'
 import {keyManager} from './key-manager/key-manager'
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
@@ -27,6 +30,10 @@ jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   rewardAddressHexFromAccountPublicKey: jest.fn(
     () => 'e0c11ef08c44f3610b7e56d46e086b90186c12e9a68f0521b7c4c72e4b',
   ),
+  rewardAddressDetailsFromAddress: jest.fn(() => ({
+    bech32: 'stake_test1fixture',
+    keyHashHex: 'ef'.repeat(28),
+  })),
 }))
 
 // Setup network managers and initialize wallet factories before tests
@@ -64,7 +71,7 @@ const createMockStorage = (path = '/'): App.Storage => {
   }
 }
 
-const mockCardanoWalletDependencies = {
+const mockCardanoWalletDependencies: CardanoWalletDependencies = {
   rootStorage: createMockStorage(),
   makeWalletEncryptedStorage: jest.fn().mockReturnValue({
     xpriv: {read: jest.fn(), write: jest.fn(), remove: jest.fn()},
@@ -137,5 +144,84 @@ describe('CardanoWallet', () => {
     expect(wallet.rewardAddressHex).toBe(
       'e0c11ef08c44f3610b7e56d46e086b90186c12e9a68f0521b7c4c72e4b',
     )
+    expect(wallet.usesCurrentStateUtxos).toBe(false)
+  })
+
+  it('builds a Shelley wallet with the current-state manager when enabled', async () => {
+    mockCardanoWalletDependencies.cardanoWalletBackendUrl =
+      'https://wallet-backend.example.com'
+    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
+    mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
+      createPersistentPendingUtxoOverlayStore
+
+    try {
+      const ShelleyWalletPreprod = getWalletFactory({
+        implementation: 'cardano-cip1852',
+        network: Chain.Network.Preprod,
+      })
+      const wallet = await ShelleyWalletPreprod.build({
+        id: '261c7e0f-dd72-490c-8ce9-6714b512b969',
+        accountPubKeyHex:
+          '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+        accountVisual: 0,
+      })
+
+      expect(wallet.usesCurrentStateUtxos).toBe(true)
+    } finally {
+      delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
+      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
+      delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
+    }
+  })
+})
+
+describe('selectUtxoBackend', () => {
+  it('selects current-state reads for configured Shelley wallets with stake credentials', () => {
+    expect(
+      selectUtxoBackend({
+        backendUrl: ' https://wallet-backend.example.com/// ',
+        enabled: true,
+        implementation: 'cardano-cip1852',
+        rewardAddressHex: 'e0c11ef0',
+      }),
+    ).toEqual({
+      kind: 'current-state',
+      baseUrl: 'https://wallet-backend.example.com',
+    })
+  })
+
+  it.each([
+    ['Byron', 'cardano-bip44', ''],
+    ['Shelley without a stake credential', 'cardano-cip1852', ''],
+  ] as const)(
+    'keeps %s on the explicit fallback',
+    (_name, implementation, rewardAddressHex) => {
+      expect(
+        selectUtxoBackend({
+          backendUrl: 'https://wallet-backend.example.com',
+          implementation,
+          rewardAddressHex,
+        }),
+      ).toEqual({kind: 'legacy', reason: 'unsupported-wallet'})
+    },
+  )
+
+  it('keeps the explicit legacy path when no backend is configured', () => {
+    expect(
+      selectUtxoBackend({
+        implementation: 'cardano-cip1852',
+        rewardAddressHex: 'e0c11ef0',
+      }),
+    ).toEqual({kind: 'legacy', reason: 'not-configured'})
+  })
+
+  it('does not enable the current-state source until backend completeness is verified', () => {
+    expect(
+      selectUtxoBackend({
+        backendUrl: 'https://wallet-backend.example.com',
+        implementation: 'cardano-cip1852',
+        rewardAddressHex: 'e0c11ef0',
+      }),
+    ).toEqual({kind: 'legacy', reason: 'not-enabled'})
   })
 })

@@ -1,9 +1,161 @@
-import {UtxoDiffToBestBlock} from '@yoroi/tx'
-import {BlockHash} from '@yoroi/types'
+import {
+  CurrentStateWalletSource,
+  PendingUtxoOverlay,
+  UtxoDiffToBestBlock,
+  createPersistentPendingUtxoOverlayStore,
+} from '@yoroi/tx'
+import {Balance, BlockHash, Branded} from '@yoroi/types'
 
 import {rootStorage} from '~/kernel/storage/storages'
 
-import {makeUtxoManagerStorage, makeUtxoStorage} from './utxoManager'
+import {
+  makeCurrentStateUtxoManager,
+  makeUtxoManagerStorage,
+  makeUtxoStorage,
+} from './utxoManager'
+
+describe('current-state UTxO manager', () => {
+  const stakeAddress = Branded.asStakingAddress('stake_test1account')
+
+  it('replaces cached state, retains it on failure, and restores it after restart', async () => {
+    const accountStorage = rootStorage.join('current-state-manager-test/')
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const cachedUtxo = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1receiver'),
+      amount: '1234567' as Balance.Quantity,
+      assets: [],
+    }
+    const replacementUtxo = {
+      ...cachedUtxo,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      txIndex: 1,
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn().mockResolvedValue({
+        bestBlock: {
+          height: 1,
+          slot: 1,
+          epoch: 1,
+          hash: 'c'.repeat(64),
+          globalSlot: null,
+        },
+      }),
+      getAccountUtxos: jest
+        .fn()
+        .mockResolvedValueOnce([cachedUtxo])
+        .mockResolvedValueOnce([replacementUtxo])
+        .mockRejectedValueOnce(new Error('backend unavailable')),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+    })
+
+    await manager.sync([])
+    expect(await manager.getCachedUtxos()).toEqual([
+      expect.objectContaining({utxo_id: cachedUtxo.utxoId}),
+    ])
+    await manager.sync([])
+    expect(await manager.getCachedUtxos()).toEqual([
+      expect.objectContaining({utxo_id: replacementUtxo.utxoId}),
+    ])
+    await expect(manager.sync([])).rejects.toThrow('backend unavailable')
+    expect(await manager.getCachedUtxos()).toEqual([
+      expect.objectContaining({utxo_id: replacementUtxo.utxoId}),
+    ])
+
+    const restored = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore: createPersistentPendingUtxoOverlayStore(accountStorage),
+      stakeAddress,
+    })
+    expect(restored.initialUtxos).toEqual([
+      expect.objectContaining({utxo_id: replacementUtxo.utxoId}),
+    ])
+    expect(source.getAccountUtxos).toHaveBeenCalledTimes(3)
+  })
+
+  it('rehydrates a pending spend/change overlay after restart', async () => {
+    const accountStorage = rootStorage.join('current-state-overlay-test/')
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const authoritative = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1receiver'),
+      amount: '1234567' as Balance.Quantity,
+      assets: [],
+    }
+    const txHash = 'b'.repeat(64)
+    const change = {
+      utxoId: Branded.asUtxoId(`${txHash}:1`),
+      txHash: Branded.asTransactionHash(txHash),
+      txIndex: 1,
+      receiver: Branded.asAddress('addr_test1change'),
+      amount: '1000000' as Balance.Quantity,
+      assets: [],
+    }
+    const pending: PendingUtxoOverlay = {
+      txHash: Branded.asTransactionHash(txHash),
+      spentUtxoIds: [authoritative.utxoId],
+      createdUtxos: [change],
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn().mockResolvedValue({
+        bestBlock: {
+          height: 1,
+          slot: 1,
+          epoch: 1,
+          hash: 'c'.repeat(64),
+          globalSlot: null,
+        },
+      }),
+      getAccountUtxos: jest
+        .fn()
+        .mockResolvedValueOnce([authoritative])
+        .mockResolvedValueOnce([change]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+    })
+    await manager.sync([])
+    await pendingStore.savePendingUtxoOverlay(stakeAddress, pending)
+
+    const restored = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore: createPersistentPendingUtxoOverlayStore(accountStorage),
+      stakeAddress,
+    })
+    expect(restored.initialUtxos).toEqual([
+      expect.objectContaining({utxo_id: change.utxoId}),
+    ])
+    await restored.sync([])
+    await expect(restored.getCachedUtxos()).resolves.toEqual([
+      expect.objectContaining({utxo_id: change.utxoId}),
+    ])
+    expect(
+      await createPersistentPendingUtxoOverlayStore(
+        accountStorage,
+      ).getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),
+    ).toEqual([])
+    expect(source.getAccountUtxos).toHaveBeenCalledTimes(2)
+  })
+})
 
 describe('utxo manager storage', () => {
   it('addrCounter works', async () => {

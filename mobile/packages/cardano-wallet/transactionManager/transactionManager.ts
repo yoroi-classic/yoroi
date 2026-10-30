@@ -1,4 +1,4 @@
-import {TipStatusResponse, TxHistoryRequest, WalletContext} from '@yoroi/api'
+import {SyncTipStatus, TxHistoryRequest, WalletContext} from '@yoroi/api'
 import {PromiseAllLimited, isArray, parseSafe} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {RemoteCertificateMeta} from '@yoroi/staking'
@@ -52,7 +52,7 @@ export type TransactionManager = {
       paymentKeyHashes: string[]
       rewardAddresses: string[]
     },
-    tipStatus?: TipStatusResponse | null,
+    tipStatus?: SyncTipStatus | null,
     isForced?: boolean,
   ): Promise<boolean>
   doQuickSync(
@@ -65,7 +65,7 @@ export type TransactionManager = {
       paymentKeyHashes: string[]
       rewardAddresses: string[]
     },
-    tipStatus?: TipStatusResponse | null,
+    tipStatus?: SyncTipStatus | null,
   ): Promise<boolean>
 }
 
@@ -182,7 +182,7 @@ export async function createTransactionManager(
         paymentKeyHashes: string[]
         rewardAddresses: string[]
       },
-      tipStatus?: TipStatusResponse | null,
+      tipStatus?: SyncTipStatus | null,
       isForced: boolean = false,
     ) {
       // Store initial state to restore if sync fails
@@ -267,7 +267,7 @@ export async function createTransactionManager(
         paymentKeyHashes: string[]
         rewardAddresses: string[]
       },
-      tipStatus?: TipStatusResponse | null,
+      tipStatus?: SyncTipStatus | null,
     ) {
       // Store initial state to restore if sync fails
       const initialState = {
@@ -350,7 +350,7 @@ export async function syncTxs({
     paymentKeyHashes: string[]
     rewardAddresses: string[]
   }
-  tipStatus?: TipStatusResponse | null
+  tipStatus?: SyncTipStatus | null
 }>): Promise<Record<string, WalletTransaction> | undefined> {
   // Use provided tip status or fetch if not provided (backward compatibility)
   let bestBlock

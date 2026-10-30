@@ -1,4 +1,4 @@
-import {TipStatusResponse} from '@yoroi/api'
+import {SyncTipStatus} from '@yoroi/api'
 import {YoroiWallet} from '@yoroi/cardano-wallet'
 import {PromiseAllLimited} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
@@ -15,7 +15,7 @@ import type {SyncManagerState} from './sync-state'
 export const syncWallet = async (
   wallet: YoroiWallet,
   isForced: boolean = false,
-  tipStatus?: TipStatusResponse | null,
+  tipStatus?: SyncTipStatus | null,
 ): Promise<SyncWalletInfo> => {
   const startTime = Date.now()
 
@@ -56,7 +56,7 @@ export const syncWalletsParallel = async (
   config: SyncConfig,
   state: SyncManagerState,
   isForced: boolean = false,
-  tipStatus?: TipStatusResponse | null,
+  tipStatus?: SyncTipStatus | null,
 ): Promise<Map<YoroiWallet['id'], SyncWalletInfo>> => {
   // Filter wallets that should be synced (respecting backoff)
   const walletsToSync = wallets.filter((wallet) => {

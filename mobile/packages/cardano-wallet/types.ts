@@ -1,7 +1,7 @@
 import {
   FundInfoResponse,
   RawUtxo,
-  TipStatusResponse,
+  SyncTipStatus,
   TxStatusRequest,
   TxStatusResponse,
 } from '@yoroi/api'
@@ -74,6 +74,8 @@ export type YoroiWallet = {
   // network
   readonly networkManager: Readonly<Network.Manager>
   readonly isMainnet: boolean
+  /** True when Shelley UTxOs are read from the configured current-state backend. */
+  readonly usesCurrentStateUtxos?: boolean
 
   // portfolio
   readonly balanceManager: Readonly<Portfolio.Manager.Balance>
@@ -94,11 +96,11 @@ export type YoroiWallet = {
   clear(): Promise<void>
   sync(params: {
     isForced?: boolean
-    tipStatus?: TipStatusResponse | null
+    tipStatus?: SyncTipStatus | null
   }): Promise<void>
   quickSync(params: {
     isForced?: boolean
-    tipStatus?: TipStatusResponse | null
+    tipStatus?: SyncTipStatus | null
   }): Promise<void>
   // ---------------------------------------------------------------------------------------
 

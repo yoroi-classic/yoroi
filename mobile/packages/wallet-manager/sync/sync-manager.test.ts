@@ -4,7 +4,7 @@ import {Chain} from '@yoroi/types'
 import {BehaviorSubject} from 'rxjs'
 
 import {defaultSyncConfig} from './sync-config'
-import {makeSyncManager} from './sync-manager'
+import {makeSyncManager, needsLegacyTipStatus} from './sync-manager'
 
 describe('SyncManager', () => {
   let mockWallets: YoroiWallet[]
@@ -47,6 +47,17 @@ describe('SyncManager', () => {
 
   afterEach(() => {
     syncManager.stop()
+  })
+
+  it('fetches legacy tip status only when at least one wallet needs it', () => {
+    expect(needsLegacyTipStatus([{usesCurrentStateUtxos: true}])).toBe(false)
+    expect(
+      needsLegacyTipStatus([
+        {usesCurrentStateUtxos: true},
+        {usesCurrentStateUtxos: false},
+      ]),
+    ).toBe(true)
+    expect(needsLegacyTipStatus([{}])).toBe(true)
   })
 
   describe('start', () => {

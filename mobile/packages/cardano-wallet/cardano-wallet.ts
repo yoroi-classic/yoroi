@@ -2,7 +2,7 @@ import type {
   AccountStateResponse,
   FundInfoResponse,
   RawUtxo,
-  TipStatusResponse,
+  SyncTipStatus,
   TxStatusRequest,
   TxStatusResponse,
 } from '@yoroi/api'
@@ -13,6 +13,7 @@ import {StakePoolInfoRequest, StakingInfo, StakingStatus} from '@yoroi/staking'
 import type {ModernUtxo, UnsignedTransaction} from '@yoroi/tx'
 import {
   buildLedgerSignedTx,
+  createCardanoWalletBackendUtxoSource,
   createSignedLedgerTxFromCbor,
   modernUtxosToCardanoAddressedUtxos,
 } from '@yoroi/tx'
@@ -100,16 +101,49 @@ import {
   isYoroiWallet,
 } from './types'
 import {
+  deriveRewardAddressDetails,
   deriveRewardAddressFromAddress,
   deriveRewardAddressHex,
   getHexAddressingMap,
   getStakeAddressMap,
   serializeAddressToHex,
 } from './utils'
-import {UtxoManager, makeUtxoManager} from './utxoManager/utxoManager'
+import {createPendingUtxoOverlayFromCbor} from './utxoManager/pending-utxo-overlay'
+import {
+  UtxoManager,
+  makeCurrentStateUtxoManager,
+  makeUtxoManager,
+} from './utxoManager/utxoManager'
 import {utxosMaker} from './utxoManager/utxos'
 
 const logger = getLogger()
+
+export type UtxoBackendSelection =
+  | {kind: 'current-state'; baseUrl: string}
+  | {
+      kind: 'legacy'
+      reason: 'not-configured' | 'not-enabled' | 'unsupported-wallet'
+    }
+
+export const selectUtxoBackend = ({
+  backendUrl,
+  enabled,
+  implementation,
+  rewardAddressHex,
+}: {
+  backendUrl?: string
+  enabled?: boolean
+  implementation: Wallet.Implementation
+  rewardAddressHex: string
+}): UtxoBackendSelection => {
+  const normalizedUrl = backendUrl?.trim().replace(/\/+$/, '')
+  if (implementation !== 'cardano-cip1852' || rewardAddressHex.length === 0) {
+    return {kind: 'legacy', reason: 'unsupported-wallet'}
+  }
+  if (!normalizedUrl) return {kind: 'legacy', reason: 'not-configured'}
+  if (enabled !== true) return {kind: 'legacy', reason: 'not-enabled'}
+  return {kind: 'current-state', baseUrl: normalizedUrl}
+}
 
 type WalletState = {
   id: string
@@ -247,6 +281,15 @@ export const makeCardanoWallet = (
           readOnlyAddresses.rewardAddressHex || rewardAddressHex,
         storage: accountStorage,
         baseApiUrl: legacyApiBaseUrl,
+        currentStateSource:
+          implementation === 'cardano-cip1852' &&
+          dependencies.currentStateUtxoEnabled === true &&
+          dependencies.cardanoWalletBackendUrl
+            ? createCardanoWalletBackendUtxoSource(
+                dependencies.cardanoWalletBackendUrl,
+                network,
+              )
+            : undefined,
         enableDiscovery: readOnlyAddresses.enableDiscovery ?? false,
       })
 
@@ -368,10 +411,36 @@ export const makeCardanoWallet = (
         : ''
     }
 
-    const utxoManager = await makeUtxoManager({
-      storage: accountStorage.join('utxos/'),
-      apiUrl: legacyApiBaseUrl,
+    const utxoStorage = accountStorage.join('utxos/')
+    const utxoBackend = selectUtxoBackend({
+      backendUrl: dependencies.cardanoWalletBackendUrl,
+      enabled: dependencies.currentStateUtxoEnabled,
+      implementation,
+      rewardAddressHex: finalRewardAddressHex,
     })
+    const utxoManager =
+      utxoBackend.kind === 'current-state'
+        ? await makeCurrentStateUtxoManager({
+            storage: utxoStorage,
+            source: createCardanoWalletBackendUtxoSource(
+              utxoBackend.baseUrl,
+              network,
+            ),
+            pendingStore:
+              dependencies.makePendingUtxoOverlayStore?.(accountStorage) ??
+              (() => {
+                throw new Error(
+                  'Current-state UTxO backend requires a pending overlay store',
+                )
+              })(),
+            stakeAddress: Branded.asStakingAddress(
+              deriveRewardAddressDetails(finalRewardAddressHex).bech32,
+            ),
+          })
+        : await makeUtxoManager({
+            storage: utxoStorage,
+            apiUrl: legacyApiBaseUrl,
+          })
 
     const transactionManager = await createTransactionManager(
       accountStorage.join('txs/'),
@@ -676,7 +745,7 @@ function createWalletObject(
     tipStatus,
   }: {
     isForced?: boolean
-    tipStatus?: TipStatusResponse | null
+    tipStatus?: SyncTipStatus | null
   } = {}) => {
     if (!state.isInitialized) {
       getLogger().error('ShelleyWallet: sync wallet not initialized', {
@@ -687,6 +756,10 @@ function createWalletObject(
 
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
+    const syncTipStatus =
+      state.utxoManager.kind === 'current-state'
+        ? await state.utxoManager.getChainTip()
+        : tipStatus
 
     await Promise.all([
       syncUtxos({isForced}),
@@ -694,7 +767,7 @@ function createWalletObject(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        tipStatus,
+        syncTipStatus,
         isForced,
       ),
     ])
@@ -710,7 +783,7 @@ function createWalletObject(
     tipStatus,
   }: {
     isForced?: boolean
-    tipStatus?: TipStatusResponse | null
+    tipStatus?: SyncTipStatus | null
   } = {}) => {
     if (!state.isInitialized) {
       getLogger().error('ShelleyWallet: quickSync wallet not initialized', {
@@ -721,6 +794,10 @@ function createWalletObject(
 
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
+    const syncTipStatus =
+      state.utxoManager.kind === 'current-state'
+        ? await state.utxoManager.getChainTip()
+        : tipStatus
 
     await Promise.all([
       syncUtxos({isForced}),
@@ -728,7 +805,7 @@ function createWalletObject(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        tipStatus,
+        syncTipStatus,
       ),
     ])
   }
@@ -979,6 +1056,22 @@ function createWalletObject(
   }
 
   const submitTransaction = async (base64SignedTx: TransactionCborBase64) => {
+    const pendingOverlay =
+      state.utxoManager.kind === 'current-state'
+        ? createPendingUtxoOverlayFromCbor({
+            signedTxBase64: base64SignedTx,
+            walletUtxos: state.utxos,
+            ownedAddresses: new Set([
+              ...internalAddresses(),
+              ...externalAddresses(),
+              ...state.manualAddressCache.keys(),
+            ]),
+          })
+        : undefined
+    if (pendingOverlay && state.utxoManager.kind === 'current-state') {
+      await state.utxoManager.savePendingOverlay(pendingOverlay)
+    }
+
     try {
       await legacyApi.submitTransaction(
         base64SignedTx,
@@ -992,6 +1085,23 @@ function createWalletObject(
         apiBaseUrl: networkManager.legacyApiBaseUrl,
         walletId: state.id,
       })
+      if (pendingOverlay && state.utxoManager.kind === 'current-state') {
+        try {
+          const status = await legacyApi.fetchTxStatus(
+            {txHashes: [pendingOverlay.txHash]},
+            networkManager.legacyApiBaseUrl,
+          )
+          const submission = status.submissionStatus?.[pendingOverlay.txHash]
+          if (
+            submission?.status === 'FAILED' ||
+            submission?.status === 'MAX_RETRY_REACHED'
+          ) {
+            await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+          }
+        } catch {
+          // Keep the overlay when submission outcome cannot be confirmed.
+        }
+      }
       throw error
     }
   }
@@ -1176,7 +1286,26 @@ function createWalletObject(
   const fetchTxStatus = async (
     request: TxStatusRequest,
   ): Promise<TxStatusResponse> => {
-    return legacyApi.fetchTxStatus(request, networkManager.legacyApiBaseUrl)
+    const result = await legacyApi.fetchTxStatus(
+      request,
+      networkManager.legacyApiBaseUrl,
+    )
+    const utxoManager = state.utxoManager
+    if (utxoManager.kind === 'current-state') {
+      await Promise.all(
+        Object.entries(result.submissionStatus ?? {}).flatMap(
+          ([txHash, status]) =>
+            status.status === 'FAILED' || status.status === 'MAX_RETRY_REACHED'
+              ? [
+                  utxoManager.removePendingOverlay(
+                    Branded.asTransactionHash(txHash),
+                  ),
+                ]
+              : [],
+        ),
+      )
+    }
+    return result
   }
 
   // =================== getters =================== //
@@ -1252,6 +1381,7 @@ function createWalletObject(
     portfolioPrimaryTokenInfo: state.portfolioPrimaryTokenInfo,
     networkManager: networkManager,
     isMainnet: networkManager.isMainnet,
+    usesCurrentStateUtxos: state.utxoManager.kind === 'current-state',
     balanceManager: state.balanceManager,
     balance$: state.balanceManager.observable$,
     accountVisual: state.accountVisual,

@@ -33,6 +33,46 @@ const validAccountUtxo = () => ({
 })
 
 describe('cardano-wallet-backend current-state UTxO source', () => {
+  it('maps the CWB chain tip for transaction-history sync', async () => {
+    const request = jest.fn(async (options: {url: string}) => {
+      if (options.url.endsWith('/v1/chain/tip')) {
+        return {
+          block: 123,
+          slot: 456,
+          epoch: 789,
+          hash: 'ab'.repeat(32),
+          blockTime: 1_700_000_000,
+        }
+      }
+      return PREPROD_STATUS
+    }) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    await expect(source.getChainTip()).resolves.toEqual({
+      bestBlock: {
+        height: 123,
+        slot: 456,
+        epoch: 789,
+        hash: 'ab'.repeat(32),
+        globalSlot: null,
+      },
+    })
+    expect(request).toHaveBeenCalledWith({
+      url: 'https://wallet.example/v1/status',
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
+    expect(request).toHaveBeenCalledWith({
+      url: 'https://wallet.example/v1/chain/tip',
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
+  })
+
   it('maps account state and preserves integer quantities', async () => {
     const request = preprodRequest([validAccountUtxo()])
     const source = createCardanoWalletBackendUtxoSource(

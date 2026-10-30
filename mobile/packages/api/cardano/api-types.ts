@@ -102,6 +102,9 @@ export type TipStatusResponse = {
   bestBlock: BestblockResponse
 }
 
+/** Tip fields needed to sync transaction history without a legacy safe point. */
+export type SyncTipStatus = Pick<TipStatusResponse, 'bestBlock'>
+
 /**
  * Transaction history request
  */

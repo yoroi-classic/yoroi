@@ -38,6 +38,10 @@ export type TransactionSubmittedEvent = {
   timestamp: number
 }
 
+export const needsLegacyTipStatus = (
+  wallets: ReadonlyArray<Pick<YoroiWallet, 'usesCurrentStateUtxos'>>,
+): boolean => wallets.some((wallet) => wallet.usesCurrentStateUtxos !== true)
+
 /**
  * Sync manager interface
  */
@@ -199,12 +203,12 @@ export const makeSyncManager = (
     // Fetch tip status once for the network (shared across all wallets)
     // Get baseApiUrl from first wallet (all wallets on same network share same API URL)
     const baseApiUrl = networkWallets[0]?.networkManager.legacyApiBaseUrl || ''
-    const tipStatus = await getTipStatusForNetwork(
-      state.currentNetwork,
-      baseApiUrl,
-    )
+    const requiresLegacyTipStatus = needsLegacyTipStatus(networkWallets)
+    const tipStatus = requiresLegacyTipStatus
+      ? await getTipStatusForNetwork(state.currentNetwork, baseApiUrl)
+      : null
 
-    if (!tipStatus) {
+    if (requiresLegacyTipStatus && !tipStatus) {
       getLogger().warn('syncManager: No tip status available, skipping sync', {
         network: state.currentNetwork,
         origin: 'SyncManager',
@@ -403,9 +407,13 @@ export const makeSyncManager = (
           const currentState = syncState$.value
           const baseApiUrl = wallet.networkManager.legacyApiBaseUrl
 
-          return from(
-            getTipStatusForNetwork(currentState.currentNetwork, baseApiUrl),
-          ).pipe(
+          const tipStatus$ = !needsLegacyTipStatus([wallet])
+            ? of(null)
+            : from(
+                getTipStatusForNetwork(currentState.currentNetwork, baseApiUrl),
+              )
+
+          return tipStatus$.pipe(
             switchMap((tipStatus) =>
               from(
                 syncWalletsParallel(
@@ -551,10 +559,9 @@ export const makeSyncManager = (
     // Get tip status for triggered sync
     const currentState = syncState$.value
     const baseApiUrl = wallet.networkManager.legacyApiBaseUrl
-    const tipStatus = await getTipStatusForNetwork(
-      currentState.currentNetwork,
-      baseApiUrl,
-    )
+    const tipStatus = !needsLegacyTipStatus([wallet])
+      ? null
+      : await getTipStatusForNetwork(currentState.currentNetwork, baseApiUrl)
 
     syncWalletsParallel([wallet], config, syncState$.value, true, tipStatus)
       .then((syncInfos) => {

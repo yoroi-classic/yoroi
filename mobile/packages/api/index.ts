@@ -104,6 +104,7 @@ export type {
   BackendConfig,
   FundInfoResponse,
   RawUtxo,
+  SyncTipStatus,
   TipStatusResponse,
   TxHistoryRequest,
   TxMetadata,

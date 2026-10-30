@@ -60,7 +60,23 @@ export {
   setRequiredSigners,
 } from './transaction-builder/multiparty'
 
-export {createUtxoService, init as initUtxo} from './utxo'
+export {
+  createCardanoWalletBackendUtxoSource,
+  createCurrentStateUtxoService,
+  createPersistentPendingUtxoOverlayStore,
+  applyPendingUtxoOverlays,
+  createUtxoService,
+  init as initUtxo,
+} from './utxo'
+export type {
+  CurrentStateAsset,
+  CurrentStateUtxo,
+  CurrentStateUtxoSource,
+  CurrentStateWalletSource,
+  PendingUtxoOverlay,
+  PendingUtxoOverlayStore,
+  PersistentPendingUtxoOverlayStore,
+} from './utxo'
 
 // Export types
 export type {

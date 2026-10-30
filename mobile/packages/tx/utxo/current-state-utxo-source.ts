@@ -1,3 +1,4 @@
+import {SyncTipStatus} from '@yoroi/api'
 import {Fetcher, fetcher} from '@yoroi/common'
 import {
   Address,
@@ -42,6 +43,10 @@ export type CurrentStateUtxoSource = {
   ): Promise<ReadonlyArray<CurrentStateUtxo>>
 }
 
+export type CurrentStateWalletSource = CurrentStateUtxoSource & {
+  getChainTip(): Promise<SyncTipStatus>
+}
+
 const hex = z.string().regex(/^[0-9a-fA-F]*$/)
 const datumHash = z.string().regex(/^[0-9a-fA-F]{64}$/)
 const inlineDatum = hex.refine((value) => value.length % 2 === 0)
@@ -74,6 +79,13 @@ const backendStatusSchema = z.object({
   network: z.enum(['mainnet', 'preprod', 'preview']),
   chain: z.enum(['ok', 'stale', 'down']),
 })
+const chainTipSchema = z.object({
+  block: z.number().int().nonnegative(),
+  slot: z.number().int().nonnegative(),
+  epoch: z.number().int().nonnegative(),
+  hash: z.string().regex(/^[0-9a-fA-F]{64}$/),
+  blockTime: z.number().int().nonnegative(),
+})
 
 // Temporary fail-closed compatibility with backend revisions before #98/#99.
 // Those revisions silently cap this route at exactly 1,000 rows. A legitimate
@@ -96,14 +108,52 @@ export const createCardanoWalletBackendUtxoSource = (
   baseUrl: string,
   expectedNetwork: Chain.SupportedNetworks,
   request: Fetcher = fetcher,
-): CurrentStateUtxoSource => {
+): CurrentStateWalletSource => {
   const normalizedBaseUrl = trimTrailingSlashes(baseUrl)
 
   if (normalizedBaseUrl.length === 0) {
     throw new Error('cardano-wallet-backend base URL is required')
   }
 
+  const assertBackendReady = async () => {
+    const statusResponse = await request<unknown>({
+      url: `${normalizedBaseUrl}/v1/status`,
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
+    const status = backendStatusSchema.safeParse(statusResponse)
+    if (!status.success) {
+      throw new Error('Invalid cardano-wallet-backend status response')
+    }
+    if (status.data.network !== expectedNetwork) {
+      throw new Error('cardano-wallet-backend network mismatch')
+    }
+    if (status.data.chain !== 'ok') {
+      throw new Error('cardano-wallet-backend chain data is not ready')
+    }
+  }
+
   return {
+    async getChainTip() {
+      await assertBackendReady()
+      const response = await request<unknown>({
+        url: `${normalizedBaseUrl}/v1/chain/tip`,
+        method: 'GET',
+        headers: {Accept: 'application/json'},
+      })
+      const parsed = chainTipSchema.safeParse(response)
+      if (!parsed.success) {
+        throw new Error('Invalid cardano-wallet-backend chain tip response')
+      }
+      const bestBlock = {
+        height: parsed.data.block,
+        slot: Branded.asSlotNumber(parsed.data.slot),
+        epoch: Branded.asEpochNumber(parsed.data.epoch),
+        hash: Branded.asBlockHash(parsed.data.hash.toLowerCase()),
+        globalSlot: null,
+      }
+      return {bestBlock}
+    },
     async getAccountUtxos(stakeAddress) {
       const expectedStakePrefix =
         expectedNetwork === 'mainnet' ? 'stake1' : 'stake_test1'
@@ -111,23 +161,7 @@ export const createCardanoWalletBackendUtxoSource = (
         throw new Error('Stake address does not match the selected network')
       }
 
-      const statusResponse = await request<unknown>({
-        url: `${normalizedBaseUrl}/v1/status`,
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      })
-      const status = backendStatusSchema.safeParse(statusResponse)
-      if (!status.success) {
-        throw new Error('Invalid cardano-wallet-backend status response')
-      }
-      if (status.data.network !== expectedNetwork) {
-        throw new Error('cardano-wallet-backend network mismatch')
-      }
-      if (status.data.chain !== 'ok') {
-        throw new Error('cardano-wallet-backend chain data is not ready')
-      }
+      await assertBackendReady()
 
       const response = await request<unknown>({
         url: `${normalizedBaseUrl}/v1/account/${encodeURIComponent(
@@ -183,17 +217,19 @@ export const createCardanoWalletBackendUtxoSource = (
 
       return parsed.data.map((utxo) => ({
         utxoId: Branded.asUtxoIdFromParts(
-          Branded.asTransactionHash(utxo.txHash),
+          Branded.asTransactionHash(utxo.txHash.toLowerCase()),
           utxo.outputIndex,
         ),
-        txHash: Branded.asTransactionHash(utxo.txHash),
+        txHash: Branded.asTransactionHash(utxo.txHash.toLowerCase()),
         txIndex: utxo.outputIndex,
         receiver: Branded.asAddress(utxo.address),
         amount: Branded.asBalanceQuantity(utxo.value),
         assets: utxo.assets.map((asset) => ({
-          assetId: Branded.asTokenId(`${asset.policyId}.${asset.assetName}`),
-          policyId: Branded.asPolicyId(asset.policyId),
-          name: Branded.asAssetName(asset.assetName),
+          assetId: Branded.asTokenId(
+            `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`,
+          ),
+          policyId: Branded.asPolicyId(asset.policyId.toLowerCase()),
+          name: Branded.asAssetName(asset.assetName.toLowerCase()),
           amount: Branded.asBalanceQuantity(asset.quantity),
         })),
         ...(utxo.datumHash === undefined ? {} : {datumHash: utxo.datumHash}),
