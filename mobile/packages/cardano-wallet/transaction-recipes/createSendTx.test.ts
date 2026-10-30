@@ -1,8 +1,8 @@
 import {Balance, Branded, Portfolio, Wallet} from '@yoroi/types'
 
 import {
-  buildSimplePaymentTransaction,
   type SimplePaymentBuilderArguments,
+  buildSimplePaymentTransaction,
 } from '@yoroi-classic/cml-mobile-bridge'
 import BigNumber from 'bignumber.js'
 
