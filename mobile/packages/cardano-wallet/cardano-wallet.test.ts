@@ -187,6 +187,8 @@ describe('CardanoWallet', () => {
       'https://wallet-backend.example.com'
     mockCardanoWalletDependencies.currentStateUtxoEnabled = true
     let pendingOverlays: PendingUtxoOverlay[] = []
+    let failOverlayRemoval = false
+    const removalError = new Error('overlay storage unavailable')
     const pendingStore = {
       getPendingUtxoOverlaysInSubmissionOrder: async () => pendingOverlays,
       savePendingUtxoOverlay: async (
@@ -205,6 +207,7 @@ describe('CardanoWallet', () => {
         _stakeAddress: string,
         txHash: PendingUtxoOverlay['txHash'],
       ) => {
+        if (failOverlayRemoval) throw removalError
         pendingOverlays = pendingOverlays.filter(
           (pending) => pending.txHash !== txHash,
         )
@@ -223,13 +226,19 @@ describe('CardanoWallet', () => {
       txHash: Branded.asTransactionHash('b'.repeat(64)),
       txIndex: 0,
       receiver: Branded.asAddress('addr_test1fixture'),
-      amount: '1000000' as Balance.Quantity,
+      amount: '5000000' as Balance.Quantity,
       assets: [],
+    }
+    const spendableOutput: PendingUtxoOverlay['createdUtxos'][number] = {
+      ...output,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:1`),
+      txIndex: 1,
+      amount: '1000000' as Balance.Quantity,
     }
     const overlay: PendingUtxoOverlay = {
       txHash: output.txHash,
       spentUtxoIds: [Branded.asUtxoId(`${'a'.repeat(64)}:0`)],
-      createdUtxos: [output],
+      createdUtxos: [output, spendableOutput],
     }
     const overlaySpy = jest
       .spyOn(pendingOverlayApi, 'createPendingUtxoOverlayFromCbor')
@@ -237,6 +246,13 @@ describe('CardanoWallet', () => {
     const submitSpy = jest
       .spyOn(legacyApi, 'submitTransaction')
       .mockResolvedValue(undefined)
+    const txStatusSpy = jest
+      .spyOn(legacyApi, 'fetchTxStatus')
+      .mockResolvedValue({
+        submissionStatus: {
+          ['b'.repeat(64)]: {status: 'FAILED'},
+        },
+      } as Awaited<ReturnType<typeof legacyApi.fetchTxStatus>>)
 
     try {
       const ShelleyWalletPreprod = getWalletFactory({
@@ -260,15 +276,24 @@ describe('CardanoWallet', () => {
       expect(overlaySpy).toHaveBeenCalledTimes(1)
       expect(submitSpy).toHaveBeenCalledTimes(1)
       expect(wallet.utxos()).toEqual([
-        expect.objectContaining({utxo_id: output.utxoId}),
+        expect.objectContaining({utxo_id: spendableOutput.utxoId}),
       ])
+      expect(wallet.collateralId()).toBe('')
       expect(utxoEvents.at(-1)).toEqual([
-        expect.objectContaining({utxo_id: output.utxoId}),
+        expect.objectContaining({utxo_id: spendableOutput.utxoId}),
       ])
       expect(submitSpy).toHaveBeenCalledTimes(1)
+
+      const submissionError = new Error('transaction rejected')
+      submitSpy.mockRejectedValue(submissionError)
+      failOverlayRemoval = true
+      await expect(
+        wallet.submitTransaction('AQID' as TransactionCborBase64),
+      ).rejects.toBe(submissionError)
     } finally {
       overlaySpy.mockRestore()
       submitSpy.mockRestore()
+      txStatusSpy.mockRestore()
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
       delete mockCardanoWalletDependencies.currentStateUtxoEnabled
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore

@@ -1061,8 +1061,9 @@ function createWalletObject(
   const updateWalletUtxos = async (
     newUtxos: RawUtxo[],
     isForced: boolean = false,
+    skipCollateralDetection: boolean = false,
   ): Promise<boolean> => {
-    if (state.collateralId.length === 0) {
+    if (!skipCollateralDetection && state.collateralId.length === 0) {
       const potentialCollateralId = utxosMaker(newUtxos).drawnCollateral()
       if (potentialCollateralId) {
         const collateralIdBranded = Branded.asUtxoId(potentialCollateralId)
@@ -1109,9 +1110,20 @@ function createWalletObject(
     if (pendingOverlay && state.utxoManager.kind === 'current-state') {
       await state.utxoManager.savePendingOverlay(pendingOverlay)
       try {
-        await updateWalletUtxos(await state.utxoManager.getCachedUtxos(), true)
+        await updateWalletUtxos(
+          await state.utxoManager.getCachedUtxos(),
+          true,
+          true,
+        )
       } catch (error) {
-        await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+        try {
+          await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+        } catch (removeError) {
+          logger.error(
+            'cardano-wallet.submitTransaction: Failed to remove pending overlay after refresh failure',
+            {error: removeError, walletId: state.id},
+          )
+        }
         throw error
       }
     }
@@ -1147,7 +1159,14 @@ function createWalletObject(
           // Keep the overlay when submission outcome cannot be confirmed.
         }
         if (submissionFailed) {
-          await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+          try {
+            await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+          } catch (removeError) {
+            logger.error(
+              'cardano-wallet.submitTransaction: Failed to remove rejected pending overlay',
+              {error: removeError, walletId: state.id},
+            )
+          }
           try {
             await updateWalletUtxos(
               await state.utxoManager.getCachedUtxos(),
