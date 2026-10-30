@@ -15,11 +15,13 @@ const mockWallet = {
 }
 
 jest.mock('@yoroi/notifications', () => ({
-  useNotificationManager: () => ({events: {remove: mockRemoveBanner}}),
+  useNotificationManager: () => ({
+    events: {read: jest.fn().mockResolvedValue([]), remove: mockRemoveBanner},
+  }),
 }))
 jest.mock('~/features/Notifications/common/banners', () => ({
   BannerIds: {Airdrop: 987654321},
-  showBanner: mockShowBanner,
+  showBanner: (...args: unknown[]) => mockShowBanner(...args),
 }))
 jest.mock('@yoroi/wallet-manager', () => ({
   useWalletManager: () => ({
