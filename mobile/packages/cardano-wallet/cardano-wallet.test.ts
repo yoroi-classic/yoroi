@@ -188,6 +188,7 @@ describe('CardanoWallet', () => {
     mockCardanoWalletDependencies.currentStateUtxoEnabled = true
     let pendingOverlays: PendingUtxoOverlay[] = []
     let failOverlayRemoval = false
+    const overlayRemovalAttempts: PendingUtxoOverlay['txHash'][] = []
     const removalError = new Error('overlay storage unavailable')
     const pendingStore = {
       getPendingUtxoOverlaysInSubmissionOrder: async () => pendingOverlays,
@@ -207,6 +208,7 @@ describe('CardanoWallet', () => {
         _stakeAddress: string,
         txHash: PendingUtxoOverlay['txHash'],
       ) => {
+        overlayRemovalAttempts.push(txHash)
         if (failOverlayRemoval) throw removalError
         pendingOverlays = pendingOverlays.filter(
           (pending) => pending.txHash !== txHash,
@@ -290,6 +292,11 @@ describe('CardanoWallet', () => {
       await expect(
         wallet.submitTransaction('AQID' as TransactionCborBase64),
       ).rejects.toBe(submissionError)
+      expect(txStatusSpy).toHaveBeenCalledWith(
+        {txHashes: [output.txHash]},
+        expect.any(String),
+      )
+      expect(overlayRemovalAttempts).toContain(output.txHash)
     } finally {
       overlaySpy.mockRestore()
       submitSpy.mockRestore()
