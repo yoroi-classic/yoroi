@@ -50,6 +50,7 @@ const ResolvedUtxoSchema = z
   .object({
     txHash: z.string().regex(/^[0-9a-fA-F]{64}$/),
     outputIndex: z.number().int().nonnegative(),
+    blockHeight: z.number().int().nonnegative().optional(),
     address: z.string().min(1),
     value: z.string().regex(/^(0|[1-9][0-9]*)$/),
     assets: z.array(

@@ -119,6 +119,7 @@ describe('cardanoWalletBackendV1Maker', () => {
       {
         txHash: referenceTxHash,
         outputIndex: 0,
+        blockHeight: 900,
         address: 'addr1wxyz',
         value: '18248540',
         assets: [],
