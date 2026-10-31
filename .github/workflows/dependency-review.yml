@@ -33,4 +33,7 @@ jobs:
           # package with image-size-next 1.2.2, which fixes both parser DoS
           # advisories while retaining Metro's synchronous API. Dependency
           # Review identifies the npm alias as vulnerable image-size 1.2.2.
-          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq
+          # minimatch 3.x is required by older build dependencies; GHSA-g3hv-
+          # 75wg-m249 is fixed only in 11.0.1 and is limited to optimization
+          # level 2 preprocessing not used by those consumers.
+          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq, GHSA-g3hv-75wg-m249
