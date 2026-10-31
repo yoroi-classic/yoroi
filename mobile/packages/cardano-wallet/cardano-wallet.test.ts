@@ -24,6 +24,7 @@ import type {CardanoWalletDependencies} from './dependencies'
 import {keyManager} from './key-manager/key-manager'
 import {mockedTipStatusResponse} from './mocks'
 import * as pendingOverlayApi from './utxoManager/pending-utxo-overlay'
+import * as utxoManagerApi from './utxoManager/utxoManager'
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
   walletRootKeyHexFromEntropy: jest.fn(() => 'ab'.repeat(96)),
@@ -378,6 +379,82 @@ describe('CardanoWallet', () => {
       fetchHistorySpy.mockRestore()
     }
   })
+
+  it.each(['sync', 'quickSync'] as const)(
+    'uses the legacy tip for transaction history during %s with current-state UTxOs',
+    async (syncMethod) => {
+      const legacyTip = {
+        ...mockedTipStatusResponse,
+        bestBlock: {
+          ...mockedTipStatusResponse.bestBlock,
+          hash: Branded.asBlockHash('d'.repeat(64)),
+        },
+      }
+      const backendTip = {
+        ...mockedTipStatusResponse,
+        bestBlock: {
+          ...mockedTipStatusResponse.bestBlock,
+          hash: Branded.asBlockHash('e'.repeat(64)),
+        },
+      }
+      const currentStateManager = {
+        kind: 'current-state' as const,
+        clear: jest.fn(),
+        sync: jest.fn(),
+        getCachedUtxos: jest.fn().mockResolvedValue([]),
+        initialUtxos: [],
+        initialCollateralId: '',
+      }
+      const makeCurrentStateManagerSpy = jest
+        .spyOn(utxoManagerApi, 'makeCurrentStateUtxoManager')
+        .mockResolvedValue(currentStateManager as never)
+      const filterUsedAddressesSpy = jest
+        .spyOn(legacyApi, 'filterUsedAddresses')
+        .mockResolvedValue([])
+      const getTipStatusSpy = jest
+        .spyOn(legacyApi, 'getTipStatus')
+        .mockResolvedValue(legacyTip)
+      const fetchHistorySpy = jest
+        .spyOn(legacyApi, 'fetchNewTxHistory')
+        .mockResolvedValue({isLast: true, transactions: []})
+      mockCardanoWalletDependencies.cardanoWalletBackendUrl =
+        'https://wallet-backend.example.com'
+      mockCardanoWalletDependencies.currentStateUtxoEnabled = true
+      mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
+        createPersistentPendingUtxoOverlayStore
+
+      try {
+        const ShelleyWalletPreprod = getWalletFactory({
+          implementation: 'cardano-cip1852',
+          network: Chain.Network.Preprod,
+        })
+        const wallet = await ShelleyWalletPreprod.build({
+          id: `history-tip-${syncMethod}`,
+          accountPubKeyHex:
+            '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+          accountVisual: 0,
+        })
+
+        await wallet[syncMethod]({tipStatus: backendTip})
+
+        expect(getTipStatusSpy).toHaveBeenCalledWith(
+          'https://preprod-backend.yoroiwallet.com/api',
+        )
+        expect(fetchHistorySpy).toHaveBeenCalled()
+        for (const [request] of fetchHistorySpy.mock.calls) {
+          expect(request.untilBlock).toBe(legacyTip.bestBlock.hash)
+        }
+      } finally {
+        makeCurrentStateManagerSpy.mockRestore()
+        filterUsedAddressesSpy.mockRestore()
+        getTipStatusSpy.mockRestore()
+        fetchHistorySpy.mockRestore()
+        delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
+        delete mockCardanoWalletDependencies.currentStateUtxoEnabled
+        delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
+      }
+    },
+  )
 })
 
 describe('selectUtxoBackend', () => {
