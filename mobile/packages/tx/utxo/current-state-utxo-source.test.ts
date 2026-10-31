@@ -12,7 +12,9 @@ const preprodRequest = (
   accountResponse: unknown,
 ): jest.MockedFunction<Fetcher> =>
   jest.fn(async (options: {url: string}) =>
-    options.url.endsWith('/v1/status') ? PREPROD_STATUS : accountResponse,
+    options.url.endsWith('/v1/status')
+      ? PREPROD_STATUS
+      : {complete: true, utxos: accountResponse},
   ) as unknown as jest.MockedFunction<Fetcher>
 
 const validAccountUtxo = () => ({
@@ -107,7 +109,7 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
       headers: {Accept: 'application/json'},
     })
     expect(request).toHaveBeenNthCalledWith(2, {
-      url: `https://wallet.example/v1/account/${STAKE_ADDRESS}/utxos`,
+      url: `https://wallet.example/v1/account/${STAKE_ADDRESS}/utxos/complete`,
       method: 'GET',
       headers: {Accept: 'application/json'},
     })
@@ -172,7 +174,42 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     )
 
     await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
-      'Invalid cardano-wallet-backend account UTxO response',
+      'Invalid or incomplete cardano-wallet-backend account UTxO response',
+    )
+  })
+
+  it('rejects an incomplete account response', async () => {
+    const request = jest.fn(async (options: {url: string}) =>
+      options.url.endsWith('/v1/status')
+        ? PREPROD_STATUS
+        : {complete: false, utxos: [validAccountUtxo()]},
+    ) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+      'Invalid or incomplete cardano-wallet-backend account UTxO response',
+    )
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects an account response without the completeness marker', async () => {
+    const request = jest.fn(async (options: {url: string}) =>
+      options.url.endsWith('/v1/status')
+        ? PREPROD_STATUS
+        : {utxos: [validAccountUtxo()]},
+    ) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+      'Invalid or incomplete cardano-wallet-backend account UTxO response',
     )
   })
 
@@ -214,7 +251,7 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     )
 
     await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
-      'Invalid cardano-wallet-backend account UTxO response',
+      'Invalid or incomplete cardano-wallet-backend account UTxO response',
     )
   })
 
@@ -258,11 +295,11 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     )
 
     await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
-      'Invalid cardano-wallet-backend account UTxO response',
+      'Invalid or incomplete cardano-wallet-backend account UTxO response',
     )
   })
 
-  it('fails closed at the legacy backend row cap', async () => {
+  it('accepts exactly 1,000 outputs when the backend proves the set is complete', async () => {
     const request = preprodRequest(
       Array.from({length: 1_000}, (_, outputIndex) => ({
         ...validAccountUtxo(),
@@ -275,8 +312,8 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
       request,
     )
 
-    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
-      'cardano-wallet-backend account UTxO response may be incomplete',
+    await expect(source.getAccountUtxos(STAKE_ADDRESS)).resolves.toHaveLength(
+      1_000,
     )
   })
 
@@ -350,7 +387,10 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     const request = jest.fn(async (options: {url: string}) =>
       options.url.endsWith('/v1/status')
         ? {network: Chain.Network.Mainnet, chain: 'ok'}
-        : [{...validAccountUtxo(), address: 'addr1receiver'}],
+        : {
+            complete: true,
+            utxos: [{...validAccountUtxo(), address: 'addr1receiver'}],
+          },
     ) as unknown as jest.MockedFunction<Fetcher>
     const source = createCardanoWalletBackendUtxoSource(
       'https://wallet.example',
