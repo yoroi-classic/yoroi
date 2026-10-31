@@ -125,6 +125,12 @@ export type UtxoBackendSelection =
       reason: 'not-configured' | 'not-enabled' | 'unsupported-wallet'
     }
 
+export const historyTipStatusForUtxoBackend = (
+  kind: UtxoManager['kind'],
+  tipStatus?: SyncTipStatus | null,
+): SyncTipStatus | null | undefined =>
+  kind === 'current-state' ? null : tipStatus
+
 export const selectUtxoBackend = ({
   backendUrl,
   enabled,
@@ -756,7 +762,7 @@ function createWalletObject(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        tipStatus,
+        historyTipStatusForUtxoBackend(state.utxoManager.kind, tipStatus),
         isForced,
       ),
     ])
@@ -789,7 +795,7 @@ function createWalletObject(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        tipStatus,
+        historyTipStatusForUtxoBackend(state.utxoManager.kind, tipStatus),
       ),
     ])
   }

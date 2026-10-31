@@ -16,7 +16,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as accountManagerApi from './account-manager/account-manager'
 import * as readOnlyAccountManagerApi from './account-manager/read-only-account-manager'
 import * as legacyApi from './api/api'
-import {selectUtxoBackend} from './cardano-wallet'
+import {
+  historyTipStatusForUtxoBackend,
+  selectUtxoBackend,
+} from './cardano-wallet'
 import type {CardanoWalletDependencies} from './dependencies'
 import {keyManager} from './key-manager/key-manager'
 import {mockedTipStatusResponse} from './mocks'
@@ -436,5 +439,24 @@ describe('selectUtxoBackend', () => {
         rewardAddressHex: 'e0c11ef0',
       }),
     ).toEqual({kind: 'legacy', reason: 'not-enabled'})
+  })
+})
+
+describe('historyTipStatusForUtxoBackend', () => {
+  it('does not use a current-state backend tip for legacy transaction history', () => {
+    const backendTip = {
+      ...mockedTipStatusResponse,
+      bestBlock: {
+        ...mockedTipStatusResponse.bestBlock,
+        hash: Branded.asBlockHash('e'.repeat(64)),
+      },
+    }
+
+    expect(
+      historyTipStatusForUtxoBackend('current-state', backendTip),
+    ).toBeNull()
+    expect(
+      historyTipStatusForUtxoBackend('legacy', mockedTipStatusResponse),
+    ).toBe(mockedTipStatusResponse)
   })
 })

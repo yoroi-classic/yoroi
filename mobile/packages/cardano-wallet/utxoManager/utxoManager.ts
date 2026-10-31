@@ -157,8 +157,13 @@ export const makeCurrentStateUtxoManager = async ({
         // committing the new authoritative snapshot.
         await storage.setItem(currentStateCacheKey, nextUtxos)
         authoritativeUtxos = [...nextUtxos]
+        const retainedPendingOutputIds = new Set<string>()
         for (const overlay of pending) {
+          const spendsRetainedPendingOutput = overlay.spentUtxoIds.some(
+            (utxoId) => retainedPendingOutputIds.has(utxoId),
+          )
           const observed =
+            !spendsRetainedPendingOutput &&
             overlay.spentUtxoIds.length > 0 &&
             overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
           const expiredWithInputsRemaining =
@@ -173,6 +178,10 @@ export const makeCurrentStateUtxoManager = async ({
               stakeAddress,
               overlay.txHash,
             )
+          } else {
+            for (const createdUtxo of overlay.createdUtxos) {
+              retainedPendingOutputIds.add(createdUtxo.utxoId)
+            }
           }
         }
       })

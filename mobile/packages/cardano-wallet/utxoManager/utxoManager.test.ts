@@ -280,6 +280,77 @@ describe('current-state UTxO manager', () => {
     ).resolves.toEqual([])
   })
 
+  it('retains chained pending overlays while the first transaction remains unobserved', async () => {
+    const accountStorage = rootStorage.join(
+      'current-state-chained-overlay-test/',
+    )
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const input = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1input'),
+      amount: '10000000' as Balance.Quantity,
+      assets: [],
+    }
+    const firstChange = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      txIndex: 1,
+      amount: '7800000' as Balance.Quantity,
+    }
+    const secondChange = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'c'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('c'.repeat(64)),
+      txIndex: 1,
+      amount: '4600000' as Balance.Quantity,
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn().mockResolvedValue({
+        bestBlock: {
+          height: 1,
+          slot: 1,
+          epoch: 1,
+          hash: 'd'.repeat(64),
+          globalSlot: null,
+        },
+      }),
+      getAccountUtxos: jest.fn().mockResolvedValue([input]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+    })
+    await manager.sync([])
+    await manager.savePendingOverlay({
+      txHash: firstChange.txHash,
+      ttlSlot: '10',
+      spentUtxoIds: [input.utxoId],
+      createdUtxos: [firstChange],
+    })
+    await manager.savePendingOverlay({
+      txHash: secondChange.txHash,
+      ttlSlot: '10',
+      spentUtxoIds: [firstChange.utxoId],
+      createdUtxos: [secondChange],
+    })
+
+    await manager.sync([])
+
+    await expect(manager.getCachedUtxos()).resolves.toEqual([
+      expect.objectContaining({utxo_id: secondChange.utxoId}),
+    ])
+    await expect(
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),
+    ).resolves.toHaveLength(2)
+  })
+
   it('expires a pending overlay after its TTL when the backend still reports its inputs', async () => {
     const accountStorage = rootStorage.join(
       'current-state-expired-overlay-test/',
