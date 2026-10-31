@@ -2,7 +2,7 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
-import {View} from 'react-native'
+import {View, useColorScheme} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {useLanguage} from '~/kernel/i18n/LanguageProvider'
@@ -39,6 +39,7 @@ const useDisclaimerText = ({
 }
 
 export const ShowDisclaimer = ({type, disabled}: Props) => {
+  const colorScheme = useColorScheme()
   const {languageCode} = useLanguage()
   const {openModal, closeModal} = useModal()
   const strings = useStrings()
@@ -50,7 +51,7 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
   React.useEffect(() => {
     setShowed(false)
   }, [type])
-  const {atoms: ta, palette: p, basePalette} = useTheme()
+  const {atoms: ta, palette: p} = useTheme()
   const {data: disclaimerText, isLoading} = useDisclaimerText({
     type,
     languageCode,
@@ -63,9 +64,9 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
       content: (
         <View style={[a.flex_1, a.px_lg, {height: 600}]}>
           <Markdown
-            colorScheme={basePalette}
-            backgroundColor={ta.bg_color_max.backgroundColor}
             value={disclaimerText || ''}
+            colorScheme={colorScheme}
+            backgroundColor={p.bg_color_max}
             flatListProps={{
               style: {
                 backgroundColor: p.bg_color_max,
@@ -121,13 +122,13 @@ export const ShowDisclaimer = ({type, disabled}: Props) => {
     setShowed(true)
   }, [
     accepted,
+    colorScheme,
     disclaimerText,
     openModal,
     strings.global.disclaimer,
     strings.global.accept,
     strings.global.cancel,
     strings.global.proceed,
-    basePalette,
     ta,
     p.bg_color_max,
     resetToTxHistory,

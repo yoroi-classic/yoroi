@@ -8,17 +8,121 @@ import {
 } from '@yoroi/tx'
 import {Balance, Portfolio} from '@yoroi/types'
 
-import {
-  CertificateJSON,
-  TransactionBodyJSON,
-  TransactionInputsJSON,
-  TransactionOutputsJSON,
-} from '@emurgo/cardano-serialization-lib-nodejs'
-import {CredKind} from '@emurgo/cross-csl-core'
+export type TransactionInput = {transaction_id: string; index: number}
+export type TransactionOutput = {
+  address: string
+  amount: {
+    coin: string
+    multiasset?: Record<string, Record<string, string>>
+  }
+}
+export type TransactionInputs = TransactionInput[]
+export type TransactionOutputs = TransactionOutput[]
+export type TransactionBody = {
+  inputs: TransactionInputs
+  outputs: TransactionOutputs
+  reference_inputs?: TransactionInputs
+  fee: string
+  certs?: Array<Record<string, unknown>> | null
+  mint?: Array<[string, Record<string, string>]> | null
+  auxiliary_data_hash?: string | null
+  cmlReviewInfo?: CmlTransactionReviewInfo
+}
 
-export type TransactionBody = TransactionBodyJSON
-export type TransactionInputs = TransactionInputsJSON
-export type TransactionOutputs = TransactionOutputsJSON
+export type CmlReviewInput = {transactionIdHex: string; index: string}
+export type CmlReviewAsset = {
+  policyIdHex: string
+  assetNameHex: string
+  quantity: string
+}
+export type CmlReviewOutput = {
+  address: string | null
+  addressHex: string
+  networkId: string | null
+  addressKind: string
+  lovelace: string
+  assets: CmlReviewAsset[]
+  datum:
+    | {kind: 'hash'; hashHex: string}
+    | {kind: 'inline'; cborHex: string}
+    | null
+  scriptRef: {
+    type: string
+    hashHex: string
+    size: string
+    bytesHex: string | null
+    cborHex: string
+  } | null
+  cborHex: string
+}
+export type CmlTransactionReviewInfo = {
+  transactionIdHex: string
+  isValid: boolean
+  body: {
+    cborHex: string
+    inputs: CmlReviewInput[]
+    outputs: CmlReviewOutput[]
+    fee: string
+    ttl: string | null
+    validityIntervalStart: string | null
+    certificates: unknown[] | null
+    withdrawals: Array<{
+      rewardAddress: string
+      rewardAddressHex: string
+      amount: string
+    }> | null
+    mint: unknown
+    scriptDataHashHex: string | null
+    collateralInputs: CmlReviewInput[] | null
+    requiredSigners: string[] | null
+    networkId: string | null
+    collateralReturn: CmlReviewOutput | null
+    totalCollateral: string | null
+    referenceInputs: CmlReviewInput[] | null
+    votingProcedures: unknown
+    proposalProcedures: unknown
+    currentTreasuryValue: string | null
+    donation: string | null
+    auxiliaryDataHashHex?: string | null
+  }
+  witnessSet: {
+    cborHex: string
+    vkeys: Array<{publicKeyHex: string; signatureHex: string}>
+    bootstraps: Array<{
+      publicKeyHex: string
+      signatureHex: string
+      chainCodeHex: string
+      attributes: unknown
+    }>
+    nativeScripts: Array<{hashHex: string; cborHex: string}>
+    plutusScripts: Array<{
+      type: string
+      hashHex: string
+      bytesHex: string
+      cborHex: string
+    }>
+    plutusDataCborHex: string[]
+    redeemers: unknown
+    cmlJson: unknown
+  }
+  auxiliaryData: {
+    cborHex: string
+    metadata: Array<{
+      label: string
+      json: unknown
+      basicConversionsJson: string | null
+      cmlJson: unknown
+    }>
+    nativeScripts: Array<{hashHex: string; cborHex: string}>
+    plutusScripts: Array<{
+      type: string
+      hashHex: string
+      bytesHex: string
+      cborHex: string
+    }>
+    cmlJson: unknown
+  } | null
+}
 
 export type FormattedInput = {
   assets: Array<{
@@ -26,7 +130,7 @@ export type FormattedInput = {
     quantity: Balance.Quantity
   }>
   address: string | undefined
-  addressKind: CredKind | null
+  addressKind: 0 | 1 | null
   rewardAddress: string | null
   ownAddress: boolean | null
   txIndex: number
@@ -48,7 +152,7 @@ export type FormattedOutput = {
     quantity: Balance.Quantity
   }>
   address: string
-  addressKind: CredKind | null
+  addressKind: 0 | 1 | null
   rewardAddress: string | null
   ownAddress: boolean
   resolvedName?: string | null // Resolved alias (AdaHandle, CNS, etc.)
@@ -140,42 +244,14 @@ export type FormattedMetadata = {
   scripts: Array<{scriptHash: string; scriptBytes: string}> | null // Scripts in auxiliary data
 }
 
-type AssertEqual<T, Expected> = T extends Expected
-  ? Expected extends T
-    ? true
-    : ['Type', Expected, 'is not equal to', T]
-  : ['Type', T, 'is not equal to', Expected]
-
-type UnionToIntersection<U> = (
-  U extends unknown ? (x: U) => void : never
-) extends (x: infer I) => void
-  ? I
-  : never
-
-type Transformed<T> = {
-  [K in keyof UnionToIntersection<T>]: {
-    type: K
-    value: UnionToIntersection<T>[K]
-  }
-}[keyof UnionToIntersection<T>]
-
 // Minimal certificate with just type (for historical transactions)
 type MinimalCertificate = {
   type: CertificateType
   value: Partial<Record<string, unknown>>
 }
 
-// FormattedCertificate can be either a full certificate or a minimal one
-export type FormattedCertificate =
-  | Transformed<CertificateJSON>
-  | MinimalCertificate
+export type FormattedCertificate = MinimalCertificate
 
 // Re-export CertificateKind from @yoroi/tx as CertificateType for backward compatibility
 export const CertificateType = CertificateKind
 export type CertificateType = CertificateKind
-
-// Makes sure CertificateType lists all the certificates in CertificateJSON
-export type AssertAllImplementedCertTypes = AssertEqual<
-  CertificateType,
-  keyof UnionToIntersection<CertificateJSON>
->

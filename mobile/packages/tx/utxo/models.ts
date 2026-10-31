@@ -12,10 +12,6 @@ import {
 } from '@yoroi/types'
 import {UtxoId} from '@yoroi/types'
 
-import type {
-  TransactionUnspentOutput,
-  WasmModuleProxy,
-} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
 import {Addressing} from '../types'
@@ -26,12 +22,19 @@ export type ModernUtxo = {
   txHash: TransactionHash
   txIndex: number
   balance: Balance.Amounts // Record<TokenId, Quantity>
+  /** Inline Plutus datum from the authoritative UTxO source, in CBOR hex. */
+  inlineDatumCborHex?: string
+  datumHashHex?: string
+  /** Reference-script metadata from the CWB resolved-output API. */
+  referenceScript?: {
+    hash: string
+    type?: string
+    size?: number
+    bytes?: string
+  }
   derivationPath?: string // For display (BIP32 path string, e.g., "m/1852'/1815'/0'/0/0")
   addressing?: Addressing // For signing (path array + startLevel)
   toTransactionUnspentOutputHex: () => string
-  toTransactionUnspentOutput: (
-    wasm: WasmModuleProxy,
-  ) => TransactionUnspentOutput
 }
 
 export enum UtxoApiResult {

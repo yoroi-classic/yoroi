@@ -5,231 +5,183 @@ import {
   addrContainsAccountKey,
   derivePublicByAddressing,
   filterAddressesByStakingKey,
-  normalizeToAddress,
+  isByronAddress,
+  normalizeAddressToHex,
   validateAndExtractAddressInfo,
 } from './addresses'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressInfoFromAddress: jest.fn(() => ({
+    hex: '00' + 'ab'.repeat(28),
+    networkId: 0,
+    bech32: 'addr_test1qtest',
+    isValid: true,
+  })),
+  stakeCredentialHexFromAddress: jest.fn(() => '8200581c' + 'ab'.repeat(28)),
+}))
+
 describe('address utils', () => {
-  describe('normalizeToAddress', () => {
-    it('should normalize bech32 address', () => {
-      const mockAddress = {
-        isMalformed: jest.fn(() => false),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Address: {
-          fromBech32: jest.fn(() => mockAddress),
-        },
-      }
-
-      const result = normalizeToAddress(mockCsl as any, 'addr_test1qpxxxxxx')
-
-      expect(result).toBe(mockAddress)
-      expect(mockCsl.Address.fromBech32).toHaveBeenCalledWith(
-        'addr_test1qpxxxxxx',
+  describe('normalizeAddressToHex', () => {
+    it('uses CML normalized bytes for bech32 and hex input', () => {
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
       )
+
+      expect(normalizeAddressToHex('addr_test1qpxxxxxx')).toBe(
+        '00' + 'ab'.repeat(28),
+      )
+      expect(addressInfoFromAddress).toHaveBeenCalledWith('addr_test1qpxxxxxx')
     })
 
-    it('should normalize hex address', () => {
-      const mockAddress = {
-        isMalformed: jest.fn(() => false),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Address: {
-          fromHex: jest.fn(() => mockAddress),
-        },
-      }
+    it('returns undefined when CML rejects the address', () => {
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      addressInfoFromAddress.mockImplementationOnce(() => {
+        throw new Error('invalid address')
+      })
+      expect(normalizeAddressToHex('invalid')).toBeUndefined()
+    })
+  })
 
-      const result = normalizeToAddress(mockCsl as any, 'abcdef123456')
-
-      expect(result).toBe(mockAddress)
+  describe('isByronAddress', () => {
+    it('classifies a CML-parsed Byron address from canonical bytes', () => {
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      addressInfoFromAddress.mockImplementationOnce(() => ({
+        hex: '82d818' + '00'.repeat(29),
+        networkId: 1,
+        bech32: null,
+        isValid: true,
+      }))
+      expect(isByronAddress('Ae2valid')).toBe(true)
     })
 
-    it('should normalize Byron address', () => {
-      const mockByronAddress = {
-        toAddress: jest.fn(() => ({isMalformed: () => false})),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => true),
-          fromBase58: jest.fn(() => mockByronAddress),
-        },
-      }
-
-      const result = normalizeToAddress(mockCsl as any, 'ByronAddress')
-
-      expect(result).not.toBeUndefined()
-    })
-
-    it('should return undefined for malformed address', () => {
-      const mockAddress = {
-        isMalformed: jest.fn(() => true),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Address: {
-          fromBech32: jest.fn(() => mockAddress),
-        },
-      }
-
-      const result = normalizeToAddress(mockCsl as any, 'invalid')
-
-      expect(result).toBeUndefined()
+    it('rejects invalid prefix lookalikes and malformed strings', () => {
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      addressInfoFromAddress.mockImplementationOnce(() => {
+        throw new Error('not a valid address')
+      })
+      expect(isByronAddress('Ae2invalid')).toBe(false)
+      expect(isByronAddress('')).toBe(false)
     })
   })
 
   describe('validateAndExtractAddressInfo', () => {
-    it('should extract address info from bech32', async () => {
-      // This function uses CardanoMobileWrapped.cslScope which requires real CSL
-      // We'll test the structure indirectly through integration tests
-      // For unit tests, we verify the function exists and has correct signature
-      expect(typeof validateAndExtractAddressInfo).toBe('function')
+    it('extracts normalized Shelley address info through CML', async () => {
+      const address =
+        'addr_test1qqhchrw4umcrf90ew5ep85zefj9724c5jcfg6kp667qau789d6z307gnggrp3hgye75yzgh5q0w6unkqnvfxjfu7vxlswtaxme'
+      await expect(validateAndExtractAddressInfo(address)).resolves.toEqual({
+        networkId: 0,
+        hex: ('00' + 'ab'.repeat(28)) as any,
+        bech32: 'addr_test1qtest',
+        isValid: true,
+      })
+    })
 
-      // The function should return AddressInfo or undefined
-      // Actual testing requires real CSL instance
+    it('returns undefined when CML rejects a Shelley address', async () => {
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      addressInfoFromAddress.mockImplementationOnce(() => {
+        throw new Error('invalid address')
+      })
+      await expect(
+        validateAndExtractAddressInfo('addr_invalid'),
+      ).resolves.toBeUndefined()
     })
   })
 
   describe('filterAddressesByStakingKey', () => {
     it('should filter addresses by staking key', async () => {
-      const mockStakeCred = {
-        toBytes: jest.fn(() => Buffer.from('stake_cred', 'hex')),
-      }
-      const mockBaseAddress = {
-        stakeCred: jest.fn(() => ({
-          toBytes: jest.fn(() => Buffer.from('stake_cred', 'hex')),
-        })),
-      }
-      const mockAddress = {
-        isMalformed: jest.fn(() => false),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Address: {
-          fromBech32: jest.fn(() => mockAddress),
-        },
-        BaseAddress: {
-          fromAddress: jest.fn(() => mockBaseAddress),
-        },
-      }
-
-      const utxos = [
-        {receiver: 'addr_test1qpxxxxxx' as Address},
-        {receiver: 'addr_test1qpyyyyyy' as Address},
-      ]
-
       const result = await filterAddressesByStakingKey(
-        mockCsl as any,
-        mockStakeCred as any,
-        utxos,
+        '8200581c' + 'ab'.repeat(28),
+        [{receiver: 'addr_test1qpxxxxxx' as Address}],
         false,
       )
-
-      expect(Array.isArray(result)).toBe(true)
+      expect(result).toHaveLength(1)
     })
   })
 
   describe('addrContainsAccountKey', () => {
     it('should check if address contains account key', async () => {
-      const mockStakeCred = {
-        toBytes: jest.fn(() => Buffer.from('stake_cred', 'hex')),
-      }
-      const mockBaseAddress = {
-        stakeCred: jest.fn(() => ({
-          toBytes: jest.fn(() => Buffer.from('stake_cred', 'hex')),
-        })),
-      }
-      const mockAddress = {
-        isMalformed: jest.fn(() => false),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Address: {
-          fromBech32: jest.fn(() => mockAddress),
-        },
-        BaseAddress: {
-          fromAddress: jest.fn(() => mockBaseAddress),
-        },
-        PointerAddress: {
-          fromAddress: jest.fn(() => null),
-        },
-      }
-
       const result = await addrContainsAccountKey(
-        mockCsl as any,
         'addr_test1qpxxxxxx',
-        mockStakeCred as any,
+        '8200581c' + 'ab'.repeat(28),
         false,
       )
 
-      expect(typeof result).toBe('boolean')
+      expect(result).toBe(true)
     })
 
     it('should handle pointer addresses with acceptTypeMismatch', async () => {
-      const mockStakeCred = {
-        toBytes: jest.fn(() => Buffer.from('stake_cred', 'hex')),
-      }
-      const mockPointerAddress = {}
-      const mockAddress = {
-        isMalformed: jest.fn(() => false),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Address: {
-          fromBech32: jest.fn(() => mockAddress),
-        },
-        BaseAddress: {
-          fromAddress: jest.fn(() => null),
-        },
-        PointerAddress: {
-          fromAddress: jest.fn(() => mockPointerAddress),
-        },
-      }
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      addressInfoFromAddress.mockImplementationOnce(() => ({
+        hex: '40',
+        networkId: 0,
+        bech32: null,
+        isValid: true,
+      }))
 
       const result = await addrContainsAccountKey(
-        mockCsl as any,
         'addr_test1qpxxxxxx',
-        mockStakeCred as any,
+        '8200581c' + 'ab'.repeat(28),
         true,
       )
 
       expect(result).toBe(true) // acceptTypeMismatch = true
     })
 
-    it('should throw error for invalid address', async () => {
-      const mockStakeCred = {}
-      const mockAddress = {
-        isMalformed: jest.fn(() => true),
-      }
-      const mockCsl = {
-        ByronAddress: {
-          isValid: jest.fn(() => false),
-        },
-        Address: {
-          fromBech32: jest.fn(() => mockAddress),
-        },
-      }
-
+    it('rejects an unmatched base-address credential when type mismatches are not accepted', async () => {
+      const {stakeCredentialHexFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      stakeCredentialHexFromAddress.mockImplementationOnce(
+        () => 'different-credential',
+      )
       await expect(
         addrContainsAccountKey(
-          mockCsl as any,
-          'invalid',
-          mockStakeCred as any,
+          'addr_test1qpxxxxxx',
+          '8200581c' + 'ab'.repeat(28),
           false,
         ),
+      ).resolves.toBe(false)
+    })
+
+    it('rejects a parsed non-base address when type mismatches are not accepted', async () => {
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      addressInfoFromAddress.mockImplementationOnce(() => ({
+        hex: '60',
+        networkId: 0,
+        bech32: null,
+        isValid: true,
+      }))
+      await expect(
+        addrContainsAccountKey(
+          'addr_test1qpxxxxxx',
+          '8200581c' + 'ab'.repeat(28),
+          false,
+        ),
+      ).resolves.toBe(false)
+    })
+
+    it('should throw error for invalid address', async () => {
+      const {addressInfoFromAddress} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      addressInfoFromAddress.mockImplementationOnce(() => {
+        throw new Error('invalid address')
+      })
+
+      await expect(
+        addrContainsAccountKey('invalid', 'credential', false),
       ).rejects.toThrow('invalid address')
     })
   })

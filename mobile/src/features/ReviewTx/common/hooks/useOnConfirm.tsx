@@ -1,14 +1,8 @@
-import {
-  CardanoMobileWrapped,
-  YoroiWallet,
-  createRawTxSigningKey,
-  getTransactionSigners,
-} from '@yoroi/cardano-wallet'
+import {YoroiWallet, getTransactionSigners} from '@yoroi/cardano-wallet'
 import {calculateTxId} from '@yoroi/tx'
 import {Branded, Wallet} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import {Transaction, WasmModuleProxy} from '@emurgo/cross-csl-core'
 import * as React from 'react'
 import {ErrorBoundary} from 'react-error-boundary'
 import {InteractionManager} from 'react-native'
@@ -36,15 +30,13 @@ export type OnConfirm = {
   context?: OperationContext
   formattedTx?: FormattedTx | null
   onSuccess?: (args?: {
-    tx?: Transaction
     rootKey?: string
-    signedTx?: Transaction | ((csl: WasmModuleProxy) => Transaction)
+    signedTxBytes?: Uint8Array
     txId?: string
   }) => void
   onSuccessWithoutFeedback?: (args?: {
-    tx?: Transaction
     rootKey?: string
-    signedTx?: Transaction | ((csl: WasmModuleProxy) => Transaction)
+    signedTxBytes?: Uint8Array
     txId?: string
   }) => void
   onError?: ((error: unknown) => void) | null
@@ -78,15 +70,14 @@ export const useOnConfirm = ({
   const {saveMemo} = useSaveMemo({wallet})
 
   const handleOnSuccess = async (args?: {
-    tx?: Transaction
     rootKey?: string
-    signedTx?: Transaction | ((csl: WasmModuleProxy) => Transaction)
+    signedTxBytes?: Uint8Array
     txId?: string
   }) => {
+    const signedTxBytes = args?.signedTxBytes
     logger.info('useOnConfirm.handleOnSuccess: Starting success handler', {
       hasArgs: !!args,
-      hasSignedTx: !!args?.signedTx,
-      hasTx: !!args?.tx,
+      hasSignedTxBytes: !!signedTxBytes,
       hasTxId: !!args?.txId,
       hasRootKey: !!args?.rootKey,
       preventSubmit,
@@ -97,15 +88,8 @@ export const useOnConfirm = ({
     try {
       closeModal()
 
-      // Use signedTx if available, otherwise fall back to tx
-      // If signedTx is a function, it will be called within a CSL scope when needed
-      const signedTx = args?.signedTx ?? args?.tx
-
       logger.info('useOnConfirm.handleOnSuccess: Resolved signedTx', {
-        hasSignedTx: !!signedTx,
-        signedTxType: typeof signedTx,
-        originalHasSignedTx: !!args?.signedTx,
-        originalHasTx: !!args?.tx,
+        hasSignedTxBytes: !!signedTxBytes,
         txId: args?.txId,
         preventSubmit,
         context,
@@ -134,8 +118,7 @@ export const useOnConfirm = ({
             try {
               await onSuccessWithoutFeedback({
                 rootKey: args?.rootKey,
-                tx: args?.tx,
-                signedTx,
+                signedTxBytes,
                 txId: args?.txId,
               })
             } catch (error) {
@@ -145,8 +128,7 @@ export const useOnConfirm = ({
                   error: error instanceof Error ? error.message : String(error),
                   errorStack: error instanceof Error ? error.stack : undefined,
                   txId: args?.txId,
-                  hasSignedTx: !!signedTx,
-                  signedTxType: typeof signedTx,
+                  hasSignedTxBytes: !!signedTxBytes,
                   context,
                 },
               )
@@ -159,8 +141,7 @@ export const useOnConfirm = ({
             try {
               await onSuccess({
                 rootKey: args?.rootKey,
-                tx: args?.tx,
-                signedTx,
+                signedTxBytes,
                 txId: args?.txId,
               })
             } catch (error) {
@@ -290,18 +271,14 @@ export const useOnConfirm = ({
           partial,
           onCancel,
           onClose,
-          onSuccess: async (tx: Transaction) => {
+          onSuccess: async (signedTxBytes: Uint8Array) => {
             // Calculate txId from signed transaction immediately
-            const txBytes = tx.toBytes()
-            const txId = await CardanoMobileWrapped.cslScope(async (csl) => {
-              return await calculateTxId(
-                csl,
-                Buffer.from(txBytes).toString('hex'),
-                'hex',
-              )
-            })
+            const txId = await calculateTxId(
+              Buffer.from(signedTxBytes).toString('hex'),
+              'hex',
+            )
 
-            handleOnSuccess({tx, txId})
+            handleOnSuccess({signedTxBytes, txId})
           },
           onError: handleOnError,
         })
@@ -325,11 +302,7 @@ export const useOnConfirm = ({
                 onSuccess={async () => {
                   // For HW with submit, transaction is already submitted
                   // Calculate txId from unsigned CBOR (body hash is same)
-                  const txId = await CardanoMobileWrapped.cslScope(
-                    async (csl) => {
-                      return await calculateTxId(csl, cbor, 'hex')
-                    },
-                  )
+                  const txId = await calculateTxId(cbor, 'hex')
                   handleOnSuccess({txId})
                 }}
                 onCancel={() => {
@@ -393,7 +366,7 @@ export const useOnConfirm = ({
             // txId and signedTx are already calculated in submitTx
             handleOnSuccess({
               rootKey,
-              signedTx: result.signedTx,
+              signedTxBytes: result.signedTxBytes,
               txId: result.txId,
             })
             return
@@ -419,7 +392,7 @@ export const useOnConfirm = ({
 
           handleOnSuccess({
             rootKey,
-            signedTx: result.signedTx,
+            signedTxBytes: result.signedTxBytes,
             txId: result.txId,
           })
           return
@@ -446,56 +419,30 @@ const signTx = async (
   wallet: YoroiWallet,
   meta: Wallet.Meta,
 ): Promise<{
-  signedTx: (csl: WasmModuleProxy) => Transaction
   txId: string
   signedTxBytes: Uint8Array
 } | null> => {
-  const result = await CardanoMobileWrapped.cslScope(async (csl) => {
-    const signers = await getTransactionSigners(cbor, wallet, meta)
+  const signers = await getTransactionSigners(cbor, wallet, meta)
 
-    const keys = signers.map((signer) =>
-      createRawTxSigningKey(rootKey, signer, csl),
+  const signedTxBytes = await wallet.signRawTx(cbor, rootKey, signers)
+  if (!signedTxBytes) {
+    logger.error(
+      'signTx: Failed to sign transaction - signRawTx returned null',
+      {
+        walletId: wallet.id,
+      },
     )
-
-    const signedTxBytes = await wallet.signRawTx(cbor, keys)
-    if (!signedTxBytes) {
-      logger.error(
-        'signTx: Failed to sign transaction - signRawTx returned null',
-        {
-          walletId: wallet.id,
-        },
-      )
-      return null
-    }
-
-    // Calculate transaction ID from signed bytes
-    const txId = await calculateTxId(
-      csl,
-      Buffer.from(signedTxBytes).toString('hex'),
-      'hex',
-    )
-
-    return {signedTxBytes, txId}
-  })
-
-  if (!result) {
     return null
   }
 
-  // Return a function that recreates the Transaction from bytes when called with a CSL instance
-  // This allows callbacks to recreate the Transaction within their own CSL scope
-  const signedTx = (csl: WasmModuleProxy) => {
-    const tx = csl.Transaction.fromBytes(result.signedTxBytes)
-    if (!tx) {
-      throw new Error('Failed to recreate Transaction from bytes')
-    }
-    return tx
-  }
+  const txId = await calculateTxId(
+    Buffer.from(signedTxBytes).toString('hex'),
+    'hex',
+  )
 
   return {
-    signedTx,
-    txId: result.txId,
-    signedTxBytes: result.signedTxBytes, // Include bytes directly to avoid re-serialization
+    txId,
+    signedTxBytes, // Include bytes directly to avoid re-serialization
   }
 }
 
@@ -505,8 +452,8 @@ const submitTx = async (
   wallet: YoroiWallet,
   meta: Wallet.Meta,
 ): Promise<{
-  signedTx: (csl: WasmModuleProxy) => Transaction
   txId: string
+  signedTxBytes: Uint8Array
 } | null> => {
   // First sign the transaction
   const signResult = await signTx(cbor, rootKey, wallet, meta)
@@ -517,7 +464,7 @@ const submitTx = async (
     return null
   }
 
-  // Use the bytes directly from signRawTransaction to avoid re-serialization
+  // Use the bytes returned by the CML bridge to avoid re-serialization
   // Re-serializing through Transaction.toBytes() might change the CBOR structure
   const signedTxBytes = signResult.signedTxBytes
 

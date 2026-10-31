@@ -1,8 +1,10 @@
-import {createUnsignedGovernanceTxFromWallet} from '@yoroi/cardano-wallet'
-import {YoroiWallet} from '@yoroi/cardano-wallet'
+import {
+  YoroiWallet,
+  createUnsignedGovernanceTxFromWallet,
+} from '@yoroi/cardano-wallet'
+import {GovernanceCertificate} from '@yoroi/staking'
 import {Wallet} from '@yoroi/types'
 
-import {Certificate} from '@emurgo/cross-csl-core'
 import * as React from 'react'
 
 import {UsePromiseOptions, usePromise} from '~/common/hooks/usePromise'
@@ -14,7 +16,12 @@ export const useCreateGovernanceTx = (
   options?: Omit<
     UsePromiseOptions<
       {cbor: string},
-      [{certificates: Certificate[]; addressMode: Wallet.AddressMode}]
+      [
+        {
+          certificates: GovernanceCertificate[]
+          addressMode: Wallet.AddressMode
+        },
+      ]
     >,
     'promise'
   >,
@@ -27,7 +34,7 @@ export const useCreateGovernanceTx = (
       certificates,
       addressMode,
     }: {
-      certificates: Certificate[]
+      certificates: GovernanceCertificate[]
       addressMode: Wallet.AddressMode
     }) => {
       return createUnsignedGovernanceTxFromWallet(wallet, {

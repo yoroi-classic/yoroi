@@ -1,6 +1,10 @@
+import {getLogger} from '@yoroi/logger'
 import {StakePoolInfoRequest, StakePoolInfosAndHistories} from '@yoroi/staking'
 import {Branded, TransactionCborBase64, WalletTransaction} from '@yoroi/types'
 
+import {CardanoWalletBackendNetworkMismatchError} from './adapters/cardano-wallet-backend/api-maker'
+import {cardanoWalletBackendV1Maker} from './adapters/cardano-wallet-backend/api-maker'
+import {legacyApiMaker} from './adapters/legacy/api-maker'
 import {
   AccountStateResponse,
   TipStatusResponse,
@@ -14,6 +18,7 @@ import {
   EndpointPreference,
   WalletContext,
 } from './types'
+import * as legacyFetch from './utils/fetch'
 
 describe('cardanoApiManagerMaker', () => {
   const mockWalletContext: WalletContext = {
@@ -115,6 +120,7 @@ describe('cardanoApiManagerMaker', () => {
       const backendZeroAdapter = createMockAdapter('backend-zero')
       const legacyAdapter = createMockAdapter('legacy')
       const cardanoWalletBackendAdapter = {
+        filterUsedAddresses: jest.fn().mockResolvedValue([]),
         submitTransaction: jest.fn().mockResolvedValue(undefined),
       }
       const preferences: EndpointPreference = {
@@ -141,6 +147,174 @@ describe('cardanoApiManagerMaker', () => {
       expect(
         cardanoWalletBackendAdapter.submitTransaction,
       ).toHaveBeenCalledWith(signedTx)
+    })
+
+    it('uses cardano-wallet-backend for used-address filtering when configured', async () => {
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const legacyFilter = jest.spyOn(legacyAdapter, 'filterUsedAddresses')
+      const cwbFilter = jest
+        .fn()
+        .mockResolvedValue([Branded.asAddress('cwb-used-addr')])
+      const cardanoWalletBackendAdapter = {
+        filterUsedAddresses: cwbFilter,
+        submitTransaction: jest.fn().mockResolvedValue(undefined),
+      }
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'cardano-wallet-backend',
+        submitTransaction: 'legacy',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        cardanoWalletBackendAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const addresses = [Branded.asAddress('addr1')]
+
+      await expect(api.filterUsedAddresses(addresses)).resolves.toEqual([
+        Branded.asAddress('cwb-used-addr'),
+      ])
+      expect(cwbFilter).toHaveBeenCalledWith(addresses, undefined)
+      expect(legacyFilter).not.toHaveBeenCalled()
+    })
+
+    it('keeps used-address filtering on legacy without a CWB preference', async () => {
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const legacyFilter = jest.spyOn(legacyAdapter, 'filterUsedAddresses')
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'legacy',
+        submitTransaction: 'legacy',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const addresses = [Branded.asAddress('addr1')]
+
+      await api.filterUsedAddresses(addresses)
+      expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
+    })
+
+    it('keeps address discovery on legacy when the CWB network does not match', async () => {
+      const loggerWarn = jest.spyOn(getLogger(), 'warn')
+      const backendZeroAdapter = createMockAdapter('backend-zero')
+      const legacyAdapter = createMockAdapter('legacy')
+      const legacyFilter = jest.spyOn(legacyAdapter, 'filterUsedAddresses')
+      const cwbFilter = jest
+        .fn()
+        .mockRejectedValue(new CardanoWalletBackendNetworkMismatchError())
+      const cardanoWalletBackendAdapter = {
+        filterUsedAddresses: cwbFilter,
+        submitTransaction: jest.fn().mockResolvedValue(undefined),
+      }
+      const preferences: EndpointPreference = {
+        getTipStatus: 'legacy',
+        fetchNewTxHistory: 'legacy',
+        filterUsedAddresses: 'cardano-wallet-backend',
+        submitTransaction: 'legacy',
+        getAccountState: 'legacy',
+        bulkGetAccountState: 'legacy',
+        getPoolInfo: 'legacy',
+        fetchTxStatus: 'legacy',
+        checkServerStatus: 'legacy',
+        getFundInfo: 'legacy',
+      }
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter,
+        cardanoWalletBackendAdapter,
+        legacyAdapter,
+        preferences,
+      })
+      const addresses = [Branded.asAddress('addr1')]
+
+      try {
+        await expect(api.filterUsedAddresses(addresses)).resolves.toEqual([
+          Branded.asAddress('legacy-used-addr'),
+        ])
+        expect(cwbFilter).toHaveBeenCalledWith(addresses, undefined)
+        expect(legacyFilter).toHaveBeenCalledWith(addresses, undefined)
+        expect(loggerWarn).toHaveBeenCalledWith(
+          'cardano-wallet-backend network mismatch; using legacy used-address filtering',
+        )
+      } finally {
+        loggerWarn.mockRestore()
+      }
+    })
+
+    it('falls back to legacy v2 POST when mainnet wallet sees preprod CWB status', async () => {
+      const mainnetAddress = Branded.asAddress(
+        'addr1qxxvt9rzpdxxysmqp50d7f5a3gdescgrejsu7zsdxqjy8yun4cngaq46gr8c9qyz4td9ddajzqhjnrqvfh0gspzv9xnsmq6nqx',
+      )
+      const cwbRequest = jest.fn().mockResolvedValue({network: 'preprod'})
+      const cwbAdapter = cardanoWalletBackendV1Maker({
+        config: {
+          baseUrl: 'https://wallet-backend.example.com',
+          submitExpectedNetwork: 'mainnet',
+        },
+        request: cwbRequest,
+      })
+      const fetchDefault = jest
+        .spyOn(legacyFetch, 'fetchDefault')
+        .mockResolvedValue([mainnetAddress] as never)
+      const legacyAdapter = legacyApiMaker({
+        baseApiUrl: 'https://legacy.example.com/api',
+      })
+      const api = cardanoApiManagerMaker({
+        backendZeroAdapter: createMockAdapter('backend-zero'),
+        cardanoWalletBackendAdapter: cwbAdapter,
+        legacyAdapter,
+        preferences: {
+          getTipStatus: 'legacy',
+          fetchNewTxHistory: 'legacy',
+          filterUsedAddresses: 'cardano-wallet-backend',
+          submitTransaction: 'legacy',
+          getAccountState: 'legacy',
+          bulkGetAccountState: 'legacy',
+          getPoolInfo: 'legacy',
+          fetchTxStatus: 'legacy',
+          checkServerStatus: 'legacy',
+          getFundInfo: 'legacy',
+        },
+      })
+
+      try {
+        await expect(
+          api.filterUsedAddresses([mainnetAddress]),
+        ).resolves.toEqual([mainnetAddress])
+        expect(cwbRequest).toHaveBeenCalledTimes(1)
+        expect(cwbRequest).toHaveBeenCalledWith({
+          url: 'https://wallet-backend.example.com/v1/status',
+          method: 'GET',
+          headers: {Accept: 'application/json'},
+        })
+        expect(fetchDefault).toHaveBeenCalledTimes(1)
+        expect(fetchDefault).toHaveBeenCalledWith(
+          'v2/addresses/filterUsed',
+          {addresses: [mainnetAddress]},
+          'https://legacy.example.com/api',
+        )
+      } finally {
+        fetchDefault.mockRestore()
+      }
     })
 
     it('should keep transaction submission on legacy without a backend preference', async () => {

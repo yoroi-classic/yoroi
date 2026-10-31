@@ -13,7 +13,6 @@ import {TransactionOutput} from '@yoroi/tx'
 import {Branded, Portfolio} from '@yoroi/types'
 import {useCollateralInfo, useSelectedWallet} from '@yoroi/wallet-manager'
 
-import * as CSL from '@emurgo/cross-csl-core'
 import {useMutation} from '@tanstack/react-query'
 import BigNumber from 'bignumber.js'
 import * as React from 'react'
@@ -79,7 +78,7 @@ export const ManageCollateralScreen = () => {
   }
 
   const handleOnSuccess = async (args?: {
-    signedTx?: CSL.Transaction | ((csl: CSL.WasmModuleProxy) => CSL.Transaction)
+    signedTxBytes?: Uint8Array
     txId?: string
   }) => {
     // Use utility function to safely extract txId

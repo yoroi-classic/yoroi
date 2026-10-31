@@ -35,7 +35,41 @@ export type RawUtxo = {
   readonly tx_index: number
   readonly utxo_id: UtxoId
   readonly assets: ReadonlyArray<RemoteAsset>
+  readonly datumHash?: string
+  readonly inlineDatum?: string
+  readonly referenceScriptHash?: string
+  readonly referenceScript?: {
+    readonly hash: string
+    readonly size?: number
+    readonly type?: string
+    readonly bytes?: string
+  }
 }
+
+/** UTxO resolved by a transaction reference through CWB. */
+export type ResolvedUtxo = {
+  readonly txHash: string
+  readonly outputIndex: number
+  readonly address: string
+  readonly value: string
+  readonly assets: ReadonlyArray<{
+    readonly policyId: string
+    readonly assetName: string
+    readonly quantity: string
+  }>
+  readonly datumHash?: string
+  readonly inlineDatum?: string
+  readonly referenceScriptHash?: string
+  readonly referenceScript?: {
+    readonly hash: string
+    readonly size?: number
+    readonly type?: string
+    readonly bytes?: string
+  }
+  readonly spent: boolean
+}
+
+export type AddressUtxo = Omit<ResolvedUtxo, 'spent'>
 
 /**
  * Account state request
@@ -67,6 +101,9 @@ export type TipStatusResponse = {
   safeBlock: BestblockResponse
   bestBlock: BestblockResponse
 }
+
+/** Tip fields needed to sync transaction history without a legacy safe point. */
+export type SyncTipStatus = Pick<TipStatusResponse, 'bestBlock'>
 
 /**
  * Transaction history request

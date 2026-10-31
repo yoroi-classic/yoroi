@@ -41,7 +41,8 @@ export const cardanoWalletApiMaker = ({
   const defaultPreferences: EndpointPreference = {
     getTipStatus: 'legacy', // Uses legacyApiBaseUrl in develop (via syncTxs)
     fetchNewTxHistory: 'legacy', // Uses legacyApiBaseUrl in develop (via syncTxs)
-    filterUsedAddresses: 'legacy', // Uses legacyApiBaseUrl in develop
+    filterUsedAddresses:
+      cardanoWalletBackendAdapter == null ? 'legacy' : 'cardano-wallet-backend',
     submitTransaction:
       cardanoWalletBackendAdapter == null ? 'legacy' : 'cardano-wallet-backend',
     getAccountState: 'legacy', // Uses legacyApiBaseUrl in develop

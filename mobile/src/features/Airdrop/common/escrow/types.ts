@@ -15,4 +15,15 @@ export type EscrowUtxo = {
   adaAmount: string // lovelace quantity string
   datumHex: string // inline datum CBOR hex
   datum: EscrowDatum
+  referenceScriptOutput: {
+    txHash: string
+    txIndex: number
+    address: string
+    value: string
+    referenceScriptHash: string
+    referenceScriptSize: number
+    referenceScriptType: string
+    referenceScriptCborHex: string
+    assets: Array<{policyIdHex: string; assetNameHex: string; quantity: string}>
+  }
 }

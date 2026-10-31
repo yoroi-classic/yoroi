@@ -3,7 +3,7 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 import {useNavigation} from '@react-navigation/native'
 import {useQuery} from '@tanstack/react-query'
 import * as React from 'react'
-import {View} from 'react-native'
+import {View, useColorScheme} from 'react-native'
 import Markdown from 'react-native-marked'
 
 import {Disclaimer} from '~/features/Legal/common/types'
@@ -31,12 +31,13 @@ const useDisclaimerText = ({languageCode}: {languageCode: LanguageCode}) => {
 }
 
 export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
+  const colorScheme = useColorScheme()
   const {languageCode} = useLanguage()
   const {openModal, closeModal} = useModal()
   const strings = useStrings()
   const navigation = useNavigation()
   const [showed, setShowed] = React.useState(false)
-  const {atoms: ta, palette: p, basePalette} = useTheme()
+  const {atoms: ta, palette: p} = useTheme()
   const {data: disclaimerText, isLoading} = useDisclaimerText({
     languageCode,
   })
@@ -48,9 +49,9 @@ export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
       content: (
         <Modal.Content>
           <Markdown
-            colorScheme={basePalette}
-            backgroundColor={ta.bg_color_max.backgroundColor}
             value={disclaimerText || ''}
+            colorScheme={colorScheme}
+            backgroundColor={p.bg_color_max}
             flatListProps={{
               scrollEnabled: false,
               style: {
@@ -108,13 +109,13 @@ export const ShowShareWalletDisclaimer = ({onAccepted, disabled}: Props) => {
     })
     setShowed(true)
   }, [
+    colorScheme,
     disclaimerText,
     openModal,
     strings.global.disclaimer,
     strings.global.accept,
     strings.global.cancel,
     strings.global.proceed,
-    basePalette,
     ta,
     p.bg_color_max,
     navigation,

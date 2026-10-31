@@ -1,8 +1,10 @@
 import {Resolver} from '@yoroi/types'
 
-import {init} from '@emurgo/cross-csl-nodejs'
-
 import {resolverApiMaker} from './api'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  resolveCnsAddressRecord: jest.fn(() => ({addressBech32: 'cns-address'})),
+}))
 
 const mockApiConfig = {
   apiConfig: {
@@ -10,7 +12,6 @@ const mockApiConfig = {
       apiKey: 'mock-api-key',
     },
   },
-  cslFactory: init,
 }
 const mockError = new Error('Test Error')
 
@@ -186,10 +187,7 @@ describe('resolverApiMaker', () => {
         request: expect.any(Function),
         isMainnet: false,
       })
-      expect(deps.cnsApi.getCryptoAddress).toHaveBeenCalledWith(
-        expect.any(Function),
-        false,
-      )
+      expect(deps.cnsApi.getCryptoAddress).toHaveBeenCalledWith(false)
     })
 
     it('should pass fetcherConfig to operations', async () => {

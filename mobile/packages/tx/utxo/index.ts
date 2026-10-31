@@ -49,6 +49,7 @@ export {
   type CurrentStateAsset,
   type CurrentStateUtxo,
   type CurrentStateUtxoSource,
+  type CurrentStateWalletSource,
 } from './current-state-utxo-source'
 export {
   applyPendingUtxoOverlays,

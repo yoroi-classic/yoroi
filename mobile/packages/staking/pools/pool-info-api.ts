@@ -1,8 +1,6 @@
 // PoolInfoApi types and utilities migrated from @emurgo/yoroi-lib
 // This file contains types, constants, and utility functions for pool information
-import {isHex} from '@yoroi/common'
-
-import type {Ed25519KeyHash, WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {normalizePoolIdentifier as normalizePoolIdentifierWithCml} from '@yoroi-classic/cml-mobile-bridge'
 
 type PoolIdentity = {
   id: string
@@ -113,18 +111,10 @@ export function getMaybeNewEntriesByPool(
   return null
 }
 
-export type WasmFactory = (scope: string) => WasmModuleProxy
-
-export async function normalisePoolIdentifierOrKey(
+export function normalisePoolIdentifierOrKey(
   poolIdOrHash: string,
-  wasmFactory: WasmFactory,
-): Promise<PoolIdentity> {
-  const wasm = wasmFactory('pool-normalize')
-  const key: Ed25519KeyHash = await (isHex(poolIdOrHash)
-    ? wasm.Ed25519KeyHash.fromHex(poolIdOrHash)
-    : wasm.Ed25519KeyHash.fromBech32(poolIdOrHash))
-  const [id, hash] = await Promise.all([key.toBech32('pool'), key.toHex()])
-  return {id, hash}
+): PoolIdentity {
+  return normalizePoolIdentifierWithCml(poolIdOrHash)
 }
 
 export type ExplorerPoolInfoMap = Record<string, ExplorerPoolInfo | null>

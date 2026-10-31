@@ -25,7 +25,6 @@ describe('utxo-selection utils', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   describe('sumAmounts', () => {

@@ -97,35 +97,35 @@ else
   export RUST_ANDROID_GRADLE_PYTHON_COMMAND=python3
 fi
 
-# Patch Emurgo bridge modules to use the correct NDK version
-CSL_BRIDGE_GRADLE_PROPS="${PROJECT_ROOT}/node_modules/@emurgo/csl-mobile-bridge-jsi/android/gradle.properties"
+# Patch CML and MSL bridge modules to use the correct NDK version
+CML_BRIDGE_GRADLE_PROPS="${PROJECT_ROOT}/node_modules/@yoroi-classic/cml-mobile-bridge/android/gradle.properties"
 MSL_BRIDGE_GRADLE_PROPS="${PROJECT_ROOT}/node_modules/@emurgo/msl-mobile-bridge-jsi/android/gradle.properties"
 
-for BRIDGE_PROPS in "${CSL_BRIDGE_GRADLE_PROPS}" "${MSL_BRIDGE_GRADLE_PROPS}"; do
-  if [[ -f "${BRIDGE_PROPS}" ]]; then
-    echo "Patching NDK version in ${BRIDGE_PROPS}"
-    # Update or add the ndkversion property to match our version
-    if grep -q '^.*_ndkversion=' "${BRIDGE_PROPS}"; then
-      sed -i.bak -E "s|^.*_ndkversion=.*$|CslMobileBridge_ndkversion=${NDK_VERSION}|" "${BRIDGE_PROPS}" || true
-      sed -i.bak -E "s|^.*_ndkversion=.*$|MslMobileBridge_ndkversion=${NDK_VERSION}|" "${BRIDGE_PROPS}" || true
-    else
-      printf "CslMobileBridge_ndkversion=%s\n" "${NDK_VERSION}" >> "${BRIDGE_PROPS}"
-      printf "MslMobileBridge_ndkversion=%s\n" "${NDK_VERSION}" >> "${BRIDGE_PROPS}"
-    fi
-    # Also add android.ndkVersion for good measure
-    if ! grep -q '^android.ndkVersion=' "${BRIDGE_PROPS}"; then
-      printf "android.ndkVersion=%s\n" "${NDK_VERSION}" >> "${BRIDGE_PROPS}"
-    fi
+patch_bridge_ndk_version() {
+  local properties_file="$1"
+  local property_prefix="$2"
+  [[ -f "${properties_file}" ]] || return 0
+  echo "Patching NDK version in ${properties_file}"
+  if grep -q '^.*_ndkversion=' "${properties_file}"; then
+    sed -i.bak -E "s|^.*_ndkversion=.*$|${property_prefix}_ndkversion=${NDK_VERSION}|" "${properties_file}"
+  else
+    printf "%s_ndkversion=%s\n" "${property_prefix}" "${NDK_VERSION}" >> "${properties_file}"
   fi
-done
+  if ! grep -q '^android.ndkVersion=' "${properties_file}"; then
+    printf "android.ndkVersion=%s\n" "${NDK_VERSION}" >> "${properties_file}"
+  fi
+}
+
+patch_bridge_ndk_version "${CML_BRIDGE_GRADLE_PROPS}" "CmlMobileBridge"
+patch_bridge_ndk_version "${MSL_BRIDGE_GRADLE_PROPS}" "MslMobileBridge"
 
 # Prebuild Rust JNI libraries for Emurgo bridges (arm64)
 cd android
 ./gradlew \
-  :emurgo_csl-mobile-bridge-jsi:cargoBuildArm \
-  :emurgo_csl-mobile-bridge-jsi:cargoBuildArm64 \
-  :emurgo_csl-mobile-bridge-jsi:cargoBuildX86 \
-  :emurgo_csl-mobile-bridge-jsi:cargoBuildX86_64 \
+  :yoroi-classic_cml-mobile-bridge:cargoBuildArm \
+  :yoroi-classic_cml-mobile-bridge:cargoBuildArm64 \
+  :yoroi-classic_cml-mobile-bridge:cargoBuildX86 \
+  :yoroi-classic_cml-mobile-bridge:cargoBuildX86_64 \
   :emurgo_msl-mobile-bridge-jsi:cargoBuildArm \
   :emurgo_msl-mobile-bridge-jsi:cargoBuildArm64 \
   :emurgo_msl-mobile-bridge-jsi:cargoBuildX86 \

@@ -2,8 +2,6 @@ import {Hex, hex} from '@yoroi/common'
 import {App} from '@yoroi/types'
 
 import {
-  type CSLDecryptFunction,
-  type CSLEncryptFunction,
   type RandomHexStringFunction,
   type WalletLinkEncryptionAlgorithm,
   decryptWalletData,
@@ -13,6 +11,13 @@ import {
 describe('wallet-link-encryption', () => {
   const testData = 'deadbeef1234567890abcdef'
   const testPassword = 'test-password-123'
+  // Frozen synthetic output from CSL `encrypt_with_password`.
+  const legacyCslCiphertext =
+    '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f' +
+    '202122232425262728292a2b' +
+    'a1b6cada95bf66b98602589946b5aa082086cfbb40188cb257b7542a'
+  const legacyCslPassword = 'migration-test-passphrase'
+  const legacyCslPlaintext = 'deadbeef1234567890abcdef'
 
   describe('encryptWalletData', () => {
     describe('plain algorithm', () => {
@@ -67,46 +72,10 @@ describe('wallet-link-encryption', () => {
     })
 
     describe('chacha20poly1305-csl algorithm', () => {
-      const mockCslEncrypt: CSLEncryptFunction = jest.fn(
-        (_passwordHex, saltHex, nonceHex, dataHex) => {
-          // Mock CSL format: data + tag + nonce + salt
-          return dataHex + 'tag' + nonceHex + saltHex
-        },
-      )
-
-      const mockRandomHex: RandomHexStringFunction = jest.fn((length) => {
-        return hex.fromUtf8('0'.repeat(length / 2)) as Hex
-      })
-
-      it('should encrypt using CSL format when options provided', () => {
-        const result = encryptWalletData(
-          testData,
-          testPassword,
-          'chacha20poly1305-csl',
-          {
-            cslEncrypt: mockCslEncrypt,
-            randomHexString: mockRandomHex,
-          },
-        )
-
-        expect(mockCslEncrypt).toHaveBeenCalled()
-        expect(result).toBeDefined()
-      })
-
-      it('should throw error when cslEncrypt is missing', () => {
+      it('does not create new legacy-format ciphertext', () => {
         expect(() =>
-          encryptWalletData(testData, testPassword, 'chacha20poly1305-csl', {
-            randomHexString: mockRandomHex,
-          }),
-        ).toThrow('CSL encrypt function and randomHexString are required')
-      })
-
-      it('should throw error when randomHexString is missing', () => {
-        expect(() =>
-          encryptWalletData(testData, testPassword, 'chacha20poly1305-csl', {
-            cslEncrypt: mockCslEncrypt,
-          }),
-        ).toThrow('CSL encrypt function and randomHexString are required')
+          encryptWalletData(testData, testPassword, 'chacha20poly1305-csl'),
+        ).toThrow('Legacy wallet-link encryption is decrypt-only')
       })
     })
 
@@ -174,52 +143,40 @@ describe('wallet-link-encryption', () => {
     })
 
     describe('chacha20poly1305-csl algorithm', () => {
-      const mockCslDecrypt: CSLDecryptFunction = jest.fn(
-        (_passwordHex, _encryptedDataHex) => {
-          // Mock successful decryption
-          return testData
-        },
-      )
-
-      it('should decrypt using CSL format when options provided', () => {
-        const encryptedData = 'encrypteddata' + 'tag' + 'nonce' + 'salt'
-        const result = decryptWalletData(
-          encryptedData,
-          testPassword,
-          'chacha20poly1305-csl',
-          {
-            cslDecrypt: mockCslDecrypt,
-          },
-        )
-
-        expect(mockCslDecrypt).toHaveBeenCalled()
-        expect(result).toBe(testData)
-      })
-
-      it('should throw error when cslDecrypt is missing', () => {
-        expect(() =>
+      it('decrypts a frozen CSL-produced legacy fixture without CSL', () => {
+        expect(
           decryptWalletData(
-            'encrypteddata',
-            testPassword,
+            legacyCslCiphertext,
+            legacyCslPassword,
             'chacha20poly1305-csl',
           ),
-        ).toThrow('CSL decrypt function is required')
+        ).toBe(legacyCslPlaintext)
       })
 
-      it('should throw WrongPassword error when CSL decryption fails', () => {
-        const mockCslDecryptFail: CSLDecryptFunction = jest.fn(() => {
-          throw new Error('Decryption failed')
-        })
-
+      it('maps a wrong password to WrongPassword for legacy data', () => {
         expect(() =>
           decryptWalletData(
-            'encrypteddata',
-            testPassword,
+            legacyCslCiphertext,
+            'incorrect-password',
             'chacha20poly1305-csl',
-            {
-              cslDecrypt: mockCslDecryptFail,
-            },
           ),
+        ).toThrow(App.Errors.WrongPassword)
+      })
+
+      it('rejects a modified authentication tag', () => {
+        const tampered = `${legacyCslCiphertext.slice(0, 96)}ff${legacyCslCiphertext.slice(98)}`
+        expect(() =>
+          decryptWalletData(
+            tampered,
+            legacyCslPassword,
+            'chacha20poly1305-csl',
+          ),
+        ).toThrow(App.Errors.WrongPassword)
+      })
+
+      it('rejects truncated legacy payloads as WrongPassword', () => {
+        expect(() =>
+          decryptWalletData('deadbeef', testPassword, 'chacha20poly1305-csl'),
         ).toThrow(App.Errors.WrongPassword)
       })
     })
@@ -256,55 +213,14 @@ describe('wallet-link-encryption', () => {
       expect(decrypted).toBe(originalData)
     })
 
-    it('should successfully encrypt and decrypt with chacha20poly1305-csl', () => {
-      const originalData = 'deadbeef1234567890abcdef'
-      const password = 'my-secure-password'
-
-      // Create mock CSL functions that simulate real behavior
-      let encryptedData: string | null = null
-
-      const mockCslEncrypt: CSLEncryptFunction = jest.fn(
-        (_passwordHex, saltHex, nonceHex, dataHex) => {
-          // Store encrypted data for decryption
-          encryptedData = dataHex + 'tag' + nonceHex + saltHex
-          return encryptedData
-        },
-      )
-
-      const mockCslDecrypt: CSLDecryptFunction = jest.fn(
-        (_passwordHex, encryptedDataHex) => {
-          // Extract original data from mock format
-          if (encryptedDataHex === encryptedData) {
-            return originalData
-          }
-          throw new Error('Decryption failed')
-        },
-      )
-
-      const mockRandomHex: RandomHexStringFunction = jest.fn((length) => {
-        return hex.fromUtf8('0'.repeat(length / 2)) as Hex
-      })
-
-      const encrypted = encryptWalletData(
-        originalData,
-        password,
-        'chacha20poly1305-csl',
-        {
-          cslEncrypt: mockCslEncrypt,
-          randomHexString: mockRandomHex,
-        },
-      )
-
-      const decrypted = decryptWalletData(
-        encrypted,
-        password,
-        'chacha20poly1305-csl',
-        {
-          cslDecrypt: mockCslDecrypt,
-        },
-      )
-
-      expect(decrypted).toBe(originalData)
+    it('should decrypt a real legacy-format fixture', () => {
+      expect(
+        decryptWalletData(
+          legacyCslCiphertext,
+          legacyCslPassword,
+          'chacha20poly1305-csl',
+        ),
+      ).toBe(legacyCslPlaintext)
     })
   })
 })

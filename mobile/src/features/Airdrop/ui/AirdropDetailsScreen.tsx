@@ -228,7 +228,7 @@ export const AirdropDetailsScreen = () => {
         preventSubmit: true,
         context: 'airdrop',
         onSuccessWithoutFeedback: async (args) => {
-          if (!args?.signedTx) {
+          if (!args?.signedTxBytes) {
             logger.error('handleRedeem: No signed transaction in callback', {
               destAddress: currentAllocation.address,
             })
@@ -240,7 +240,7 @@ export const AirdropDetailsScreen = () => {
             // Submit signed transaction (via Midnight API or directly to Cardano)
             await submitTransaction({
               destAddress: currentAllocation.address,
-              signedTx: args.signedTx,
+              signedTxBytes: args.signedTxBytes,
               isEscrowRedeem: lastBuildWasEscrow.current,
             })
             setIsRedeeming(false)

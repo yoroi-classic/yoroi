@@ -1,7 +1,10 @@
+import {getLogger} from '@yoroi/logger'
 import {TransactionCborBase64} from '@yoroi/types'
 
 import {freeze} from 'immer'
 
+import {CardanoWalletBackendNetworkMismatchError} from './adapters/cardano-wallet-backend/api-maker'
+import type {AddressUtxo, ResolvedUtxo} from './api-types'
 import {
   BACKEND_ZERO_REQUIRES_CONTEXT,
   ENDPOINT_AVAILABILITY,
@@ -13,6 +16,8 @@ import {
   WalletContext,
 } from './types'
 
+const logger = getLogger()
+
 export const cardanoApiManagerMaker = ({
   backendZeroAdapter,
   cardanoWalletBackendAdapter,
@@ -20,7 +25,13 @@ export const cardanoApiManagerMaker = ({
   preferences,
 }: {
   backendZeroAdapter: CardanoApiAdapter
-  cardanoWalletBackendAdapter?: Pick<CardanoApiAdapter, 'submitTransaction'>
+  cardanoWalletBackendAdapter?: Pick<
+    CardanoApiAdapter,
+    'filterUsedAddresses' | 'submitTransaction'
+  > & {
+    getUtxosByRef?: (refs: string[]) => Promise<ResolvedUtxo[]>
+    getAddressUtxos?: (address: string) => Promise<AddressUtxo[]>
+  }
   legacyAdapter: CardanoApiAdapter
   preferences: EndpointPreference
 }): ManagedCardanoApi => {
@@ -85,7 +96,50 @@ export const cardanoApiManagerMaker = ({
     return preference === 'backend-zero' ? backendZeroAdapter : legacyAdapter
   }
 
+  const getFilterUsedAddressesAdapter = (): Pick<
+    CardanoApiAdapter,
+    'filterUsedAddresses'
+  > => {
+    const preference = preferences.filterUsedAddresses
+    const availableBackends = ENDPOINT_AVAILABILITY.filterUsedAddresses
+
+    if (!availableBackends?.includes(preference)) {
+      throw new Error(
+        `Backend ${preference} does not support endpoint filterUsedAddresses. Available: ${availableBackends?.join(', ') ?? ''}`,
+      )
+    }
+
+    if (preference === 'cardano-wallet-backend') {
+      if (cardanoWalletBackendAdapter == null) {
+        throw new Error(
+          'cardano-wallet-backend filterUsedAddresses adapter is not configured',
+        )
+      }
+      return cardanoWalletBackendAdapter
+    }
+
+    return preference === 'backend-zero' ? backendZeroAdapter : legacyAdapter
+  }
+
   return freeze({
+    async getAddressUtxos(address) {
+      if (!cardanoWalletBackendAdapter?.getAddressUtxos) {
+        throw new Error(
+          'cardano-wallet-backend getAddressUtxos adapter is not configured',
+        )
+      }
+      return cardanoWalletBackendAdapter.getAddressUtxos(address)
+    },
+
+    async getUtxosByRef(refs) {
+      if (!cardanoWalletBackendAdapter?.getUtxosByRef) {
+        throw new Error(
+          'cardano-wallet-backend getUtxosByRef adapter is not configured',
+        )
+      }
+      return cardanoWalletBackendAdapter.getUtxosByRef(refs)
+    },
+
     async getTipStatus() {
       const adapter = getAdapter('getTipStatus')
       return adapter.getTipStatus()
@@ -97,8 +151,25 @@ export const cardanoApiManagerMaker = ({
     },
 
     async filterUsedAddresses(addresses, walletContext?: WalletContext) {
-      const adapter = getAdapter('filterUsedAddresses', walletContext)
-      return adapter.filterUsedAddresses(addresses, walletContext)
+      const adapter =
+        preferences.filterUsedAddresses === 'cardano-wallet-backend'
+          ? getFilterUsedAddressesAdapter()
+          : getAdapter('filterUsedAddresses', walletContext)
+      try {
+        return await adapter.filterUsedAddresses(addresses, walletContext)
+      } catch (error) {
+        if (
+          preferences.filterUsedAddresses !== 'cardano-wallet-backend' ||
+          !(error instanceof CardanoWalletBackendNetworkMismatchError)
+        ) {
+          throw error
+        }
+
+        logger.warn(
+          'cardano-wallet-backend network mismatch; using legacy used-address filtering',
+        )
+        return legacyAdapter.filterUsedAddresses(addresses, walletContext)
+      }
     },
 
     async submitTransaction(signedTx: TransactionCborBase64 | string) {

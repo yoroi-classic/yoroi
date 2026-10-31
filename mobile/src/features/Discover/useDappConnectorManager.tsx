@@ -11,7 +11,6 @@ import {DappConnection, DappConnector} from '@yoroi/dapp-connector'
 import {Branded} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import {Transaction} from '@emurgo/cross-csl-core'
 import {useNavigation} from '@react-navigation/native'
 import * as React from 'react'
 
@@ -210,7 +209,7 @@ export const useDappConnectorManager = () => {
 
   const handleSignTxWithHW = React.useCallback(
     ({cbor, partial}: {cbor: string; partial?: boolean}) => {
-      return new Promise<Transaction>((resolve, reject) => {
+      return new Promise<Uint8Array>((resolve, reject) => {
         let shouldResolve = true
         const dapps = dappList?.dapps || []
         const matchingDapp =
@@ -232,7 +231,7 @@ export const useDappConnectorManager = () => {
               : undefined,
           onSuccessWithoutFeedback: (args) => {
             shouldResolve = false
-            if (!args?.tx) {
+            if (!args?.signedTxBytes) {
               reject(
                 new Error(
                   'useDappConnectorManager::handleSignTxWithHW: invalid state',
@@ -240,7 +239,7 @@ export const useDappConnectorManager = () => {
               )
               return
             }
-            resolve(args?.tx)
+            resolve(args.signedTxBytes)
             navigateToDiscoverBrowserDapp()
             // Remove review-tx-routes from navigation stack after navigating back to browser
             // Use setTimeout to ensure navigation completes before removing the route
@@ -353,8 +352,7 @@ export const useDappConnectorManager = () => {
                       'useDappConnectorManager::handleSendReorganisationTx - no txId available to set collateral ID',
                       {
                         hasTxId: !!args?.txId,
-                        hasSignedTx: !!args?.signedTx,
-                        hasTx: !!args?.tx,
+                        hasSignedTxBytes: !!args?.signedTxBytes,
                         hasCbor: !!cbor,
                       },
                     )
@@ -368,8 +366,7 @@ export const useDappConnectorManager = () => {
                       errorStack:
                         error instanceof Error ? error.stack : undefined,
                       hasTxId: !!args?.txId,
-                      hasSignedTx: !!args?.signedTx,
-                      hasTx: !!args?.tx,
+                      hasSignedTxBytes: !!args?.signedTxBytes,
                       hasCbor: !!cbor,
                     },
                   )

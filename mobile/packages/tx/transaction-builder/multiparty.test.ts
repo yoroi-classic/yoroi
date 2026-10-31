@@ -3,16 +3,78 @@ import {
   clearWitnesses,
   createWitnessState,
   getMissingSigners,
+  getRequiredSignersFromTransaction,
   getWitnesses,
   isFullySigned,
   setRequiredSigners,
 } from './multiparty'
 import type {WitnessState} from './multiparty'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressInfoFromAddress: jest.fn((address: string) => {
+    const keyHash = 'ab'.repeat(28)
+    const kind =
+      address === 'reward-key'
+        ? 'e1'
+        : address === 'payment-script'
+          ? '71'
+          : '01'
+    return {
+      hex: `${kind}${keyHash}${'cd'.repeat(28)}`,
+      networkId: 1,
+      bech32: address,
+      isValid: true,
+    }
+  }),
+  nativeScriptKeyHashesJson: jest.fn(() => JSON.stringify([])),
+}))
+
 describe('multiparty transaction', () => {
   const createMockWitness = (keyHash: string) => ({
     witness: {} as any,
     signerKeyHash: keyHash,
+  })
+
+  it('extracts payment and reward key hashes from CML-normalized address bytes', async () => {
+    const keyHash = 'ab'.repeat(28)
+    const tx = {
+      inputs: [
+        {utxo: {receiver: 'payment-key'}},
+        {utxo: {receiver: 'payment-script'}},
+      ],
+      certificates: [],
+      withdrawals: [{rewardAddress: 'reward-key'}],
+      options: {mints: []},
+    } as any
+
+    await expect(getRequiredSignersFromTransaction(tx)).resolves.toEqual([
+      keyHash,
+    ])
+  })
+
+  it('includes nested native-script key hashes from the CML parser', async () => {
+    const inputKeyHash = 'ab'.repeat(28)
+    const scriptKeyHash = 'cd'.repeat(28)
+    const nativeScriptKeyHashesJson = jest.requireMock(
+      '@yoroi-classic/cml-mobile-bridge',
+    ).nativeScriptKeyHashesJson as jest.Mock
+    nativeScriptKeyHashesJson.mockReturnValueOnce(
+      JSON.stringify([scriptKeyHash, inputKeyHash, scriptKeyHash]),
+    )
+    const tx = {
+      inputs: [{utxo: {receiver: 'payment-key'}}],
+      certificates: [],
+      withdrawals: [],
+      options: {
+        mints: [{script: {type: 'native', script: '8200'}}],
+      },
+    } as any
+
+    await expect(getRequiredSignersFromTransaction(tx)).resolves.toEqual([
+      inputKeyHash,
+      scriptKeyHash,
+    ])
+    expect(nativeScriptKeyHashesJson).toHaveBeenCalledWith('8200')
   })
 
   describe('createWitnessState', () => {

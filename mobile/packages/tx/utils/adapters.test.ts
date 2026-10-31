@@ -18,7 +18,6 @@ describe('adapters', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   describe('modernUtxoToCardanoAddressedUtxo', () => {

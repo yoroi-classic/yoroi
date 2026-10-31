@@ -9,6 +9,31 @@ import {rootStorage} from '~/kernel/storage/storages'
 
 import {makeWalletManager} from './wallet-manager'
 
+// Wallet-manager tests exercise storage/orchestration, not the native JSI
+// registration boundary. Inject deterministic CML adapter results so Jest
+// doesn't require React Native's TurboModule runtime during module loading.
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  addressToHex: jest.fn(
+    () => 'e042d6429c72c0dc1c873923e1afe475ad614cf6d3aec61ddbceeefe40',
+  ),
+  rewardAddressFromAddress: jest.fn(() => 'stake_test1fixture'),
+  rewardAddressHexFromAccountPublicKey: jest.fn(
+    () => 'e0c11ef08c44f3610b7e56d46e086b90186c12e9a68f0521b7c4c72e4b',
+  ),
+  walletRootKeyHexFromEntropy: jest.fn(
+    () =>
+      '9053adfb225e91c0bf2db38e1978907cfeff6e66b9a9c3d8945aa686a9d29851bf83c8e2e556464605afeb9651fab3ef3f0aa205685c8f1e6f818629f843bde9a7e129fd35d072ce79b40a49cefcbc8526a3cb8d4bfa7a47afddaddc31dbb728',
+  ),
+  deriveAccountPublicKeyHex: jest.fn(
+    () =>
+      '7cc9d816f272eb78a2db936a839d3bf53fa960dd470ddbaadabb6a7bf2019b837d20b2cd13cbb22b6f6938abea40d425f5539b6bb1fe0813ccb4c21676a7fd6b',
+  ),
+  deriveAccountPublicKeyHexFromAccountPublicKey: jest.fn(
+    () =>
+      '7cc9d816f272eb78a2db936a839d3bf53fa960dd470ddbaadabb6a7bf2019b837d20b2cd13cbb22b6f6938abea40d425f5539b6bb1fe0813ccb4c21676a7fd6b',
+  ),
+}))
+
 // Mock networkManagers for testing
 // This prevents real network calls when wallets are created/loaded
 jest.mock('./common/constants', () => {

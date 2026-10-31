@@ -2,24 +2,20 @@ import type {
   AccountStateResponse,
   FundInfoResponse,
   RawUtxo,
-  TipStatusResponse,
+  SyncTipStatus,
   TxStatusRequest,
   TxStatusResponse,
 } from '@yoroi/api'
 import {AppApi} from '@yoroi/api'
 import {cardanoConfig, derivationConfig} from '@yoroi/blockchains'
-import {isNonNullable} from '@yoroi/common'
 import {getLogger, throwLoggedError} from '@yoroi/logger'
 import {StakePoolInfoRequest, StakingInfo, StakingStatus} from '@yoroi/staking'
-import type {Datum, ModernUtxo, UnsignedTransaction} from '@yoroi/tx'
+import type {ModernUtxo, UnsignedTransaction} from '@yoroi/tx'
 import {
-  adaptToLedgerUnsignedTx,
-  buildLedgerPayload,
   buildLedgerSignedTx,
-  buildVotingLedgerPayloadV5,
+  createCardanoWalletBackendUtxoSource,
   createSignedLedgerTxFromCbor,
   modernUtxosToCardanoAddressedUtxos,
-  signRawTransaction,
 } from '@yoroi/tx'
 import {
   Address,
@@ -38,7 +34,6 @@ import {
 
 import type {SignedTransactionData} from '@cardano-foundation/ledgerjs-hw-app-cardano'
 import {walletChecksum} from '@emurgo/cip4-js'
-import * as CSL from '@emurgo/cross-csl-core'
 import {Buffer} from 'buffer'
 import {freeze} from 'immer'
 import {lruMemoize} from 'reselect'
@@ -51,6 +46,7 @@ import {
   ReadOnlyAccountManager,
   readOnlyAccountManagerMaker,
 } from './account-manager/read-only-account-manager'
+import {addressUsesStakingKey} from './addressInfo/addressInfo'
 import * as legacyApi from './api/api'
 import {
   extractPaymentKeyHashes,
@@ -76,6 +72,7 @@ import {
   getFirstPaymentAddress as getFirstPaymentAddressOp,
 } from './operations/address-operations'
 import {signWalletTransaction as signWalletTransactionOp} from './operations/signing-operations'
+import {signWalletTransactionWithPaths} from './operations/signing-operations'
 import {
   getStakingKey as getStakingKeyOp,
   getWalletDelegationStatus as getWalletDelegationStatusOp,
@@ -104,16 +101,55 @@ import {
   isYoroiWallet,
 } from './types'
 import {
+  deriveRewardAddressDetails,
   deriveRewardAddressFromAddress,
   deriveRewardAddressHex,
   getHexAddressingMap,
   getStakeAddressMap,
+  serializeAddressToHex,
 } from './utils'
-import {UtxoManager, makeUtxoManager} from './utxoManager/utxoManager'
+import {createPendingUtxoOverlayFromCbor} from './utxoManager/pending-utxo-overlay'
+import {
+  UtxoManager,
+  makeCurrentStateUtxoManager,
+  makeUtxoManager,
+} from './utxoManager/utxoManager'
 import {utxosMaker} from './utxoManager/utxos'
-import {CardanoMobileWrapped} from './wrappedCsl'
 
 const logger = getLogger()
+
+export type UtxoBackendSelection =
+  | {kind: 'current-state'; baseUrl: string}
+  | {
+      kind: 'legacy'
+      reason: 'not-configured' | 'not-enabled' | 'unsupported-wallet'
+    }
+
+export const historyTipStatusForUtxoBackend = (
+  kind: UtxoManager['kind'],
+  tipStatus?: SyncTipStatus | null,
+): SyncTipStatus | null | undefined =>
+  kind === 'current-state' ? null : tipStatus
+
+export const selectUtxoBackend = ({
+  backendUrl,
+  enabled,
+  implementation,
+  rewardAddressHex,
+}: {
+  backendUrl?: string
+  enabled?: boolean
+  implementation: Wallet.Implementation
+  rewardAddressHex: string
+}): UtxoBackendSelection => {
+  const normalizedUrl = backendUrl?.trim().replace(/\/+$/, '')
+  if (implementation !== 'cardano-cip1852' || rewardAddressHex.length === 0) {
+    return {kind: 'legacy', reason: 'unsupported-wallet'}
+  }
+  if (!normalizedUrl) return {kind: 'legacy', reason: 'not-configured'}
+  if (enabled !== true) return {kind: 'legacy', reason: 'not-enabled'}
+  return {kind: 'current-state', baseUrl: normalizedUrl}
+}
 
 type WalletState = {
   id: string
@@ -222,6 +258,9 @@ export const makeCardanoWallet = (
     // Use global rootStorage instead of legacyRootStorage from networkManager
     // Path matches legacy storage structure: /legacy/${network}/v1/${id}/
     const {network} = networkManager
+    const cardanoWalletBackendUrl = dependencies.cardanoWalletBackendUrl
+      ?.trim()
+      .replace(/\/+$/, '')
     const walletRootStorage = rootStorage.join(`legacy/${network}/v1/${id}/`)
     const accountStorage = walletRootStorage.join(`accounts/${accountVisual}/`)
 
@@ -296,10 +335,7 @@ export const makeCardanoWallet = (
               externalAddr,
               chainId,
             )
-            finalRewardAddressHex = CardanoMobileWrapped.cslScope((csl) => {
-              const addr = csl.Address.fromBech32(rewardAddressBech32)
-              return Buffer.from(addr.toBytes()).toString('hex')
-            })
+            finalRewardAddressHex = serializeAddressToHex(rewardAddressBech32)
           } catch (error) {
             getLogger().warn(
               'Failed to derive reward address for read-only wallet',
@@ -334,10 +370,7 @@ export const makeCardanoWallet = (
               knownAddr,
               chainId,
             )
-            finalRewardAddressHex = CardanoMobileWrapped.cslScope((csl) => {
-              const addr = csl.Address.fromBech32(rewardAddressBech32)
-              return Buffer.from(addr.toBytes()).toString('hex')
-            })
+            finalRewardAddressHex = serializeAddressToHex(rewardAddressBech32)
           } catch (error) {
             getLogger().warn(
               'Failed to derive reward address for read-only wallet',
@@ -365,6 +398,7 @@ export const makeCardanoWallet = (
         chainId,
         implementation,
         baseApiUrl: legacyApiBaseUrl,
+        cardanoWalletBackendNetwork: network,
       })
 
       finalRewardAddressHex = implementationConfig.features.staking
@@ -377,10 +411,36 @@ export const makeCardanoWallet = (
         : ''
     }
 
-    const utxoManager = await makeUtxoManager({
-      storage: accountStorage.join('utxos/'),
-      apiUrl: legacyApiBaseUrl,
+    const utxoStorage = accountStorage.join('utxos/')
+    const utxoBackend = selectUtxoBackend({
+      backendUrl: cardanoWalletBackendUrl,
+      enabled: dependencies.currentStateUtxoEnabled,
+      implementation,
+      rewardAddressHex: finalRewardAddressHex,
     })
+    const utxoManager =
+      utxoBackend.kind === 'current-state'
+        ? await makeCurrentStateUtxoManager({
+            storage: utxoStorage,
+            source: createCardanoWalletBackendUtxoSource(
+              utxoBackend.baseUrl,
+              network,
+            ),
+            pendingStore:
+              dependencies.makePendingUtxoOverlayStore?.(accountStorage) ??
+              (() => {
+                throw new Error(
+                  'Current-state UTxO backend requires a pending overlay store',
+                )
+              })(),
+            stakeAddress: Branded.asStakingAddress(
+              deriveRewardAddressDetails(finalRewardAddressHex).bech32,
+            ),
+          })
+        : await makeUtxoManager({
+            storage: utxoStorage,
+            apiUrl: legacyApiBaseUrl,
+          })
 
     const transactionManager = await createTransactionManager(
       accountStorage.join('txs/'),
@@ -592,20 +652,7 @@ function createWalletObject(
       const stakingKeyHashHex = getStakingKey().hash().toHex()
       return addressedUtxos.filter(
         (utxo: CardanoTypes.CardanoAddressedUtxo) => {
-          try {
-            return CardanoMobileWrapped.cslScope((csl) => {
-              const addr = csl.Address.fromBech32(utxo.receiver)
-              if (!addr) return false
-              const baseAddr = csl.BaseAddress.fromAddress(addr)
-              if (!baseAddr) return false
-              const stakeCred = baseAddr.stakeCred()
-              const keyHash = stakeCred.toKeyhash()
-              if (!keyHash) return false
-              return keyHash.toHex() === stakingKeyHashHex
-            })
-          } catch {
-            return false
-          }
+          return addressUsesStakingKey(utxo.receiver, stakingKeyHashHex)
         },
       )
     }
@@ -698,7 +745,7 @@ function createWalletObject(
     tipStatus,
   }: {
     isForced?: boolean
-    tipStatus?: TipStatusResponse | null
+    tipStatus?: SyncTipStatus | null
   } = {}) => {
     if (!state.isInitialized) {
       getLogger().error('ShelleyWallet: sync wallet not initialized', {
@@ -709,14 +756,13 @@ function createWalletObject(
 
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
-
     await Promise.all([
       syncUtxos({isForced}),
       state.transactionManager.doSync(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        tipStatus,
+        historyTipStatusForUtxoBackend(state.utxoManager.kind, tipStatus),
         isForced,
       ),
     ])
@@ -732,7 +778,7 @@ function createWalletObject(
     tipStatus,
   }: {
     isForced?: boolean
-    tipStatus?: TipStatusResponse | null
+    tipStatus?: SyncTipStatus | null
   } = {}) => {
     if (!state.isInitialized) {
       getLogger().error('ShelleyWallet: quickSync wallet not initialized', {
@@ -743,14 +789,13 @@ function createWalletObject(
 
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
-
     await Promise.all([
       syncUtxos({isForced}),
       state.transactionManager.doQuickSync(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        tipStatus,
+        historyTipStatusForUtxoBackend(state.utxoManager.kind, tipStatus),
       ),
     ])
   }
@@ -765,8 +810,12 @@ function createWalletObject(
   }
   // end sync
 
-  const signRawTx = async (txHex: string, pKeys: CSL.PrivateKey[]) => {
-    return signRawTransaction(txHex, pKeys)
+  const signRawTx = async (
+    txHex: string,
+    rootKeyHex: string,
+    signerPaths: number[][],
+  ) => {
+    return signWalletTransactionWithPaths(txHex, rootKeyHex, signerPaths)
   }
 
   const getAddressedUtxos = (): ModernUtxo[] => {
@@ -833,19 +882,16 @@ function createWalletObject(
       state.rewardAddressHex,
       stakingAddressing,
     )
-    const payload = await CardanoMobileWrapped.cslScope(async (csl) => {
-      return await state.dependencies.toLedgerSignRequest(
-        csl,
-        cbor,
-        networkManager.chainId,
-        networkManager.protocolMagic,
-        addressingMap,
-        stakeAddressMap,
-        modernUtxosToCardanoAddressedUtxos(getAddressedUtxos()),
-        [],
-        stakingAddressing,
-      )
-    })
+    const payload = await state.dependencies.toLedgerSignRequest(
+      cbor,
+      networkManager.chainId,
+      networkManager.protocolMagic,
+      addressingMap,
+      stakeAddressMap,
+      modernUtxosToCardanoAddressedUtxos(getAddressedUtxos()),
+      [],
+      stakingAddressing,
+    )
 
     const signedLedgerTx = await signTxWithLedgerHW(
       payload,
@@ -870,7 +916,7 @@ function createWalletObject(
     unsignedTx: UnsignedTransaction,
     useUSB: boolean,
     hwDeviceInfo: HW.DeviceInfo,
-  ): Promise<CSL.Transaction> => {
+  ): Promise<Uint8Array> => {
     if (!unsignedTx.cbor) {
       throw new Error('UnsignedTransaction must have CBOR to sign with Ledger')
     }
@@ -896,58 +942,16 @@ function createWalletObject(
 
         const stakingConfig = implementationConfig.features.staking
 
-        // Get change address from UnsignedTransaction options or use default
-        const changeAddress =
-          unsignedTx.options.changeAddress || getChangeAddress('multiple')
-        const addressing = getAddressing(changeAddress)
-        const changeAddr = {
-          address:
-            typeof changeAddress === 'string'
-              ? Branded.asAddress(changeAddress)
-              : changeAddress,
-          addressing,
-        }
-
-        // Convert UnsignedTransaction to LedgerUnsignedTx format
-        return CardanoMobileWrapped.cslScope(async (csl) => {
-          const ledgerUnsignedTx = adaptToLedgerUnsignedTx(csl, unsignedTx, [
-            changeAddr,
-          ])
-
-          const ledgerPayload = await buildVotingLedgerPayloadV5(
-            csl,
-            ledgerUnsignedTx,
-            networkManager.chainId,
-            networkManager.protocolMagic,
-            Array.from(stakingConfig.addressing),
-          )
-
-          const signedLedgerTx = await signTxWithLedgerHW(
-            ledgerPayload,
-            hwDeviceInfo,
-            useUSB,
-          )
-
-          const signedTxResult = await buildLedgerSignedTx(
-            csl,
-            {
-              senderUtxos: ledgerUnsignedTx.senderUtxos,
-              txBuilder: ledgerUnsignedTx.txBuilder,
-              auxiliaryData: ledgerUnsignedTx.auxiliaryData,
-            },
-            signedLedgerTx,
-            implementationConfig.derivations.base.harden.purpose,
-            state.publicKeyHex,
-            false,
-          )
-
-          // Convert signed transaction bytes to Transaction object
-          const signedTx = await CardanoMobileWrapped.cslScope(async (csl) => {
-            return await csl.Transaction.fromBytes(signedTxResult.encodedTx)
-          })
-
-          return signedTx
-        })
+        // The transaction-to-Ledger adapter consumes serialized CML CBOR and
+        // emits the SDK's plain-data request. Keep this version gate, but do
+        // not reconstruct serialization objects just to populate the payload.
+        return signUnsignedTransactionWithLedger(
+          unsignedTx,
+          hwDeviceInfo,
+          useUSB,
+          Array.from(stakingConfig.addressing),
+          false,
+        )
       }
 
       throwLoggedError(getLogger())(
@@ -960,75 +964,73 @@ function createWalletObject(
       {appAdaVersion},
     )
 
-    // Get change address from UnsignedTransaction options or use default
-    const changeAddress =
-      unsignedTx.options.changeAddress || getChangeAddress('multiple')
-    const addressing = getAddressing(changeAddress)
-    const changeAddr = {
-      address:
-        typeof changeAddress === 'string'
-          ? Branded.asAddress(changeAddress)
-          : changeAddress,
-      addressing,
+    const stakingAddressing = implementationConfig.features.staking
+      ? Array.from(implementationConfig.features.staking.addressing)
+      : undefined
+
+    return signUnsignedTransactionWithLedger(
+      unsignedTx,
+      hwDeviceInfo,
+      useUSB,
+      stakingAddressing,
+      true,
+    )
+  }
+
+  const signUnsignedTransactionWithLedger = async (
+    unsignedTx: UnsignedTransaction,
+    hwDeviceInfo: HW.DeviceInfo,
+    useUSB: boolean,
+    stakingAddressing?: number[],
+    includePlutusData = true,
+  ): Promise<Uint8Array> => {
+    if (!unsignedTx.cbor) {
+      throw new Error('UnsignedTransaction must have CBOR to sign with Ledger')
     }
 
-    // Convert UnsignedTransaction to LedgerUnsignedTx format
-    return CardanoMobileWrapped.cslScope(async (csl) => {
-      const ledgerUnsignedTx = adaptToLedgerUnsignedTx(csl, unsignedTx, [
-        changeAddr,
-      ])
+    const ledgerAddressing = await getHexAddressingMap(wallet)
+    const stakeAddressing = getStakeAddressMap(
+      state.rewardAddressHex,
+      stakingAddressing,
+    )
+    const ledgerPayload = await state.dependencies.toLedgerSignRequest(
+      unsignedTx.cbor,
+      networkManager.chainId,
+      networkManager.protocolMagic,
+      ledgerAddressing,
+      stakeAddressing,
+      modernUtxosToCardanoAddressedUtxos(getAddressedUtxos()),
+      [],
+      stakingAddressing,
+    )
+    const signedLedgerTx = await signTxWithLedgerHW(
+      ledgerPayload,
+      hwDeviceInfo,
+      useUSB,
+    )
+    const senderUtxos = unsignedTx.inputs.map(({utxo}) => ({
+      receiver: utxo.receiver,
+      txHash: utxo.txHash,
+      txIndex: utxo.txIndex,
+      addressing: utxo.addressing ?? {path: [], startLevel: 0},
+    }))
 
-      let stakingAddressing: number[] | undefined
-      if (implementationConfig.features.staking) {
-        stakingAddressing = Array.from(
-          implementationConfig.features.staking.addressing,
-        ) as number[]
-      }
-
-      const ledgerPayload = await buildLedgerPayload(
-        csl,
-        ledgerUnsignedTx,
-        networkManager.chainId,
-        networkManager.protocolMagic,
-        stakingAddressing,
-      )
-
-      const signedLedgerTx = await signTxWithLedgerHW(
-        ledgerPayload,
-        hwDeviceInfo,
-        useUSB,
-      )
-
-      // Extract datum data from outputs
-      const datumDatas = unsignedTx.outputs
-        .map((output: UnsignedTransaction['outputs'][number]) => output.datum)
-        .filter(isNonNullable)
-        .filter(
-          (datum: Datum): datum is Exclude<Datum, {hash: string}> =>
-            'data' in datum,
+    const plutusDataHexes = includePlutusData
+      ? unsignedTx.outputs.flatMap((output) =>
+          output.datum && 'data' in output.datum ? [output.datum.data] : [],
         )
+      : undefined
+    const signedTxResult = await buildLedgerSignedTx(
+      {transactionHex: unsignedTx.cbor, senderUtxos},
+      signedLedgerTx,
+      implementationConfig.derivations.base.harden.purpose,
+      state.publicKeyHex,
+      true,
+      plutusDataHexes,
+      state.accountVisual,
+    )
 
-      const signedTxResult = await buildLedgerSignedTx(
-        csl,
-        {
-          senderUtxos: ledgerUnsignedTx.senderUtxos,
-          txBuilder: ledgerUnsignedTx.txBuilder,
-          auxiliaryData: ledgerUnsignedTx.auxiliaryData,
-        },
-        signedLedgerTx,
-        implementationConfig.derivations.base.harden.purpose,
-        state.publicKeyHex,
-        true,
-        datumDatas.length > 0 ? datumDatas : undefined,
-      )
-
-      // Convert signed transaction bytes to Transaction object
-      const signedTx = await CardanoMobileWrapped.cslScope(async (csl) => {
-        return await csl.Transaction.fromBytes(signedTxResult.encodedTx)
-      })
-
-      return signedTx
-    })
+    return signedTxResult.encodedTx
   }
 
   // =================== backend API =================== //
@@ -1043,7 +1045,76 @@ function createWalletObject(
     }
   }
 
+  const updateWalletUtxos = async (
+    newUtxos: RawUtxo[],
+    isForced: boolean = false,
+    skipCollateralDetection: boolean = false,
+  ): Promise<boolean> => {
+    if (!skipCollateralDetection && state.collateralId.length === 0) {
+      const potentialCollateralId = utxosMaker(newUtxos).drawnCollateral()
+      if (potentialCollateralId) {
+        const collateralIdBranded = Branded.asUtxoId(potentialCollateralId)
+        await state.utxoManager.setCollateralId(collateralIdBranded)
+        state.collateralId = potentialCollateralId
+        notify({type: 'collateral-id', collateralId: collateralIdBranded})
+        getLogger().info('syncUtxos: Auto-detected and saved collateral ID', {
+          collateralId: potentialCollateralId,
+        })
+      }
+    }
+
+    if (!didUtxosUpdate(state.utxos, newUtxos) && !isForced) return false
+
+    const spendableUtxos = getSpendableUtxosOp(newUtxos, state.collateralId)
+    const lockedAsStorageCost = await calcLockedDeposit({
+      rawUtxos: spendableUtxos,
+      coinsPerUtxoByteStr: state.protocolParams.coinsPerUtxoByte,
+    })
+    const balancesToSync = state.dependencies.toBalanceManagerSyncArgs(
+      newUtxos,
+      BigInt(lockedAsStorageCost.toString()),
+    )
+
+    state.balanceManager.syncBalances(balancesToSync)
+    state.utxos = newUtxos
+    notify({type: 'utxos', utxos: utxos()})
+    return true
+  }
+
   const submitTransaction = async (base64SignedTx: TransactionCborBase64) => {
+    const pendingOverlay =
+      state.utxoManager.kind === 'current-state'
+        ? createPendingUtxoOverlayFromCbor({
+            signedTxBase64: base64SignedTx,
+            walletUtxos: state.utxos,
+            ownedAddresses: new Set([
+              ...internalAddresses(),
+              ...externalAddresses(),
+              ...state.manualAddressCache.keys(),
+            ]),
+          })
+        : undefined
+    if (pendingOverlay && state.utxoManager.kind === 'current-state') {
+      await state.utxoManager.savePendingOverlay(pendingOverlay)
+      try {
+        await updateWalletUtxos(
+          await state.utxoManager.getCachedUtxos(),
+          true,
+          true,
+        )
+      } catch (error) {
+        try {
+          await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+        } catch (removeError) {
+          logger.error(
+            'cardano-wallet.submitTransaction: Failed to remove pending overlay after refresh failure',
+            {error: removeError, walletId: state.id},
+          )
+        }
+        throw error
+      }
+    }
+
     try {
       await legacyApi.submitTransaction(
         base64SignedTx,
@@ -1057,6 +1128,45 @@ function createWalletObject(
         apiBaseUrl: networkManager.legacyApiBaseUrl,
         walletId: state.id,
       })
+      if (pendingOverlay && state.utxoManager.kind === 'current-state') {
+        let submissionFailed = false
+        try {
+          const status = await legacyApi.fetchTxStatus(
+            {txHashes: [pendingOverlay.txHash]},
+            networkManager.legacyApiBaseUrl,
+          )
+          const submission = status.submissionStatus?.[pendingOverlay.txHash]
+          if (
+            submission?.status === 'FAILED' ||
+            submission?.status === 'MAX_RETRY_REACHED'
+          ) {
+            submissionFailed = true
+          }
+        } catch {
+          // Keep the overlay when submission outcome cannot be confirmed.
+        }
+        if (submissionFailed) {
+          try {
+            await state.utxoManager.removePendingOverlay(pendingOverlay.txHash)
+          } catch (removeError) {
+            logger.error(
+              'cardano-wallet.submitTransaction: Failed to remove rejected pending overlay',
+              {error: removeError, walletId: state.id},
+            )
+          }
+          try {
+            await updateWalletUtxos(
+              await state.utxoManager.getCachedUtxos(),
+              true,
+            )
+          } catch (refreshError) {
+            logger.error(
+              'cardano-wallet.submitTransaction: Failed to refresh UTxOs after rejection',
+              {error: refreshError, walletId: state.id},
+            )
+          }
+        }
+      }
       throw error
     }
   }
@@ -1079,50 +1189,7 @@ function createWalletObject(
     await state.utxoManager.sync(addresses)
     const newUtxos = await state.utxoManager.getCachedUtxos()
 
-    // Auto-detect and save collateral ID if not set but a matching UTXO exists
-    // This handles the case where a wallet is restored with an existing collateral UTXO
-    if (state.collateralId.length === 0) {
-      const utxosList = utxosMaker(newUtxos)
-      const potentialCollateralId = utxosList.drawnCollateral()
-      if (potentialCollateralId) {
-        const collateralIdBranded = Branded.asUtxoId(potentialCollateralId)
-        await state.utxoManager.setCollateralId(collateralIdBranded)
-        state.collateralId = potentialCollateralId
-        notify({type: 'collateral-id', collateralId: collateralIdBranded})
-        getLogger().info('syncUtxos: Auto-detected and saved collateral ID', {
-          collateralId: potentialCollateralId,
-        })
-      }
-    }
-
-    // NOTE: wallet is not aware of utxos state
-    // if it crashes, the utxo manager will be out of sync with wallet
-    if (didUtxosUpdate(state.utxos, newUtxos) || isForced) {
-      // Exclude collateral UTXO from locked deposit calculation
-      // Collateral is not a storage cost, it's locked for DApp transactions
-      const spendableUtxos = getSpendableUtxosOp(newUtxos, state.collateralId)
-
-      // NOTE: recalc locked deposit should happen also when epoch changes after conway
-      // Only calculate locked deposit for spendable UTXOs (exclude collateral)
-      const lockedAsStorageCost = await calcLockedDeposit({
-        rawUtxos: spendableUtxos,
-        coinsPerUtxoByteStr: state.protocolParams.coinsPerUtxoByte,
-      })
-
-      // Include all UTXOs (including collateral) in total balance
-      // Collateral is owned by the wallet and should appear in total balance
-      const balancesToSync = state.dependencies.toBalanceManagerSyncArgs(
-        newUtxos,
-        BigInt(lockedAsStorageCost.toString()),
-      )
-
-      state.balanceManager.syncBalances(balancesToSync)
-
-      state.utxos = newUtxos
-      notify({type: 'utxos', utxos: utxos()})
-      return true
-    }
-    return false
+    return updateWalletUtxos(newUtxos, isForced)
   }
 
   const utxos = (): Array<RawUtxo> => {
@@ -1241,7 +1308,26 @@ function createWalletObject(
   const fetchTxStatus = async (
     request: TxStatusRequest,
   ): Promise<TxStatusResponse> => {
-    return legacyApi.fetchTxStatus(request, networkManager.legacyApiBaseUrl)
+    const result = await legacyApi.fetchTxStatus(
+      request,
+      networkManager.legacyApiBaseUrl,
+    )
+    const utxoManager = state.utxoManager
+    if (utxoManager.kind === 'current-state') {
+      await Promise.all(
+        Object.entries(result.submissionStatus ?? {}).flatMap(
+          ([txHash, status]) =>
+            status.status === 'FAILED' || status.status === 'MAX_RETRY_REACHED'
+              ? [
+                  utxoManager.removePendingOverlay(
+                    Branded.asTransactionHash(txHash),
+                  ),
+                ]
+              : [],
+        ),
+      )
+    }
+    return result
   }
 
   // =================== getters =================== //
@@ -1317,6 +1403,7 @@ function createWalletObject(
     portfolioPrimaryTokenInfo: state.portfolioPrimaryTokenInfo,
     networkManager: networkManager,
     isMainnet: networkManager.isMainnet,
+    usesCurrentStateUtxos: state.utxoManager.kind === 'current-state',
     balanceManager: state.balanceManager,
     balance$: state.balanceManager.observable$,
     accountVisual: state.accountVisual,

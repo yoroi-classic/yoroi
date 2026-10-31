@@ -19,7 +19,6 @@ import {
   FullPoolInfoMap,
   PoolTransition,
   TransitionData,
-  WasmFactory,
   getMaybeNewEntriesByPool,
   normalisePoolIdentifierOrKey,
 } from './pool-info-api'
@@ -39,10 +38,7 @@ export type PoolInfoApi = Readonly<{
   getPool(hash: string): Promise<ExplorerPoolInfo | null>
   getSingleExplorerPoolInfo(hash: string): Promise<ExplorerPoolInfo | null>
   getPoolTransitionInfoPublic(): Promise<TransitionData | null>
-  getTransition(
-    hash: string,
-    wasmFactory: WasmFactory,
-  ): Promise<PoolTransition | null>
+  getTransition(hash: string): Promise<PoolTransition | null>
 }>
 
 export type PoolInfoApiMakerParams = {
@@ -144,12 +140,11 @@ export const poolInfoApiMaker = ({
 
   const getTransitionFn = async (
     hash: string,
-    wasmFactory: WasmFactory,
   ): Promise<PoolTransition | null> => {
     const transitionData = await getPoolTransitionInfoFn()
     if (transitionData == null) return null
 
-    const poolId = await normalisePoolIdentifierOrKey(hash, wasmFactory)
+    const poolId = normalisePoolIdentifierOrKey(hash)
     const suggestion = getMaybeNewEntriesByPool(poolId.id, transitionData)
     if (suggestion == null) return null
 

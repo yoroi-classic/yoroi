@@ -1,28 +1,29 @@
-import {CardanoMobileWrapped} from '../wrappedCsl'
-import {generateAdaMnemonic, generateWalletRootKey} from './mnemonic'
+import {walletRootKeyHexFromEntropy} from '@yoroi-classic/cml-mobile-bridge'
 
-const mnemonic = [
-  'dry balcony arctic what garbage sort',
-  'cart shine egg lamp manual bottom',
-  'slide assault bus',
-].join(' ')
+import {generateAdaMnemonic, getMasterKeyFromMnemonic} from './mnemonic'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  // Matches the fixed CML root-key vector in the native bridge's Rust tests for 0x11 entropy.
+  walletRootKeyHexFromEntropy: jest.fn(
+    () =>
+      '789baf867d07a3ab819e4a28b0639a29611c6d87cb381ae5a7f265c234a8785d86842032c8c1eb143d7be93358701495a6402e88c5fb3346801ac8585fc286cbcc9dbd2223bfaac220dc66aa6dd54c04590227b39e448bc24efc730b176b8e48',
+  ),
+}))
+
+const mnemonic =
+  'baby mass dust captain baby mass dust captain baby mass dust casino'
 
 describe('BIP39', () => {
-  const expectedKey =
-    '9053adfb225e91c0bf2db38e1978907cfeff6e66b9a9c3d8945aa686a9d' +
-    '29851bf83c8e2e556464605afeb9651fab3ef3f0aa205685c8f1e6f818629f843bde9' +
-    'a7e129fd35d072ce79b40a49cefcbc8526a3cb8d4bfa7a47afddaddc31dbb728'
-
   it('correctly generates mnemonics', () => {
     const recoverPhrase = generateAdaMnemonic()
     expect(recoverPhrase.split(' ').length).toEqual(15)
   })
 
-  it('correctly derives wallet root key', async () => {
-    const rootKeyBytes = CardanoMobileWrapped.cslScope((csl) => {
-      const rootKey = generateWalletRootKey(mnemonic, csl)
-      return rootKey.asBytes()
-    })
-    expect(Buffer.from(rootKeyBytes).toString('hex')).toEqual(expectedKey)
+  it('generates wallet root key through the CML bridge from BIP39 entropy', () => {
+    const rootKeyBytes = getMasterKeyFromMnemonic(mnemonic)
+    expect(walletRootKeyHexFromEntropy).toHaveBeenCalledWith('11'.repeat(16))
+    expect(Buffer.from(rootKeyBytes).toString('hex')).toEqual(
+      '789baf867d07a3ab819e4a28b0639a29611c6d87cb381ae5a7f265c234a8785d86842032c8c1eb143d7be93358701495a6402e88c5fb3346801ac8585fc286cbcc9dbd2223bfaac220dc66aa6dd54c04590227b39e448bc24efc730b176b8e48',
+    )
   })
 })

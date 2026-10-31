@@ -17,7 +17,10 @@ export {createVotingRegTx} from './createVotingRegTx'
 export type {CreateVotingRegTxParams} from './createVotingRegTx'
 
 export {createUnsignedGovernanceTx} from './createUnsignedGovernanceTx'
-export type {CreateUnsignedGovernanceTxParams} from './createUnsignedGovernanceTx'
+export type {
+  CreateUnsignedGovernanceTxParams,
+  GovernanceCertificateInput,
+} from './createUnsignedGovernanceTx'
 
 export {createSendTx} from './createSendTx'
 export type {CreateSendTxParams} from './createSendTx'
@@ -35,4 +38,3 @@ export {
   createWithdrawalTxFromWallet,
   createWithdrawalWithGovernanceTxFromWallet,
 } from './wallet-helpers'
-

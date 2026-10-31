@@ -1,5 +1,4 @@
 import type {AccountStateResponse} from '@yoroi/api'
-import {isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {
   CertificateKind,
@@ -17,10 +16,9 @@ import {
 } from '@yoroi/tx'
 import {Address, Branded, KeyHash, Portfolio, Wallet} from '@yoroi/types'
 
-import type {PublicKey} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
-import {CardanoMobileWrapped} from '../wrappedCsl'
+import {deriveRewardAddressDetails} from '../utils'
 
 export type CreateWithdrawalTxParams = {
   utxos: ModernUtxo[]
@@ -35,7 +33,6 @@ export type CreateWithdrawalTxParams = {
   networkId: number
   getAbsoluteSlotNumber: () => Promise<BigNumber>
   getChangeAddress: (addressMode: Wallet.AddressMode) => Address | string
-  getStakingKey: () => PublicKey
   getAccountState: (addresses: Address[]) => Promise<AccountStateResponse>
   shouldDeregister: boolean
   addressMode: Wallet.AddressMode
@@ -49,7 +46,6 @@ export async function createWithdrawalTx({
   networkId,
   getAbsoluteSlotNumber,
   getChangeAddress,
-  getStakingKey,
   getAccountState,
   shouldDeregister,
   addressMode,
@@ -94,61 +90,14 @@ export async function createWithdrawalTx({
 
   if (BigInt(rewards) > 0n) {
     // Convert reward address to bech32 and extract stake credential
-    const result = CardanoMobileWrapped.cslScope((csl) => {
-      let address
-      if (csl.ByronAddress.isValid(rewardAddrStr)) {
-        const byronAddr = csl.ByronAddress.fromBase58(rewardAddrStr)
-        address = byronAddr.toAddress()
-      } else {
-        const isHexAddr = isHex(rewardAddrStr)
-        address = isHexAddr
-          ? csl.Address.fromHex(rewardAddrStr)
-          : csl.Address.fromBech32(rewardAddrStr)
-      }
-      if (!address || address.isMalformed()) {
-        throw new Error(`Invalid reward address: ${rewardAddrStr}`)
-      }
-
-      const rewardAddr = csl.RewardAddress.fromAddress(address)
-      if (!rewardAddr) {
-        throw new Error(
-          `Failed to create RewardAddress from address: ${rewardAddrStr}`,
-        )
-      }
-      const stakeCred = rewardAddr.paymentCred()
-      if (!stakeCred) {
-        throw new Error(
-          `Failed to extract stake credential from reward address: ${rewardAddrStr}`,
-        )
-      }
-
-      const bech32 = address.toBech32(undefined)
-      if (!bech32) {
-        throw new Error(
-          `Failed to convert reward address to bech32: ${rewardAddrStr}`,
-        )
-      }
-
-      const keyHash = stakeCred.toKeyhash()
-      if (!keyHash) {
-        throw new Error(
-          `Reward address stake credential is not a key hash: ${rewardAddressHex}`,
-        )
-      }
-
-      return {
-        rewardAddressBech32: bech32 as Address,
-        stakeCredentialKeyHashHex: Branded.asKeyHash(keyHash.toHex()),
-      }
-    })
-    rewardAddressBech32 = result.rewardAddressBech32
-    stakeCredentialKeyHashHex = result.stakeCredentialKeyHashHex
+    const result = deriveRewardAddressDetails(rewardAddrStr)
+    rewardAddressBech32 = Branded.asAddress(result.bech32)
+    stakeCredentialKeyHashHex = Branded.asKeyHash(result.keyHashHex)
   } else if (shouldDeregister) {
     // No rewards but deregistering - extract from staking key
-    stakeCredentialKeyHashHex = CardanoMobileWrapped.cslScope(() => {
-      const keyHash = getStakingKey().hash()
-      return Branded.asKeyHash(keyHash.toHex())
-    })
+    stakeCredentialKeyHashHex = Branded.asKeyHash(
+      deriveRewardAddressDetails(rewardAddrStr).keyHashHex,
+    )
   }
 
   // Helper function to calculate required ADA based on fee estimate

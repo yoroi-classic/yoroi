@@ -19,7 +19,7 @@ import {logger} from '~/kernel/logger/logger'
 
 /**
  * Check if a string looks like a valid Cardano address format
- * This prevents calling CSL functions on invalid strings
+ * This prevents invoking native address parsing on invalid strings
  */
 const looksLikeValidAddress = (address: string): boolean => {
   if (!address || typeof address !== 'string') return false
@@ -420,9 +420,9 @@ export const useAddressInput = (
 
 // NOTE: should be a wallet function from address manager
 const validateAddress = async (address: string, chainId: number) => {
-  // Don't attempt CSL validation if it doesn't look like a valid address format
+  // Don't attempt native address parsing if it doesn't look like a valid format
   if (!looksLikeValidAddress(address)) {
-    logger.debug('[AddressInput] Skipping CSL validation - invalid format', {
+    logger.debug('[AddressInput] Skipping address parsing - invalid format', {
       address,
     })
     throw new AddressErrorInvalid()

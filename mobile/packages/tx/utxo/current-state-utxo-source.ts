@@ -1,3 +1,4 @@
+import {SyncTipStatus} from '@yoroi/api'
 import {Fetcher, fetcher} from '@yoroi/common'
 import {
   Address,
@@ -22,7 +23,8 @@ export type CurrentStateAsset = {
  * A UTxO from an authoritative current-state read.
  *
  * Unlike the legacy UTxO model, this deliberately has no block number or safe
- * point. `/v1/account/{stake}/utxos` answers what the account controls now.
+ * point. `/v1/account/{stake}/utxos/complete` answers what the account
+ * controls now and includes the backend's completeness proof.
  */
 export type CurrentStateUtxo = {
   readonly utxoId: UtxoId
@@ -40,6 +42,10 @@ export type CurrentStateUtxoSource = {
   getAccountUtxos(
     stakeAddress: StakingAddress,
   ): Promise<ReadonlyArray<CurrentStateUtxo>>
+}
+
+export type CurrentStateWalletSource = CurrentStateUtxoSource & {
+  getChainTip(): Promise<SyncTipStatus>
 }
 
 const hex = z.string().regex(/^[0-9a-fA-F]*$/)
@@ -67,19 +73,23 @@ const accountUtxoSchema = z.object({
   referenceScriptHash: referenceScriptHash.optional(),
 })
 
-const accountUtxosSchema = z.array(accountUtxoSchema)
+const completeAccountUtxosSchema = z.object({
+  complete: z.literal(true),
+  utxos: z.array(accountUtxoSchema),
+})
 const backendStatusSchema = z.object({
   // Keep this boundary free of runtime access to the @yoroi/types namespace.
   // Some consumers intentionally provide type-only mocks of that package.
   network: z.enum(['mainnet', 'preprod', 'preview']),
   chain: z.enum(['ok', 'stale', 'down']),
 })
-
-// Temporary fail-closed compatibility with backend revisions before #98/#99.
-// Those revisions silently cap this route at exactly 1,000 rows. A legitimate
-// complete set of exactly 1,000 is indistinguishable until backend capability
-// negotiation lands; mobile#75 owns replacing this conservative workaround.
-const LEGACY_BACKEND_UTXO_CAP = 1_000
+const chainTipSchema = z.object({
+  block: z.number().int().nonnegative(),
+  slot: z.number().int().nonnegative(),
+  epoch: z.number().int().nonnegative(),
+  hash: z.string().regex(/^[0-9a-fA-F]{64}$/),
+  blockTime: z.number().int().nonnegative(),
+})
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '')
 
@@ -87,23 +97,62 @@ const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '')
  * Creates the Shelley current-state driver for cardano-wallet-backend.
  *
  * The API shape is one response with no client pagination cursor. This source
- * verifies backend network/readiness on every read and temporarily rejects the
- * legacy 1,000-row cap until backend completeness capability negotiation lands
- * (mobile#75). Validation stays at this boundary so malformed or cross-network
- * data never reaches transaction construction.
+ * verifies backend network/readiness on every read and requires the backend's
+ * completeness marker. A complete set of exactly 1,000 rows is valid;
+ * completeness is established by the backend marker, not inferred from array
+ * length. Validation stays at this boundary so partial, malformed, stale, or
+ * cross-network data never reaches transaction construction.
  */
 export const createCardanoWalletBackendUtxoSource = (
   baseUrl: string,
   expectedNetwork: Chain.SupportedNetworks,
   request: Fetcher = fetcher,
-): CurrentStateUtxoSource => {
+): CurrentStateWalletSource => {
   const normalizedBaseUrl = trimTrailingSlashes(baseUrl)
 
   if (normalizedBaseUrl.length === 0) {
     throw new Error('cardano-wallet-backend base URL is required')
   }
 
+  const assertBackendReady = async () => {
+    const statusResponse = await request<unknown>({
+      url: `${normalizedBaseUrl}/v1/status`,
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+    })
+    const status = backendStatusSchema.safeParse(statusResponse)
+    if (!status.success) {
+      throw new Error('Invalid cardano-wallet-backend status response')
+    }
+    if (status.data.network !== expectedNetwork) {
+      throw new Error('cardano-wallet-backend network mismatch')
+    }
+    if (status.data.chain !== 'ok') {
+      throw new Error('cardano-wallet-backend chain data is not ready')
+    }
+  }
+
   return {
+    async getChainTip() {
+      await assertBackendReady()
+      const response = await request<unknown>({
+        url: `${normalizedBaseUrl}/v1/chain/tip`,
+        method: 'GET',
+        headers: {Accept: 'application/json'},
+      })
+      const parsed = chainTipSchema.safeParse(response)
+      if (!parsed.success) {
+        throw new Error('Invalid cardano-wallet-backend chain tip response')
+      }
+      const bestBlock = {
+        height: parsed.data.block,
+        slot: Branded.asSlotNumber(parsed.data.slot),
+        epoch: Branded.asEpochNumber(parsed.data.epoch),
+        hash: Branded.asBlockHash(parsed.data.hash.toLowerCase()),
+        globalSlot: null,
+      }
+      return {bestBlock}
+    },
     async getAccountUtxos(stakeAddress) {
       const expectedStakePrefix =
         expectedNetwork === 'mainnet' ? 'stake1' : 'stake_test1'
@@ -111,59 +160,36 @@ export const createCardanoWalletBackendUtxoSource = (
         throw new Error('Stake address does not match the selected network')
       }
 
-      const statusResponse = await request<unknown>({
-        url: `${normalizedBaseUrl}/v1/status`,
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      })
-      const status = backendStatusSchema.safeParse(statusResponse)
-      if (!status.success) {
-        throw new Error('Invalid cardano-wallet-backend status response')
-      }
-      if (status.data.network !== expectedNetwork) {
-        throw new Error('cardano-wallet-backend network mismatch')
-      }
-      if (status.data.chain !== 'ok') {
-        throw new Error('cardano-wallet-backend chain data is not ready')
-      }
+      await assertBackendReady()
 
       const response = await request<unknown>({
         url: `${normalizedBaseUrl}/v1/account/${encodeURIComponent(
           stakeAddress,
-        )}/utxos`,
+        )}/utxos/complete`,
         method: 'GET',
         headers: {
           Accept: 'application/json',
         },
       })
 
-      if (
-        Array.isArray(response) &&
-        response.length >= LEGACY_BACKEND_UTXO_CAP
-      ) {
-        throw new Error(
-          'cardano-wallet-backend account UTxO response may be incomplete',
-        )
-      }
-
-      const parsed = accountUtxosSchema.safeParse(response)
+      const parsed = completeAccountUtxosSchema.safeParse(response)
 
       if (!parsed.success) {
-        throw new Error('Invalid cardano-wallet-backend account UTxO response')
+        throw new Error(
+          'Invalid or incomplete cardano-wallet-backend account UTxO response',
+        )
       }
 
       const expectedAddressPrefix =
         expectedNetwork === 'mainnet' ? 'addr1' : 'addr_test1'
       const seenUtxos = new Set<string>()
-      for (const utxo of parsed.data) {
+      for (const utxo of parsed.data.utxos) {
         if (!utxo.address.startsWith(expectedAddressPrefix)) {
           throw new Error(
             'cardano-wallet-backend account UTxO network mismatch',
           )
         }
-        const utxoId = `${utxo.txHash}:${utxo.outputIndex}`
+        const utxoId = `${utxo.txHash.toLowerCase()}:${utxo.outputIndex}`
         if (seenUtxos.has(utxoId)) {
           throw new Error('Duplicate cardano-wallet-backend account UTxO')
         }
@@ -171,7 +197,7 @@ export const createCardanoWalletBackendUtxoSource = (
 
         const seenAssets = new Set<string>()
         for (const asset of utxo.assets) {
-          const assetId = `${asset.policyId}.${asset.assetName}`
+          const assetId = `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`
           if (seenAssets.has(assetId)) {
             throw new Error(
               'Duplicate asset in cardano-wallet-backend account UTxO',
@@ -181,19 +207,21 @@ export const createCardanoWalletBackendUtxoSource = (
         }
       }
 
-      return parsed.data.map((utxo) => ({
+      return parsed.data.utxos.map((utxo) => ({
         utxoId: Branded.asUtxoIdFromParts(
-          Branded.asTransactionHash(utxo.txHash),
+          Branded.asTransactionHash(utxo.txHash.toLowerCase()),
           utxo.outputIndex,
         ),
-        txHash: Branded.asTransactionHash(utxo.txHash),
+        txHash: Branded.asTransactionHash(utxo.txHash.toLowerCase()),
         txIndex: utxo.outputIndex,
         receiver: Branded.asAddress(utxo.address),
         amount: Branded.asBalanceQuantity(utxo.value),
         assets: utxo.assets.map((asset) => ({
-          assetId: Branded.asTokenId(`${asset.policyId}.${asset.assetName}`),
-          policyId: Branded.asPolicyId(asset.policyId),
-          name: Branded.asAssetName(asset.assetName),
+          assetId: Branded.asTokenId(
+            `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`,
+          ),
+          policyId: Branded.asPolicyId(asset.policyId.toLowerCase()),
+          name: Branded.asAssetName(asset.assetName.toLowerCase()),
           amount: Branded.asBalanceQuantity(asset.quantity),
         })),
         ...(utxo.datumHash === undefined ? {} : {datumHash: utxo.datumHash}),

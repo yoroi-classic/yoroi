@@ -1,9 +1,11 @@
 import {YoroiWallet} from '@yoroi/cardano-wallet'
-import {useUpdateLatestGovernanceAction} from '@yoroi/staking'
+import {
+  GovernanceCertificate,
+  useUpdateLatestGovernanceAction,
+} from '@yoroi/staking'
 import {Wallet} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import {Certificate} from '@emurgo/cross-csl-core'
 import * as React from 'react'
 
 import {UsePromiseOptionsWithoutPromise} from '~/common/hooks/usePromise'
@@ -32,7 +34,12 @@ type PendingAction =
 
 type UseGovernanceVoteFlowOptions = UsePromiseOptionsWithoutPromise<
   {cbor: string},
-  [{certificates: Certificate[]; addressMode: Wallet.AddressMode}]
+  [
+    {
+      certificates: GovernanceCertificate[]
+      addressMode: Wallet.AddressMode
+    },
+  ]
 >
 
 export const useGovernanceActions = () => {
@@ -310,7 +317,7 @@ export const useGovernanceVoteFlow = ({
   }
 
   const submitDelegate = (
-    certificates: Certificate[],
+    certificates: GovernanceCertificate[],
     options: DelegateOptions,
   ) => {
     setDelegatePending(options)
@@ -320,7 +327,7 @@ export const useGovernanceVoteFlow = ({
     })
   }
 
-  const submitAbstain = (certificates: Certificate[]) => {
+  const submitAbstain = (certificates: GovernanceCertificate[]) => {
     setAbstainPending()
     createGovernanceTxMutation.resolve({
       certificates,
@@ -328,7 +335,7 @@ export const useGovernanceVoteFlow = ({
     })
   }
 
-  const submitNoConfidence = (certificates: Certificate[]) => {
+  const submitNoConfidence = (certificates: GovernanceCertificate[]) => {
     setNoConfidencePending()
     createGovernanceTxMutation.resolve({
       certificates,

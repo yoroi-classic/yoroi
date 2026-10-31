@@ -1,16 +1,32 @@
-import {init} from '@emurgo/cross-csl-nodejs'
+import {resolveCnsAddressRecord} from '@yoroi-classic/cml-mobile-bridge'
 
 import {cnsCardanoApiMock} from './cardano-api-maker.mocks'
 import {AssocMap, BuiltinByteString, CNSUserRecord} from './types'
 import {
   hexToString,
-  objToHex,
   parseAssocMapAsync,
   parsePlutusAddressToBech32,
   validateCNSUserRecord,
   validateExpiry,
   validateVirtualSubdomainEnabled,
 } from './utils'
+
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  resolveCnsAddressRecord: jest.fn(({plutusAddressJson, networkId}) => {
+    const address = JSON.parse(plutusAddressJson)
+    const script = address.fields[0].constructor === 1
+    return {
+      paymentCredentialKind: script ? 'script' : 'key',
+      paymentCredentialHashHex: address.fields[0].fields[0].bytes,
+      stakingCredentialHashHex:
+        address.fields[1].constructor === 1
+          ? null
+          : address.fields[1].fields[0].fields[0].fields[0].bytes,
+      addressBech32:
+        networkId === 1 ? 'mainnet-address-vector' : 'testnet-address-vector',
+    }
+  }),
+}))
 
 describe('validateCNSUserRecord', () => {
   it('returns true when the record is correct', () => {
@@ -207,29 +223,18 @@ const item2 = {
   ],
 }
 
-describe('objToHex', () => {
-  it('successfully converts to hex', async () => {
-    const result = objToHex(item1, init('ctx'))
-    expect(result).toBe(
-      'd8799fd8799f581ca5644bcb8cd82b5e0478657e2c8feea865682a5b20db45d095807d84ffd8799fd8799fd8799f581ce40482bb4648fc54bffc06175c4a9e5f268b70da54bf6de4d6ad71dfffffffff',
-    )
-  })
-})
-
 describe('parsePlutusAddressToBech32', () => {
-  it('successfully converts to Bech32: pub key credential', async () => {
-    const hex = objToHex(item1, init('ctx'))
-    const result = parsePlutusAddressToBech32(hex, init('ctx'), 1)
-    expect(result).toBe(
-      'addr1qxjkgj7t3nvzkhsy0pjhuty0a65x26p2tvsdk3wsjkq8mp8yqjptk3jgl32tllqxzawy48jly69hpkj5hak7f44dw80sqfylvs',
-    )
+  it('resolves key credentials and returns the mainnet CML address vector', async () => {
+    const result = parsePlutusAddressToBech32(item1, 1)
+    expect(result).toBe('mainnet-address-vector')
+    expect(resolveCnsAddressRecord).toHaveBeenCalledWith({
+      plutusAddressJson: JSON.stringify(item1),
+      networkId: 1,
+    })
   })
 
-  it('successfully converts to Bech32: script credential', async () => {
-    const hex = objToHex(item2, init('ctx'))
-    const result = parsePlutusAddressToBech32(hex, init('ctx'), 1)
-    expect(result).toBe(
-      'addr1zxjkgj7t3nvzkhsy0pjhuty0a65x26p2tvsdk3wsjkq8mp8yqjptk3jgl32tllqxzawy48jly69hpkj5hak7f44dw80s0xayjy',
-    )
+  it('resolves script credentials and testnet addresses', async () => {
+    const result = parsePlutusAddressToBech32(item2, 0)
+    expect(result).toBe('testnet-address-vector')
   })
 })

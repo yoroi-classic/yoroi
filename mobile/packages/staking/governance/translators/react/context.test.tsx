@@ -25,7 +25,6 @@ const mockManager = governanceManagerMaker({
   },
   network: Chain.Network.Mainnet,
   walletId: 'test-wallet-id',
-  cardano: {} as never,
 })
 
 describe('GovernanceProvider', () => {

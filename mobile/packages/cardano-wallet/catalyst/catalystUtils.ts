@@ -1,16 +1,13 @@
+import {catalystPrivateKeyHexFromEntropy} from '@yoroi-classic/cml-mobile-bridge'
 import {mnemonicToEntropy} from 'bip39'
+import {Buffer} from 'buffer'
 
 import {generateAdaMnemonic} from '../mnemonic/mnemonic'
-import {CardanoMobile} from '../wrappedCsl'
 
-export function generatePrivateKeyForCatalyst() {
+export function generatePrivateKeyForCatalyst(): Uint8Array {
   const mnemonic = generateAdaMnemonic()
-  const bip39entropy = mnemonicToEntropy(mnemonic)
-  const EMPTY_PASSWORD = Buffer.from('')
-  const rootKey = CardanoMobile.Bip32PrivateKey.fromBip39Entropy(
-    Buffer.from(bip39entropy, 'hex'),
-    EMPTY_PASSWORD,
-  )
+  const entropyHex = mnemonicToEntropy(mnemonic)
+  const privateKeyHex = catalystPrivateKeyHexFromEntropy(entropyHex, '')
 
-  return rootKey
+  return Uint8Array.from(Buffer.from(privateKeyHex, 'hex'))
 }

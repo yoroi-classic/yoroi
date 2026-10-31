@@ -17,6 +17,10 @@ export const buildVariant = process.env.EXPO_PUBLIC_BUILD_VARIANT
 export const disableLogbox = Boolean(process.env.EXPO_PUBLIC_DISABLE_LOGBOX)
 export const cardanoWalletBackendUrl =
   process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL
+// Keep account UTxO reads on legacy until the deployed backend's completeness
+// behavior has been verified for the selected network.
+export const currentStateUtxoEnabled =
+  process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_CURRENT_STATE_UTXOS === 'true'
 
 // Runtime
 export const isNightly = buildVariant === 'NIGHTLY'

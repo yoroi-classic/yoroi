@@ -1,13 +1,33 @@
+import {hex} from '@yoroi/common'
+
+import {decryptData} from './decrypt-data'
 import {randomNonce, randomSalt} from './encrypt-data'
+import {encryptData} from './encrypt-data'
+
+describe('encrypted storage format', () => {
+  it('writes the standard authenticated format and reads it back', () => {
+    const encrypted = encryptData({
+      plainData: hex('deadbeef'),
+      secretKey: hex.fromUtf8('fixture-password'),
+    })
+    expect(encrypted.value).not.toBe('deadbeef')
+    expect(
+      decryptData({
+        encryptedData: encrypted,
+        secretKey: hex.fromUtf8('fixture-password'),
+      }).value,
+    ).toBe('deadbeef')
+  })
+})
 
 describe('randomSalt', () => {
   it.each`
     description
-    ${'generates a 64-character hex string'}
+    ${'generates a 32-character hex string'}
     ${'generates different salts on each call'}
   `('$description', () => {
     const salt = randomSalt()
-    expect(salt.value.length).toBe(64)
+    expect(salt.value.length).toBe(32)
     expect(salt.value).toMatch(/^[0-9a-f]+$/)
   })
 

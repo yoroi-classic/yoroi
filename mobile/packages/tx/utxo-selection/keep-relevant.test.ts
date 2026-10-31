@@ -15,7 +15,6 @@ describe('keepRelevant', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   it('should select UTXOs with required assets first', () => {

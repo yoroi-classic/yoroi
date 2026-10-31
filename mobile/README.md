@@ -421,7 +421,17 @@ EXPO_PUBLIC_UNSTOPPABLE_API_KEY=your_api_key
 
 # Optional cardano-wallet-backend /v1 URL
 EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL=http://device-reachable-host:port
+
+# Enable the Midnight airdrop only when this CWB deployment returns reference-script bytes
+EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES=true
 ```
+
+Midnight airdrop availability requires all three conditions: the remote airdrop feature flag is
+enabled, `EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL` is configured, and
+`EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES=true`. This gate controls the banner,
+eligibility query, and menu entry as well as redemption. It defaults to disabled because older CWB
+deployments return reference-script hashes without script bytes, which cannot be used to build a
+redemption transaction. Set it only after verifying the configured backend serves those bytes.
 
 ### Local cardano-wallet-backend Smoke
 
@@ -488,8 +498,8 @@ Configuration files are located in the root directory:
 **Build fails with Rust errors:**
 
 ```bash
-# Clean and rebuild Rust modules
-cd node_modules/@emurgo/csl-mobile-bridge-jsi/rust
+# Clean and rebuild the CML Rust bridge
+cd node_modules/@yoroi-classic/cml-mobile-bridge/rust
 cargo clean
 cargo build --release --target aarch64-apple-ios
 ```

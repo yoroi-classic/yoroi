@@ -1,19 +1,14 @@
 import {RawUtxo} from '@yoroi/api'
-import {
-  CardanoMobileWrapped,
-  collateralConfig,
-  utxosMaker,
-} from '@yoroi/cardano-wallet'
+import {collateralConfig, utxosMaker} from '@yoroi/cardano-wallet'
 import type {SelectionStrategy} from '@yoroi/tx'
 import {
   createCardanoHaskellConfig,
   rawUtxoToModernUtxo,
   selectUtxos,
 } from '@yoroi/tx'
-import {Balance} from '@yoroi/types'
+import {Balance, Chain} from '@yoroi/types'
 import {useWalletManager} from '@yoroi/wallet-manager'
 
-import type {Transaction, WasmModuleProxy} from '@emurgo/cross-csl-core'
 import {useMutation, useQueryClient} from '@tanstack/react-query'
 import {Buffer} from 'buffer'
 
@@ -65,7 +60,11 @@ export const useEscrowRedeem = () => {
 
       // Discover escrow UTxO
       const apiBaseUrl = wallet.networkManager.legacyApiBaseUrl
-      const escrowUtxo = await discoverEscrowUtxo(escrowAddress, apiBaseUrl)
+      const escrowUtxo = await discoverEscrowUtxo(
+        escrowAddress,
+        apiBaseUrl,
+        wallet.isMainnet ? Chain.Network.Mainnet : Chain.Network.Preprod,
+      )
       logger.info('useEscrowRedeem: Found escrow UTxO', {
         txHash: escrowUtxo.txHash,
         txIndex: escrowUtxo.txIndex,
@@ -84,86 +83,85 @@ export const useEscrowRedeem = () => {
       }
 
       // Select funding UTxOs and collateral (same pattern as useRedeemThaw)
-      const {fundingModernUtxos, collateralModernUtxo, currentSlot} =
-        await CardanoMobileWrapped.cslScope(async (_csl) => {
-          const rawUtxos = wallet.utxos()
-          const modernUtxos = rawUtxos.map((rawUtxo: RawUtxo) => {
-            const addressing = wallet.getAddressing(rawUtxo.receiver)
-            return rawUtxoToModernUtxo(
-              rawUtxo as Parameters<typeof rawUtxoToModernUtxo>[0],
-              addressing,
-              undefined,
-              primaryTokenId,
-            )
-          })
-
-          // Need ADA for fee + min UTXO for NIGHT output
-          const feeAmount: Balance.Amounts = {
-            [primaryTokenId]: '5000000' as Balance.Quantity, // 5 ADA
-          }
-
-          const selection = selectUtxos(
-            feeAmount,
-            modernUtxos,
-            'keepRelevant' as SelectionStrategy,
+      const {fundingModernUtxos, collateralModernUtxo, currentSlot} = (() => {
+        const rawUtxos = wallet.utxos()
+        const modernUtxos = rawUtxos.map((rawUtxo: RawUtxo) => {
+          const addressing = wallet.getAddressing(rawUtxo.receiver)
+          return rawUtxoToModernUtxo(
+            rawUtxo as Parameters<typeof rawUtxoToModernUtxo>[0],
+            addressing,
+            undefined,
             primaryTokenId,
           )
+        })
 
-          if (
-            selection.selected.length === 0 ||
-            Object.keys(selection.missingAmounts).length > 0
-          ) {
-            throw new Error('No UTXOs available with sufficient funds')
-          }
+        // Need ADA for fee + min UTXO for NIGHT output
+        const feeAmount: Balance.Amounts = {
+          [primaryTokenId]: '5000000' as Balance.Quantity, // 5 ADA
+        }
 
-          // Track selected funding UTxO IDs
-          const selectedFundingUtxoIds = new Set<string>()
-          selection.selected.forEach((modernUtxo) => {
-            const matchingRawUtxo = rawUtxos.find(
-              (rawUtxo) =>
-                rawUtxo.tx_hash === modernUtxo.txHash &&
-                rawUtxo.tx_index === modernUtxo.txIndex,
-            )
-            if (matchingRawUtxo) {
-              selectedFundingUtxoIds.add(matchingRawUtxo.utxo_id)
-            }
-          })
+        const selection = selectUtxos(
+          feeAmount,
+          modernUtxos,
+          'keepRelevant' as SelectionStrategy,
+          primaryTokenId,
+        )
 
-          // Find collateral: prefer dedicated pure-ADA UTxOs, fall back to a funding UTxO
-          const utxosList = utxosMaker(rawUtxos, collateralConfig)
-          const collateralCandidates = utxosList.findCollateralCandidates()
-          const availableCollateral = collateralCandidates.filter(
-            (utxo: RawUtxo) => !selectedFundingUtxoIds.has(utxo.utxo_id),
+        if (
+          selection.selected.length === 0 ||
+          Object.keys(selection.missingAmounts).length > 0
+        ) {
+          throw new Error('No UTXOs available with sufficient funds')
+        }
+
+        // Track selected funding UTxO IDs
+        const selectedFundingUtxoIds = new Set<string>()
+        selection.selected.forEach((modernUtxo) => {
+          const matchingRawUtxo = rawUtxos.find(
+            (rawUtxo) =>
+              rawUtxo.tx_hash === modernUtxo.txHash &&
+              rawUtxo.tx_index === modernUtxo.txIndex,
           )
-
-          let collateralModern: (typeof modernUtxos)[number] | undefined
-          if (availableCollateral.length > 0) {
-            const collateralRaw = availableCollateral[0]!
-            collateralModern = modernUtxos.find(
-              (utxo) =>
-                utxo.txHash === collateralRaw.tx_hash &&
-                utxo.txIndex === collateralRaw.tx_index,
-            )
-          }
-
-          // Fall back to using the first funding UTxO as collateral
-          if (!collateralModern) {
-            logger.info(
-              'useEscrowRedeem: No dedicated collateral, using funding UTxO',
-            )
-            collateralModern = selection.selected[0]
-          }
-
-          if (!collateralModern) {
-            throw new Error('No collateral UTxO available')
-          }
-
-          return {
-            fundingModernUtxos: selection.selected,
-            collateralModernUtxo: collateralModern,
-            currentSlot: currentSlotFromTime(),
+          if (matchingRawUtxo) {
+            selectedFundingUtxoIds.add(matchingRawUtxo.utxo_id)
           }
         })
+
+        // Find collateral: prefer dedicated pure-ADA UTxOs, fall back to a funding UTxO
+        const utxosList = utxosMaker(rawUtxos, collateralConfig)
+        const collateralCandidates = utxosList.findCollateralCandidates()
+        const availableCollateral = collateralCandidates.filter(
+          (utxo: RawUtxo) => !selectedFundingUtxoIds.has(utxo.utxo_id),
+        )
+
+        let collateralModern: (typeof modernUtxos)[number] | undefined
+        if (availableCollateral.length > 0) {
+          const collateralRaw = availableCollateral[0]!
+          collateralModern = modernUtxos.find(
+            (utxo) =>
+              utxo.txHash === collateralRaw.tx_hash &&
+              utxo.txIndex === collateralRaw.tx_index,
+          )
+        }
+
+        // Fall back to using the first funding UTxO as collateral
+        if (!collateralModern) {
+          logger.info(
+            'useEscrowRedeem: No dedicated collateral, using funding UTxO',
+          )
+          collateralModern = selection.selected[0]
+        }
+
+        if (!collateralModern) {
+          throw new Error('No collateral UTxO available')
+        }
+
+        return {
+          fundingModernUtxos: selection.selected,
+          collateralModernUtxo: collateralModern,
+          currentSlot: currentSlotFromTime(),
+        }
+      })()
 
       // Get protocol params and cost models for Plutus script
       const plutusV3CostModel = await fetchPlutusV3CostModel()
@@ -195,21 +193,16 @@ export const useEscrowRedeem = () => {
 
   const submitTransactionMutation = useMutation({
     mutationFn: async ({
-      signedTx,
+      signedTxBytes,
     }: {
-      signedTx: Transaction | ((csl: WasmModuleProxy) => Transaction)
+      signedTxBytes: Uint8Array
     }): Promise<void> => {
       if (!wallet) {
         throw new Error('Wallet not available')
       }
 
       // Submit directly to Cardano network (NOT via Midnight API)
-      const txBytes = await CardanoMobileWrapped.cslScope((csl) => {
-        const tx = typeof signedTx === 'function' ? signedTx(csl) : signedTx
-        return tx.toBytes()
-      })
-
-      const base64 = Buffer.from(txBytes).toString('base64')
+      const base64 = Buffer.from(signedTxBytes).toString('base64')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await wallet.submitTransaction(base64 as any)
 

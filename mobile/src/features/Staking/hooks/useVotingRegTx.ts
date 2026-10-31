@@ -15,6 +15,7 @@ export const useVotingRegTx = (
     wallet,
   }: {
     wallet: YoroiWallet
+    implementation: Wallet.Implementation
   },
   options?: UsePromiseOptions<
     VotingRegTxAndEncryptedKey,
@@ -23,6 +24,7 @@ export const useVotingRegTx = (
         catalystKeyHex: string
         supportsCIP36: boolean
         addressMode: Wallet.AddressMode
+        implementation: Wallet.Implementation
       },
     ]
   >,
@@ -32,15 +34,18 @@ export const useVotingRegTx = (
       catalystKeyHex,
       supportsCIP36,
       addressMode,
+      implementation,
     }: {
       catalystKeyHex: string
       supportsCIP36: boolean
       addressMode: Wallet.AddressMode
+      implementation: Wallet.Implementation
     }) => {
       return await createVotingRegTxFromWallet(wallet, {
         catalystKeyHex,
         supportsCIP36,
         addressMode,
+        implementation,
       })
     },
     [wallet],

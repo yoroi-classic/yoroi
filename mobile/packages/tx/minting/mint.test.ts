@@ -47,40 +47,73 @@ describe('minting', () => {
       const mintAction1: MintAction = {
         policyId: 'policy1',
         assets: [{assetName: 'asset1', amount: '100' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
+        script: {type: 'plutus', script: 'script1', plutusVersion: 'plutusV3'},
         redeemer: 'old_redeemer',
+        redeemerExUnits: {mem: '1', steps: '2'},
       }
       const mintAction2: MintAction = {
         policyId: 'policy1',
         assets: [{assetName: 'asset2', amount: '200' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
+        script: {type: 'plutus', script: 'script1', plutusVersion: 'plutusV3'},
         redeemer: 'new_redeemer',
+        redeemerExUnits: {mem: '9', steps: '10'},
       }
 
       const state1 = addMint(state, mintAction1)
       const state2 = addMint(state1, mintAction2)
 
       expect(state2.options.mints?.[0]?.redeemer).toBe('new_redeemer')
+      expect(state2.options.mints?.[0]?.redeemerExUnits).toEqual({
+        mem: '9',
+        steps: '10',
+      })
     })
 
-    it('should keep existing redeemer if new action has none', () => {
-      const state = createTransactionBuilder()
-      const mintAction1: MintAction = {
+    it('rejects merging different script types for the same policy', () => {
+      const state = addMint(createTransactionBuilder(), {
         policyId: 'policy1',
-        assets: [{assetName: 'asset1', amount: '100' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
-        redeemer: 'old_redeemer',
-      }
-      const mintAction2: MintAction = {
-        policyId: 'policy1',
-        assets: [{assetName: 'asset2', amount: '200' as BalanceQuantity}],
-        script: {type: 'plutus', script: 'script1'},
-      }
+        assets: [{assetName: 'asset1', amount: '1' as BalanceQuantity}],
+        script: {type: 'native', script: 'script1'},
+      })
 
-      const state1 = addMint(state, mintAction1)
-      const state2 = addMint(state1, mintAction2)
+      expect(() =>
+        addMint(state, {
+          policyId: 'policy1',
+          assets: [{assetName: 'asset2', amount: '1' as BalanceQuantity}],
+          script: {
+            type: 'plutus',
+            script: 'script2',
+            plutusVersion: 'plutusV3',
+          },
+          redeemer: '00',
+          redeemerExUnits: {mem: '1', steps: '2'},
+        }),
+      ).toThrow('Cannot merge mint actions with different script types')
+    })
 
-      expect(state2.options.mints?.[0]?.redeemer).toBe('old_redeemer')
+    it('does not permit an incomplete Plutus mint action', () => {
+      expect(() =>
+        createMintAction('policy1', 'asset1', '100', {
+          type: 'plutus',
+          script: 'script1',
+          plutusVersion: 'plutusV3',
+        }),
+      ).toThrow('Plutus mint creation requires redeemer and execution units')
+    })
+
+    it('does not permit Plutus redeemer data on native mint actions', () => {
+      expect(() =>
+        createMintAction(
+          'policy1',
+          'asset1',
+          '100',
+          {
+            type: 'native',
+            script: 'script1',
+          },
+          '00',
+        ),
+      ).toThrow('Native mint creation cannot include Plutus redeemer data')
     })
   })
 
@@ -127,15 +160,31 @@ describe('minting', () => {
         'policy1',
         'asset1',
         '100',
-        {type: 'plutus', script: 'script1'},
+        {type: 'plutus', script: 'script1', plutusVersion: 'plutusV3'},
         'redeemer1',
-        {txHash: 'hash1' as TransactionHash, txIndex: 0},
+        {
+          txHash: 'hash1' as TransactionHash,
+          txIndex: 0,
+          output: {
+            address: 'addr_test1',
+            lovelace: '1000000',
+            assets: [],
+            scriptCborHex: 'script1',
+          },
+        },
+        {mem: '1', steps: '2'},
       )
 
       expect(result.redeemer).toBe('redeemer1')
       expect(result.referenceScript).toEqual({
         txHash: 'hash1' as TransactionHash,
         txIndex: 0,
+        output: {
+          address: 'addr_test1',
+          lovelace: '1000000',
+          assets: [],
+          scriptCborHex: 'script1',
+        },
       })
     })
   })

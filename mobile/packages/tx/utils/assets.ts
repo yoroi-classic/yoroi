@@ -3,12 +3,9 @@
 import {Balance, TokenId} from '@yoroi/types'
 
 import {
-  AssetName,
-  MultiAsset,
-  ScriptHash,
-  Value,
-  WasmModuleProxy,
-} from '@emurgo/cross-csl-core'
+  valueFromAmountsHex,
+  valueFromHexInfoJson,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {BigNumber} from 'bignumber.js'
 
 import {RemoteUnspentOutput, SendToken} from '../types'
@@ -16,89 +13,72 @@ import {RemoteUnspentOutput, SendToken} from '../types'
 /**
  * Convert Balance.Amounts to Cardano Value
  *
- * NOTE: This function expects to be called within a cslScope.
- * The returned Value object will be valid within that same scope.
+ * The bridge serializes the value as CBOR hex and preserves quantities as decimal strings.
  */
 export function cardanoValueFromAmounts(
-  csl: WasmModuleProxy,
   amounts: Balance.Amounts,
   primaryTokenId: TokenId,
-): Value {
-  const adaAmount = amounts[primaryTokenId] || '0'
-  const value = csl.Value.new(csl.BigNum.fromStr(adaAmount))
-
-  // Get all asset IDs except primary token
-  const assetIds = Object.keys(amounts).filter((id) => id !== primaryTokenId)
-
-  if (assetIds.length === 0) return value
-
-  const multiAsset = csl.MultiAsset.new()
-
-  // Group assets by policy ID
-  const groupedByPolicyId = assetIds.reduce(
-    (acc, assetId) => {
-      // assetId is in format "policyId.assetNameHex" (Portfolio.Token.Id format)
-      const [policyId] = assetId.split('.')
-      if (!policyId) return acc
-      acc[policyId] = acc[policyId] ?? []
-      acc[policyId]!.push(assetId)
-      return acc
-    },
-    {} as Record<string, Array<string>>,
-  )
-
-  // Create MultiAsset structure
-  for (const policyIdStr of Object.keys(groupedByPolicyId)) {
-    const assetGroup = groupedByPolicyId[policyIdStr]
-    if (!assetGroup) continue
-
-    const policyId = csl.ScriptHash.fromBytes(
-      new Uint8Array(Buffer.from(policyIdStr, 'hex')),
-    )
-    const assets = csl.Assets.new()
-
-    for (const assetId of assetGroup) {
-      const [, assetNameHex] = assetId.split('.')
-      if (!assetNameHex) continue
-      const name = csl.AssetName.new(
-        new Uint8Array(Buffer.from(assetNameHex, 'hex')),
-      )
-      const amount = csl.BigNum.fromStr(amounts[assetId as TokenId] ?? '0')
-      assets.insert(name, amount)
-    }
-
-    multiAsset.insert(policyId, assets)
-  }
-
-  if (multiAsset.len() > 0) {
-    value.setMultiasset(multiAsset)
-  }
-  return value
+): string {
+  return valueFromAmountsHex({
+    coin: String(amounts[primaryTokenId] ?? '0'),
+    assets: Object.entries(amounts)
+      .filter(([id, quantity]) => id !== primaryTokenId && quantity !== '0')
+      .map(([id, quantity]) => {
+        const [policyIdHex, assetNameHex] = id.split('.')
+        if (
+          !policyIdHex ||
+          !/^[0-9a-f]{56}$/i.test(policyIdHex) ||
+          assetNameHex === undefined ||
+          !/^(?:[0-9a-f]{2}){0,32}$/i.test(assetNameHex)
+        ) {
+          throw new Error(`Invalid asset identifier: ${id}`)
+        }
+        return {policyIdHex, assetNameHex, quantity: String(quantity)}
+      }),
+  })
 }
 
 /**
  * Convert Cardano Value to Balance.Amounts
  *
- * NOTE: This function expects to be called within a cslScope.
- * The value parameter must be valid within that same scope.
+ * The input is serialized Cardano Value CBOR hex; decoded quantities remain decimal strings.
  */
 export function amountsFromCardanoValue(
-  csl: WasmModuleProxy,
-  value: Value,
+  valueCborHex: string,
   primaryTokenId: TokenId,
 ): Balance.Amounts {
+  const parsed: unknown = JSON.parse(valueFromHexInfoJson(valueCborHex))
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('coin' in parsed) ||
+    typeof parsed.coin !== 'string' ||
+    !/^(0|[1-9][0-9]*)$/.test(parsed.coin) ||
+    !('assets' in parsed) ||
+    !Array.isArray(parsed.assets)
+  ) {
+    throw new Error('Invalid CML value response')
+  }
   const amounts: Balance.Amounts = {} as Balance.Amounts
-
-  // Add primary token (ADA)
-  const coin = value.coin()
-  amounts[primaryTokenId] = coin.toStr() as Balance.Quantity
-
-  // Add other assets
-  const ma = value.multiasset()
-  if (ma) {
-    for (const token of parseTokenList(csl, ma)) {
-      amounts[token.assetId as TokenId] = token.amount as Balance.Quantity
+  amounts[primaryTokenId] = parsed.coin as Balance.Quantity
+  for (const asset of parsed.assets) {
+    if (
+      typeof asset !== 'object' ||
+      asset === null ||
+      !('policyIdHex' in asset) ||
+      typeof asset.policyIdHex !== 'string' ||
+      !/^[0-9a-f]{56}$/i.test(asset.policyIdHex) ||
+      !('assetNameHex' in asset) ||
+      typeof asset.assetNameHex !== 'string' ||
+      !/^(?:[0-9a-f]{2}){0,32}$/i.test(asset.assetNameHex) ||
+      !('quantity' in asset) ||
+      typeof asset.quantity !== 'string' ||
+      !/^(0|[1-9][0-9]*)$/.test(asset.quantity)
+    ) {
+      throw new Error('Invalid CML value asset response')
     }
+    const id = `${asset.policyIdHex}.${asset.assetNameHex}` as TokenId
+    amounts[id] = asset.quantity as Balance.Quantity
   }
 
   return amounts
@@ -108,30 +88,37 @@ export function amountsFromCardanoValue(
  * Convert Cardano asset to identifier string
  */
 export function cardanoAssetToIdentifier(
-  policyId: ScriptHash,
-  name: AssetName,
+  policyIdHex: string,
+  assetNameHex: string,
 ): string {
   // note: possible for name to be empty causing a trailing hyphen
-  return `${Buffer.from(policyId.toBytes()).toString('hex')}.${Buffer.from(name.name()).toString('hex')}`
+  if (
+    !/^[0-9a-f]{56}$/i.test(policyIdHex) ||
+    !/^(?:[0-9a-f]{2}){0,32}$/i.test(assetNameHex)
+  ) {
+    throw new Error('Invalid Cardano asset identifier parts')
+  }
+  return `${policyIdHex.toLowerCase()}.${assetNameHex.toLowerCase()}`
 }
 
 /**
  * Convert identifier string to Cardano asset
  */
-export function identifierToCardanoAsset(
-  csl: WasmModuleProxy,
-  identifier: string,
-): {
-  policyId: ScriptHash
-  name: AssetName
+export function identifierToCardanoAsset(identifier: string): {
+  policyIdHex: string
+  assetNameHex: string
 } {
   const parts = identifier.split('.')
-  const policyIdHex = parts[0]!
-  const assetNameHex = parts[1]!
-  // Use fromHex for hex strings (preferred method in CSL)
-  const policyId = csl.ScriptHash.fromHex(policyIdHex)
-  const name = csl.AssetName.fromHex(assetNameHex)
-  return {policyId, name}
+  if (parts.length !== 2)
+    throw new Error(`Invalid asset identifier: ${identifier}`)
+  const [policyIdHex, assetNameHex] = parts
+  if (!policyIdHex || assetNameHex === undefined)
+    throw new Error(`Invalid asset identifier: ${identifier}`)
+  cardanoAssetToIdentifier(policyIdHex, assetNameHex)
+  return {
+    policyIdHex: policyIdHex.toLowerCase(),
+    assetNameHex: assetNameHex.toLowerCase(),
+  }
 }
 
 /**
@@ -186,32 +173,35 @@ export function amountsFromRemote(
  * Parse token list from MultiAsset
  */
 export function parseTokenList(
-  _csl: WasmModuleProxy,
-  assets: MultiAsset,
+  valueCborHex: string,
 ): Array<{assetId: string; amount: string}> {
-  const result: Array<{assetId: string; amount: string}> = []
-
-  const policyHashes = assets.keys()
-  for (let i = 0; i < policyHashes.len(); i++) {
-    const policyId = policyHashes.get(i)
-    const assetsForPolicy = assets.get(policyId)
-    if (!assetsForPolicy) continue
-
-    const assetNames = assetsForPolicy.keys()
-    for (let j = 0; j < assetNames.len(); j++) {
-      const assetName = assetNames.get(j)
-      const amount = assetsForPolicy.get(assetName)
-      if (!amount) continue
-
-      const assetId = cardanoAssetToIdentifier(policyId, assetName)
-      result.push({
-        assetId,
-        amount: amount.toStr() as Balance.Quantity,
-      })
-    }
+  const parsed: unknown = JSON.parse(valueFromHexInfoJson(valueCborHex))
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('assets' in parsed) ||
+    !Array.isArray(parsed.assets)
+  ) {
+    throw new Error('Invalid CML value response')
   }
-
-  return result
+  return parsed.assets.map((asset) => {
+    if (
+      typeof asset !== 'object' ||
+      asset === null ||
+      !('policyIdHex' in asset) ||
+      typeof asset.policyIdHex !== 'string' ||
+      !('assetNameHex' in asset) ||
+      typeof asset.assetNameHex !== 'string' ||
+      !('quantity' in asset) ||
+      typeof asset.quantity !== 'string'
+    ) {
+      throw new Error('Invalid CML value asset response')
+    }
+    return {
+      assetId: cardanoAssetToIdentifier(asset.policyIdHex, asset.assetNameHex),
+      amount: asset.quantity,
+    }
+  })
 }
 
 /**

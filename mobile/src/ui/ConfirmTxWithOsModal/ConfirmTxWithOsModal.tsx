@@ -2,7 +2,6 @@ import {atoms as a, useTheme} from '@yoroi/theme'
 import {UnsignedTransaction} from '@yoroi/tx'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import * as CSL from '@emurgo/cross-csl-core'
 import * as React from 'react'
 import {ActivityIndicator, Text, View} from 'react-native'
 
@@ -11,7 +10,7 @@ import {useSignTx} from '../../features/Transactions/hooks/useSignTx'
 import {useSubmitTx} from '../../features/Transactions/hooks/useSubmitTx'
 
 type Props = {
-  onSuccess?: (signedTx: CSL.Transaction) => void
+  onSuccess?: (signedTx: Uint8Array) => void
   unsignedTx: UnsignedTransaction
   onError?: (error: unknown) => void
 }
@@ -25,7 +24,7 @@ export const ConfirmTxWithOsModal = ({
   const {isDark, palette: p} = useTheme()
 
   const {signTx, error: signError} = useSignTx({wallet})
-  const {submitTx} = useSubmitTx({wallet}, {onError})
+  const {submitTx} = useSubmitTx<Uint8Array>({wallet}, {onError})
 
   const {authWithOs, error: authWithOsError} = useAuthOsWithEasyConfirmation(
     {walletId: wallet.id},

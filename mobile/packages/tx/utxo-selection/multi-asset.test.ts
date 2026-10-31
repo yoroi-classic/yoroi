@@ -15,7 +15,6 @@ describe('largestFirstMultiAsset', () => {
     txIndex,
     balance,
     toTransactionUnspentOutputHex: jest.fn(() => 'hex'),
-    toTransactionUnspentOutput: jest.fn(),
   })
 
   it('should prioritize UTXOs with required assets', () => {

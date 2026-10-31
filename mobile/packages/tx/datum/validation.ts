@@ -1,4 +1,4 @@
-import type {WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {hashPlutusDataCborHex} from '@yoroi-classic/cml-mobile-bridge'
 
 import {getDatumHash} from './parsing'
 import type {Datum} from './types'
@@ -33,10 +33,10 @@ export function validateDatum(datum: Datum): {valid: boolean; error?: string} {
 /**
  * Validate datum can be parsed as PlutusData
  */
-export function validatePlutusData(
-  csl: WasmModuleProxy,
-  datum: Datum,
-): {valid: boolean; error?: string} {
+export function validatePlutusData(datum: Datum): {
+  valid: boolean
+  error?: string
+} {
   const validation = validateDatum(datum)
   if (!validation.valid) {
     return validation
@@ -48,10 +48,7 @@ export function validatePlutusData(
   }
 
   try {
-    const plutusData = csl.PlutusData.fromHex(datum.data)
-    if (!plutusData) {
-      return {valid: false, error: 'Failed to parse PlutusData'}
-    }
+    hashPlutusDataCborHex(datum.data)
     return {valid: true}
   } catch (error) {
     return {
@@ -64,17 +61,17 @@ export function validatePlutusData(
 /**
  * Check if datum hash matches datum data
  */
-export function validateDatumHash(
-  csl: WasmModuleProxy,
-  datum: Datum,
-): {valid: boolean; error?: string} {
+export function validateDatumHash(datum: Datum): {
+  valid: boolean
+  error?: string
+} {
   if (datum.type === 'hash') {
     // Hash-only datum, cannot validate
     return {valid: true}
   }
 
   try {
-    getDatumHash(csl, datum)
+    getDatumHash(datum)
     // Hash calculation succeeded
     return {valid: true}
   } catch (error) {

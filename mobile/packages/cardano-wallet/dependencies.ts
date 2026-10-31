@@ -1,11 +1,13 @@
 import {RawUtxo} from '@yoroi/api'
 import {Hex} from '@yoroi/common'
-import {CardanoAddressedUtxo} from '@yoroi/tx'
+import {
+  CardanoAddressedUtxo,
+  PersistentPendingUtxoOverlayStore,
+} from '@yoroi/tx'
 import {TransactionOutput} from '@yoroi/tx'
 import {App, Portfolio} from '@yoroi/types'
 
 import {SignTransactionRequest} from '@cardano-foundation/ledgerjs-hw-app-cardano'
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
 
 import {YoroiWallet} from './types'
 
@@ -14,6 +16,15 @@ import {YoroiWallet} from './types'
  * These are platform-specific implementations that should come from the app
  */
 export type CardanoWalletDependencies = {
+  /** Enables current-state Shelley UTxO reads when the backend is configured. */
+  cardanoWalletBackendUrl?: string
+  currentStateUtxoEnabled?: boolean
+
+  /** Creates durable transaction overlays below the wallet/account storage. */
+  makePendingUtxoOverlayStore?: (
+    accountStorage: App.Storage,
+  ) => PersistentPendingUtxoOverlayStore
+
   /**
    * Root storage instance for wallet data
    */
@@ -64,7 +75,6 @@ export type CardanoWalletDependencies = {
    * Used for hardware wallet signing
    */
   toLedgerSignRequest: (
-    csl: WasmModuleProxy,
     cbor: string,
     networkId: number,
     protocolMagic: number,

@@ -1,3 +1,9 @@
+import {getSpendingKey, getStakingKey} from '@yoroi/cardano-wallet'
+
+import {
+  addressInfoFromAddress,
+  publicKeyHashHexFromRawHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {Buffer} from 'buffer'
 import {decode} from 'cbor2'
 
@@ -106,8 +112,6 @@ export const extractAddressFromSignature = async (
   protectedHeaderBytes: Uint8Array,
 ): Promise<string | null> => {
   try {
-    const {CardanoMobileWrapped} = await import('@yoroi/cardano-wallet')
-
     const protectedHeader = decode(Buffer.from(protectedHeaderBytes)) as Map<
       number | string,
       unknown
@@ -120,24 +124,14 @@ export const extractAddressFromSignature = async (
 
     const addressHex = Buffer.from(addressEntry as Uint8Array).toString('hex')
 
-    // Convert hex address to bech32 for display
-    return CardanoMobileWrapped.cslScope((csl) => {
-      try {
-        const address = csl.Address.fromHex(addressHex)
-        if (address.isMalformed()) {
-          console.warn(
-            'Extracted address is malformed, returning hex:',
-            addressHex,
-          )
-          return addressHex
-        }
-        const bech32 = address.toBech32(undefined)
-        return bech32 || addressHex
-      } catch (error) {
-        console.warn('Failed to convert address to bech32:', error)
-        return addressHex
-      }
-    })
+    // Convert hex address to bech32 for display. Keep the original hex as the
+    // fallback for valid-but-non-Bech32 (for example Byron) or malformed input.
+    try {
+      return addressInfoFromAddress(addressHex).bech32 || addressHex
+    } catch (error) {
+      console.warn('Failed to convert address to bech32:', error)
+      return addressHex
+    }
   } catch (error) {
     console.error('Failed to extract address from signature:', error)
     return null
@@ -172,86 +166,11 @@ export const verifyAddressFromPublicKey = async (
   addressBech32: string,
 ): Promise<boolean> => {
   try {
-    const {CardanoMobileWrapped} = await import('@yoroi/cardano-wallet')
-
-    return CardanoMobileWrapped.cslScope((csl) => {
-      // Parse the address
-      const wasmAddress = csl.Address.fromBech32(addressBech32)
-      if (wasmAddress.isMalformed()) {
-        return false
-      }
-
-      // Get the public key hash
-      const publicKeyBuffer = Buffer.from(publicKeyHex, 'hex')
-      const publicKey = csl.PublicKey.fromBytes(publicKeyBuffer)
-      const keyHash = publicKey.hash()
-      const keyHashHex = keyHash.toHex()
-
-      // Try to match different address types
-      try {
-        // Try BaseAddress (payment + stake)
-        const baseAddr = csl.BaseAddress.fromAddress(wasmAddress)
-        if (baseAddr?.hasValue()) {
-          const paymentCred = baseAddr.paymentCred()
-
-          // Check if payment credential matches
-          if (paymentCred.kind() === 0) {
-            // Key hash credential
-            const paymentKeyHash = paymentCred.toKeyhash()
-            if (
-              paymentKeyHash?.hasValue() &&
-              paymentKeyHash.toHex() === keyHashHex
-            ) {
-              return true
-            }
-          }
-        }
-      } catch {
-        // Not a base address, continue
-      }
-
-      try {
-        // Try EnterpriseAddress (payment only)
-        const enterpriseAddr = csl.EnterpriseAddress.fromAddress(wasmAddress)
-        if (enterpriseAddr?.hasValue()) {
-          const paymentCred = enterpriseAddr.paymentCred()
-          if (paymentCred.kind() === 0) {
-            // Key hash credential
-            const paymentKeyHash = paymentCred.toKeyhash()
-            if (
-              paymentKeyHash?.hasValue() &&
-              paymentKeyHash.toHex() === keyHashHex
-            ) {
-              return true
-            }
-          }
-        }
-      } catch {
-        // Not an enterprise address, continue
-      }
-
-      try {
-        // Try RewardAddress (stake only)
-        const rewardAddr = csl.RewardAddress.fromAddress(wasmAddress)
-        if (rewardAddr?.hasValue()) {
-          const stakeCred = rewardAddr.paymentCred()
-          if (stakeCred.kind() === 0) {
-            // Key hash credential
-            const stakeKeyHash = stakeCred.toKeyhash()
-            if (
-              stakeKeyHash?.hasValue() &&
-              stakeKeyHash.toHex() === keyHashHex
-            ) {
-              return true
-            }
-          }
-        }
-      } catch {
-        // Not a reward address
-      }
-
-      return false
-    })
+    const keyHashHex = publicKeyHashHexFromRawHex(publicKeyHex)
+    return (
+      getSpendingKey(addressBech32) === keyHashHex ||
+      getStakingKey(addressBech32) === keyHashHex
+    )
   } catch (error) {
     console.error('Address verification error:', error)
     return false

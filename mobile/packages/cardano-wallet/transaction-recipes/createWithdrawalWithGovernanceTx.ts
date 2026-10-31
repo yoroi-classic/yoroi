@@ -1,5 +1,4 @@
 import type {AccountStateResponse} from '@yoroi/api'
-import {isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {
   CertificateKind,
@@ -24,10 +23,9 @@ import {
   Wallet,
 } from '@yoroi/types'
 
-import type {PublicKey} from '@emurgo/cross-csl-core'
 import BigNumber from 'bignumber.js'
 
-import {CardanoMobileWrapped} from '../wrappedCsl'
+import {deriveRewardAddressDetails} from '../utils'
 
 export type CreateWithdrawalWithGovernanceTxParams = {
   utxos: ModernUtxo[]
@@ -42,7 +40,7 @@ export type CreateWithdrawalWithGovernanceTxParams = {
   networkId: number
   getAbsoluteSlotNumber: () => Promise<BigNumber>
   getChangeAddress: (addressMode: Wallet.AddressMode) => Address | string
-  getStakingKey: () => PublicKey
+  getStakingKeyHashHex: () => string
   getAccountState: (addresses: Address[]) => Promise<AccountStateResponse>
   getDelegationStatus: () => {isRegistered: boolean}
   shouldDeregister: boolean
@@ -73,7 +71,7 @@ export async function createWithdrawalWithGovernanceTx({
   networkId,
   getAbsoluteSlotNumber,
   getChangeAddress,
-  getStakingKey,
+  getStakingKeyHashHex,
   getAccountState,
   getDelegationStatus,
   shouldDeregister,
@@ -109,31 +107,15 @@ export async function createWithdrawalWithGovernanceTx({
   }
 
   // Extract stake credential key hash from staking key
-  const stakeKeyHashHex = CardanoMobileWrapped.cslScope(() => {
-    const keyHash = getStakingKey().hash()
-    return keyHash.toHex()
-  })
+  const stakeKeyHashHex = getStakingKeyHashHex()
 
   // Extract reward address bech32 if we have rewards
   let rewardAddressBech32: string | undefined
 
   if (BigInt(rewards) > 0n) {
-    rewardAddressBech32 = CardanoMobileWrapped.cslScope((csl) => {
-      let address
-      if (csl.ByronAddress.isValid(rewardAddressHex)) {
-        const byronAddr = csl.ByronAddress.fromBase58(rewardAddressHex)
-        address = byronAddr.toAddress()
-      } else {
-        const isHexAddr = isHex(rewardAddressHex)
-        address = isHexAddr
-          ? csl.Address.fromHex(rewardAddressHex)
-          : csl.Address.fromBech32(rewardAddressHex)
-      }
-      if (!address || address.isMalformed()) {
-        throw new Error(`Invalid reward address: ${rewardAddressHex}`)
-      }
-      return address.toBech32(undefined) as Address
-    })
+    rewardAddressBech32 = Branded.asAddress(
+      deriveRewardAddressDetails(String(rewardAddressHex)).bech32,
+    )
   }
 
   // Helper function to calculate required ADA based on fee estimate

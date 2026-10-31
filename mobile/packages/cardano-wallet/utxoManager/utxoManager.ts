@@ -1,13 +1,25 @@
 import {RawUtxo} from '@yoroi/api'
 import {isString, parseSafe} from '@yoroi/common'
 import {
+  CurrentStateUtxo,
+  CurrentStateWalletSource,
+  PendingUtxoOverlay,
+  PersistentPendingUtxoOverlayStore,
   Utxo,
   UtxoAtSafePoint,
   UtxoDiffToBestBlock,
   UtxoStorage,
+  applyPendingUtxoOverlays,
   init as initUtxo,
 } from '@yoroi/tx'
-import {App, Balance, Branded, PolicyId, Portfolio} from '@yoroi/types'
+import {
+  App,
+  Balance,
+  Branded,
+  PolicyId,
+  Portfolio,
+  StakingAddress,
+} from '@yoroi/types'
 
 import {parseInt} from 'lodash'
 
@@ -54,6 +66,7 @@ export const makeUtxoManager = async ({
   }
 
   return {
+    kind: 'legacy' as const,
     clear: async () => {
       await serviceStorage.clearUtxoState()
       await managerStorage.addrCounter.clear()
@@ -69,6 +82,145 @@ export const makeUtxoManager = async ({
       managerStorage.collateral.save(utxoId),
   } as const
 }
+
+const currentStateCacheKey = 'current-state-cache'
+
+/** Shelley UTxOs come from an authoritative backend snapshot, never legacy diffs. */
+export const makeCurrentStateUtxoManager = async ({
+  storage,
+  source,
+  pendingStore,
+  stakeAddress,
+}: {
+  storage: App.Storage
+  source: CurrentStateWalletSource
+  pendingStore: PersistentPendingUtxoOverlayStore
+  stakeAddress: StakingAddress
+}) => {
+  const managerStorage = makeUtxoManagerStorage(storage)
+  const storedUtxos = await storage.getItem<CurrentStateUtxo[]>(
+    currentStateCacheKey,
+    (data) => {
+      const parsed = parseSafe(data)
+      return Array.isArray(parsed) ? (parsed as CurrentStateUtxo[]) : null
+    },
+  )
+  let authoritativeUtxos: CurrentStateUtxo[] = storedUtxos ?? []
+
+  const getCachedUtxos = async () => {
+    const pending =
+      await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress)
+    return applyPendingUtxoOverlays(authoritativeUtxos, pending).map(
+      currentStateSerializer,
+    )
+  }
+  const getCollateralId = async (): Promise<string> =>
+    (await managerStorage.collateral.read()) ?? ''
+  const initialCollateralId = await getCollateralId()
+  const initialUtxos = await getCachedUtxos()
+  let syncQueue = Promise.resolve()
+
+  return {
+    kind: 'current-state' as const,
+    clear: async () => {
+      await storage.removeItem(currentStateCacheKey)
+      await pendingStore.clearPendingUtxoOverlaysForFullResync()
+      await managerStorage.collateral.clear()
+      authoritativeUtxos = []
+    },
+    initialUtxos,
+    getCachedUtxos,
+    getChainTip: () => source.getChainTip(),
+    savePendingOverlay: (overlay: PendingUtxoOverlay) =>
+      pendingStore.savePendingUtxoOverlay(stakeAddress, overlay),
+    removePendingOverlay: (txHash: PendingUtxoOverlay['txHash']) =>
+      pendingStore.removePendingUtxoOverlay(stakeAddress, txHash),
+    sync: async (_addresses: Array<string>) => {
+      const sync = syncQueue.then(async () => {
+        const nextUtxos = await source.getAccountUtxos(stakeAddress)
+        const currentIds = new Set(nextUtxos.map((utxo) => utxo.utxoId))
+        const pending =
+          await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(
+            stakeAddress,
+          )
+        const earlierPendingOutputIds = new Set<string>()
+        const overlaysWithUnspentInputs = pending.filter((overlay) => {
+          const hasTrackedInput = overlay.spentUtxoIds.some(
+            (utxoId) =>
+              currentIds.has(utxoId) || earlierPendingOutputIds.has(utxoId),
+          )
+          for (const createdUtxo of overlay.createdUtxos) {
+            earlierPendingOutputIds.add(createdUtxo.utxoId)
+          }
+          return overlay.ttlSlot !== undefined && hasTrackedInput
+        })
+        const currentSlot =
+          overlaysWithUnspentInputs.length > 0
+            ? (await source.getChainTip()).bestBlock.slot
+            : undefined
+        // Fetch all data needed to reconcile pending transactions before
+        // committing the new authoritative snapshot.
+        await storage.setItem(currentStateCacheKey, nextUtxos)
+        authoritativeUtxos = [...nextUtxos]
+        const retainedPendingOutputIds = new Set<string>()
+        for (const overlay of pending) {
+          const spendsRetainedPendingOutput = overlay.spentUtxoIds.some(
+            (utxoId) => retainedPendingOutputIds.has(utxoId),
+          )
+          const hasUnspentInput =
+            spendsRetainedPendingOutput ||
+            overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId))
+          const observed =
+            !spendsRetainedPendingOutput &&
+            overlay.spentUtxoIds.length > 0 &&
+            overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
+          const expiredWithInputsRemaining =
+            overlay.ttlSlot !== undefined &&
+            overlay.spentUtxoIds.length > 0 &&
+            hasUnspentInput &&
+            currentSlot !== undefined &&
+            currentSlot !== null &&
+            BigInt(currentSlot) > BigInt(overlay.ttlSlot)
+          if (observed || expiredWithInputsRemaining) {
+            await pendingStore.removePendingUtxoOverlay(
+              stakeAddress,
+              overlay.txHash,
+            )
+          } else {
+            for (const createdUtxo of overlay.createdUtxos) {
+              retainedPendingOutputIds.add(createdUtxo.utxoId)
+            }
+          }
+        }
+      })
+      syncQueue = sync.catch(() => undefined)
+      await sync
+    },
+    initialCollateralId,
+    getCollateralId,
+    setCollateralId: (utxoId: RawUtxo['utxo_id']) =>
+      managerStorage.collateral.save(utxoId),
+  } as const
+}
+
+const currentStateSerializer = (utxo: CurrentStateUtxo): RawUtxo => ({
+  utxo_id: utxo.utxoId,
+  tx_hash: utxo.txHash,
+  tx_index: utxo.txIndex,
+  receiver: utxo.receiver,
+  amount: utxo.amount,
+  assets: utxo.assets.map((asset) => ({
+    amount: asset.amount,
+    tokenId: asset.assetId as Portfolio.Token.Id,
+    policyId: asset.policyId,
+    name: asset.name,
+  })),
+  ...(utxo.datumHash === undefined ? {} : {datumHash: utxo.datumHash}),
+  ...(utxo.inlineDatum === undefined ? {} : {inlineDatum: utxo.inlineDatum}),
+  ...(utxo.referenceScriptHash === undefined
+    ? {}
+    : {referenceScriptHash: utxo.referenceScriptHash}),
+})
 
 export const makeUtxoManagerStorage = (storage: App.Storage) => {
   const addrCounterKey = 'addrCounter'
@@ -115,7 +267,9 @@ const serializer = (utxo: Utxo): RawUtxo => {
   return rawUtxo
 }
 
-export type UtxoManager = Awaited<ReturnType<typeof makeUtxoManager>>
+export type UtxoManager =
+  | Awaited<ReturnType<typeof makeUtxoManager>>
+  | Awaited<ReturnType<typeof makeCurrentStateUtxoManager>>
 
 const diffPath = 'diff'
 const safePointPath = 'safe-point'

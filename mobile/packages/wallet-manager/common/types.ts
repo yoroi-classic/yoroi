@@ -6,8 +6,6 @@ import type {
 } from '@yoroi/cardano-wallet'
 import {App, Chain, HW, Network, Portfolio} from '@yoroi/types'
 
-import {WasmModuleProxy} from '@emurgo/cross-csl-core'
-
 /**
  * KeychainManager interface for managing wallet keys in secure storage
  * This should be provided by the app via WalletManagerOptions
@@ -74,7 +72,7 @@ export type WalletFactory = {
 
   calcChecksum(pubKeyHex: string): CardanoTypes.WalletChecksum
 
-  makeKeys({mnemonic, csl}: {mnemonic: string; csl: WasmModuleProxy}): {
+  makeKeys({mnemonic}: {mnemonic: string}): {
     rootKey: string
     accountPubKeyHex: string
   }

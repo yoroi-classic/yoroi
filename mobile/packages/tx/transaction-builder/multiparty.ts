@@ -1,15 +1,21 @@
 // Functional multiparty transaction utilities
-import type {
-  BootstrapWitness,
-  Vkeywitness,
-  WasmModuleProxy,
-} from '@emurgo/cross-csl-core'
+import {
+  addressInfoFromAddress,
+  nativeScriptKeyHashesJson,
+} from '@yoroi-classic/cml-mobile-bridge'
 
-import {normalizeToAddress} from '../utils/addresses'
 import {UnsignedTransaction} from './types'
 
-// Witness can be either Vkeywitness or BootstrapWitness
-export type Witness = Vkeywitness | BootstrapWitness
+/** Serialized witness material accepted by the multiparty state helpers. */
+export type Witness =
+  | {kind: 'vkey'; publicKeyHex: string; signatureHex: string}
+  | {
+      kind: 'bootstrap'
+      publicKeyHex: string
+      signatureHex: string
+      chainCodeHex: string
+      attributesHex: string
+    }
 
 export type WitnessInfo = {
   witness: Witness
@@ -116,7 +122,6 @@ export function getRequiredSigners(state: WitnessState): string[] {
  */
 export async function getRequiredSignersFromTransaction(
   unsignedTx: UnsignedTransaction,
-  csl: WasmModuleProxy,
 ): Promise<string[]> {
   const signers: string[] = []
   const seenHashes = new Set<string>()
@@ -131,39 +136,7 @@ export async function getRequiredSignersFromTransaction(
 
   // Extract from inputs - get payment key hash from each input address
   for (const input of unsignedTx.inputs) {
-    const address = normalizeToAddress(csl, input.utxo.receiver)
-    if (!address) continue
-
-    // Try different address types to extract payment key hash
-    const baseAddr = csl.BaseAddress.fromAddress(address)
-    if (baseAddr) {
-      const paymentCred = baseAddr.paymentCred()
-      const keyHash = paymentCred.toKeyhash()
-      if (keyHash) {
-        addKeyHash(keyHash.toHex())
-      }
-      continue
-    }
-
-    const enterpriseAddr = csl.EnterpriseAddress.fromAddress(address)
-    if (enterpriseAddr) {
-      const paymentCred = enterpriseAddr.paymentCred()
-      const keyHash = paymentCred.toKeyhash()
-      if (keyHash) {
-        addKeyHash(keyHash.toHex())
-      }
-      continue
-    }
-
-    const pointerAddr = csl.PointerAddress.fromAddress(address)
-    if (pointerAddr) {
-      const paymentCred = pointerAddr.paymentCred()
-      const keyHash = paymentCred.toKeyhash()
-      if (keyHash) {
-        addKeyHash(keyHash.toHex())
-      }
-      continue
-    }
+    addKeyHash(keyCredentialHashFromAddress(input.utxo.receiver, [0, 2, 4, 6]))
   }
 
   // Extract from certificates - get stake key hash from certificate data
@@ -180,18 +153,7 @@ export async function getRequiredSignersFromTransaction(
 
   // Extract from withdrawals - get stake key hash from reward address
   for (const withdrawal of unsignedTx.withdrawals) {
-    const address = normalizeToAddress(csl, withdrawal.rewardAddress)
-    if (!address) continue
-
-    const rewardAddr = csl.RewardAddress.fromAddress(address)
-    if (rewardAddr) {
-      // For reward addresses, paymentCred contains the stake credential
-      const stakeCred = rewardAddr.paymentCred()
-      const keyHash = stakeCred.toKeyhash()
-      if (keyHash) {
-        addKeyHash(keyHash.toHex())
-      }
-    }
+    addKeyHash(keyCredentialHashFromAddress(withdrawal.rewardAddress, [14]))
   }
 
   // Extract from mint actions - get key hash from native scripts
@@ -199,20 +161,10 @@ export async function getRequiredSignersFromTransaction(
   for (const mintAction of unsignedTx.options.mints || []) {
     if (mintAction.script.type === 'native') {
       try {
-        const nativeScript = csl.NativeScript.fromHex(mintAction.script.script)
-        if (nativeScript) {
-          // Check if it's a ScriptPubkey (requires signature)
-          const scriptPubkey = nativeScript.asScriptPubkey()
-          if (scriptPubkey) {
-            const keyHash = scriptPubkey.addrKeyhash()
-            if (keyHash) {
-              addKeyHash(keyHash.toHex())
-            }
-          }
-          // Note: Other native script types (ScriptAll, ScriptAny, ScriptNOfK, TimelockStart, TimelockExpiry)
-          // don't require signatures directly, but their nested scripts might
-          // For now, we only handle ScriptPubkey which is the most common case
-        }
+        const keyHashes = JSON.parse(
+          nativeScriptKeyHashesJson(mintAction.script.script),
+        ) as string[]
+        keyHashes.forEach(addKeyHash)
       } catch {
         // Ignore if script parsing fails
       }
@@ -220,4 +172,20 @@ export async function getRequiredSignersFromTransaction(
   }
 
   return signers
+}
+
+const keyCredentialHashFromAddress = (
+  address: string,
+  keyAddressKinds: readonly number[],
+): string | undefined => {
+  try {
+    const {hex, isValid} = addressInfoFromAddress(address)
+    if (!isValid) return undefined
+    const addressKind = Math.floor(Number.parseInt(hex.slice(0, 2), 16) / 16)
+    if (!keyAddressKinds.includes(addressKind)) return undefined
+    const keyHash = hex.slice(2, 58)
+    return /^[0-9a-f]{56}$/i.test(keyHash) ? keyHash : undefined
+  } catch {
+    return undefined
+  }
 }

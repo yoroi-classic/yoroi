@@ -3,6 +3,7 @@ import {spawnSync} from 'node:child_process'
 import fs from 'node:fs'
 import {createRequire} from 'node:module'
 import path from 'node:path'
+import ts from 'typescript'
 
 const mobileRoot = process.cwd()
 const scriptRequire = createRequire(__filename)
@@ -14,7 +15,7 @@ const smokeTests = [
   'packages/api/cardano/api/best-block.test.ts',
   'packages/api/cardano/api/utxo-data.test.ts',
   'packages/cardano-wallet/cip30/cip30.test.ts',
-  'packages/tx/utils/signing.test.ts',
+  'packages/cardano-wallet/common/signatureUtils.test.ts',
   'packages/dapp-connector/dapp-connector.test.ts',
 ]
 
@@ -22,9 +23,7 @@ const additionalSmokeInputs = ['packages/cardano-wallet/mocks/mocks/wallet.ts']
 
 const pinnedDependencySmokeInputs = [
   '@cardano-foundation/ledgerjs-hw-app-cardano',
-  '@emurgo/cross-csl-core',
-  '@emurgo/cross-csl-mobile',
-  '@emurgo/cross-csl-nodejs',
+  '@yoroi-classic/cml-mobile-bridge',
   '@ledgerhq/hw-transport-web-ble',
   '@ledgerhq/hw-transport-webhid',
   '@ledgerhq/react-native-hid',
@@ -100,12 +99,103 @@ function getPackageVersion(
 function validatePinnedDependencyLock() {
   const packageJson = readJsonFile('package.json')
   const packageLock = readJsonFile('package-lock.json')
+  const bunLockSource = fs.readFileSync(
+    path.join(mobileRoot, 'bun.lock'),
+    'utf8',
+  )
+  const bunLockParseResult = ts.parseConfigFileTextToJson(
+    'bun.lock',
+    bunLockSource,
+  )
+  const bunLock = bunLockParseResult.config ?? {}
+  const bunLockRootWorkspace = bunLock.workspaces?.['']
+  const bunLockRootDependencyGroups = [
+    bunLockRootWorkspace?.dependencies,
+    bunLockRootWorkspace?.devDependencies,
+  ] as Array<Record<string, string> | undefined>
   const rootLockPackage = packageLock.packages?.[''] ?? {}
   const rootLockDependencyGroups = [
     rootLockPackage.dependencies,
     rootLockPackage.devDependencies,
   ] as Array<Record<string, string> | undefined>
   const failures: Array<string> = []
+  if (bunLockParseResult.error) {
+    const diagnostic = bunLockParseResult.error
+    const location =
+      diagnostic.file && typeof diagnostic.start === 'number'
+        ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
+        : undefined
+    const prefix = location
+      ? `${diagnostic.file?.fileName}:${location.line + 1}:${location.character + 1}: `
+      : ''
+
+    failures.push(
+      `bun.lock parse error: ${prefix}${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`,
+    )
+  } else if (!bunLockRootWorkspace) {
+    failures.push('bun.lock is missing the root workspace')
+  }
+  const forbiddenCslDependencies = [
+    '@emurgo/cardano-serialization-lib-browser',
+    '@emurgo/cardano-serialization-lib-nodejs',
+    '@emurgo/cross-csl-core',
+    '@emurgo/cross-csl-mobile',
+    '@emurgo/cross-csl-nodejs',
+    '@emurgo/csl-mobile-bridge-jsi',
+  ]
+
+  const sdkPackageRoot = path.join(mobileRoot, '../scripts/packages')
+  const sdkPackageManifests = fs
+    .readdirSync(sdkPackageRoot, {withFileTypes: true})
+    .filter((entry) => entry.isDirectory())
+    .map((entry) =>
+      path.join('../scripts/packages', entry.name, 'package.json'),
+    )
+
+  for (const manifestPath of sdkPackageManifests) {
+    if (!fs.existsSync(path.join(mobileRoot, manifestPath))) continue
+    const manifest = readJsonFile(manifestPath)
+    const dependencyGroups = [
+      manifest.dependencies,
+      manifest.devDependencies,
+      manifest.peerDependencies,
+      manifest.optionalDependencies,
+    ] as Array<Record<string, string> | undefined>
+
+    for (const dependencyName of forbiddenCslDependencies) {
+      if (
+        dependencyGroups.some((dependencies) => dependencies?.[dependencyName])
+      ) {
+        failures.push(`${manifestPath} still declares ${dependencyName}`)
+      }
+    }
+  }
+
+  for (const entry of fs.readdirSync(sdkPackageRoot, {withFileTypes: true})) {
+    if (!entry.isDirectory()) continue
+    const lockPath = path.join(sdkPackageRoot, entry.name, 'package-lock.json')
+    if (!fs.existsSync(lockPath)) continue
+    const lockSource = fs.readFileSync(lockPath, 'utf8')
+    for (const dependencyName of forbiddenCslDependencies) {
+      if (lockSource.includes(dependencyName)) {
+        failures.push(
+          `${path.relative(mobileRoot, lockPath)} still references ${dependencyName}`,
+        )
+      }
+    }
+  }
+
+  for (const dependencyName of forbiddenCslDependencies) {
+    if (getPackageVersion(packageJson, dependencyName)) {
+      failures.push(`${dependencyName} remains in package.json`)
+    }
+    if (packageLock.packages?.[`node_modules/${dependencyName}`]) {
+      failures.push(`${dependencyName} remains in package-lock.json`)
+    }
+    if (bunLockSource.includes(dependencyName)) {
+      failures.push(`${dependencyName} remains in bun.lock`)
+    }
+  }
 
   for (const dependencyName of pinnedDependencySmokeInputs) {
     const packageJsonVersion = getPackageVersion(packageJson, dependencyName)
@@ -118,8 +208,9 @@ function validatePinnedDependencyLock() {
     const lockRootVersion = rootLockDependencyGroups
       .map((dependencies) => dependencies?.[dependencyName])
       .find(Boolean)
-    const resolvedVersion =
-      packageLock.packages?.[`node_modules/${dependencyName}`]?.version
+    const resolvedPackage =
+      packageLock.packages?.[`node_modules/${dependencyName}`]
+    const resolvedVersion = resolvedPackage?.version
 
     if (lockRootVersion !== packageJsonVersion) {
       failures.push(
@@ -127,10 +218,44 @@ function validatePinnedDependencyLock() {
       )
     }
 
-    if (resolvedVersion !== packageJsonVersion) {
+    const bunLockRootVersion = bunLockRootDependencyGroups
+      .map((dependencies) => dependencies?.[dependencyName])
+      .find(Boolean)
+
+    if (bunLockRootVersion !== packageJsonVersion) {
+      failures.push(
+        `${dependencyName} bun.lock root version does not match package.json ${packageJsonVersion}`,
+      )
+    }
+
+    if (
+      dependencyName !== '@yoroi-classic/cml-mobile-bridge' &&
+      resolvedVersion !== packageJsonVersion
+    ) {
       failures.push(
         `${dependencyName} package-lock resolved version ${resolvedVersion ?? '<missing>'} does not match package.json ${packageJsonVersion}`,
       )
+    }
+    if (
+      dependencyName === '@yoroi-classic/cml-mobile-bridge' &&
+      !resolvedPackage
+    ) {
+      failures.push(`${dependencyName} has no package-lock entry`)
+    }
+
+    if (dependencyName === '@yoroi-classic/cml-mobile-bridge') {
+      const expectedCommit = packageJsonVersion.split('#')[1]
+
+      if (
+        typeof expectedCommit !== 'string' ||
+        !bunLockSource.includes(
+          `${dependencyName}@github:yoroi-classic/csl-mobile-bridge#${expectedCommit.slice(0, 7)}`,
+        )
+      ) {
+        failures.push(
+          `${dependencyName} bun.lock resolution does not match package.json ${packageJsonVersion}`,
+        )
+      }
     }
   }
 

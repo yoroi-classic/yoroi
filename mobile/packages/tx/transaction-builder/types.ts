@@ -24,6 +24,10 @@ export type TransactionOutput = {
 
 export type TransactionInput = {
   utxo: ModernUtxo
+  /** Native-script UTxOs require the witness script and its required signer count. */
+  kind?: 'paymentKey' | 'nativeScript'
+  nativeScriptCborHex?: string
+  nativeScriptWitnessCount?: string
 }
 
 /**
@@ -66,7 +70,7 @@ export type DRepValue =
  * Based on RemoteCertificateMeta from @yoroi/staking but adapted for transaction builder:
  * - Uses stakeCredentialKeyHashHex instead of rewardAddress (extracted from address)
  * - Uses 'kind' field to match RemoteCertificateMeta pattern
- * - Stores only the data needed to recreate CSL Certificate objects
+ * - Stores only JSON-serializable certificate fields for the CML recipe adapter
  */
 export type TransactionCertificate =
   | {
@@ -89,35 +93,47 @@ export type TransactionCertificate =
   | {
       kind: 'PoolRetirement'
       poolKeyHash: KeyHash
+      epoch: string
     }
   | {
       kind: 'MoveInstantaneousRewardsCert'
-      rewards: Record<string, Amount>
+      rewards: Array<{
+        credential: {kind: 'key' | 'script'; hashHex: string}
+        amount: Amount
+      }>
       pot: 0 | 1
     }
   | {
       kind: 'GenesisKeyDelegation'
-      stakeCredentialKeyHashHex?: KeyHash
+      genesisHashHex: string
+      genesisDelegateHashHex: string
+      vrfKeyHashHex: string
     }
   | {
       kind: 'CommitteeHotAuth'
-      stakeCredentialKeyHashHex?: KeyHash
+      coldCredential: {kind: 'key' | 'script'; hashHex: string}
+      hotCredential: {kind: 'key' | 'script'; hashHex: string}
     }
   | {
       kind: 'CommitteeColdResign'
-      stakeCredentialKeyHashHex?: KeyHash
+      coldCredential: {kind: 'key' | 'script'; hashHex: string}
+      anchor?: {url: string; dataHashHex: string}
     }
   | {
       kind: 'DRepDeregistration'
-      stakeCredentialKeyHashHex?: KeyHash
+      credential: {kind: 'key' | 'script'; hashHex: string}
+      deposit: Amount
     }
   | {
       kind: 'DRepRegistration'
-      stakeCredentialKeyHashHex?: KeyHash
+      credential: {kind: 'key' | 'script'; hashHex: string}
+      deposit: Amount
+      anchor?: {url: string; dataHashHex: string}
     }
   | {
       kind: 'DRepUpdate'
-      stakeCredentialKeyHashHex?: KeyHash
+      credential: {kind: 'key' | 'script'; hashHex: string}
+      anchor?: {url: string; dataHashHex: string}
     }
   | {
       kind: 'VoteDelegation'
@@ -159,6 +175,10 @@ export type TransactionReferenceInput = {
 export type ScriptInput = {
   utxo: ModernUtxo
   scriptHash: string
+  /** Inline Plutus witness bytes; older callers stored these in scriptHash. */
+  inlineScriptCborHex?: string
+  /** Language for an inline witness; legacy inline values default to V1. */
+  plutusVersion?: 'v1' | 'v2' | 'v3'
   redeemer: string // Redeemer PlutusData CBOR hex
   redeemerExUnits: {mem: string; steps: string}
   referenceScriptUtxo?: {
@@ -166,6 +186,16 @@ export type ScriptInput = {
     txIndex: number
     langVersion: 'v1' | 'v2' | 'v3'
     scriptSize: number
+    output?: {
+      address: string
+      lovelace: string
+      assets: Array<{
+        policyIdHex: string
+        assetNameHex: string
+        quantity: string
+      }>
+      scriptCborHex: string
+    }
   }
   datumSource: 'inline' | {data: string} // 'inline' = from UTxO, or explicit data hex
 }

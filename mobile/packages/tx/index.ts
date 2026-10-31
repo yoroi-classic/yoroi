@@ -1,12 +1,8 @@
 // @yoroi/tx - Cardano transaction building and UTXO management
 export * from './errors'
-export * from './ledger/adapter'
-export * from './ledger/payload'
-export * from './ledger/plutus'
-export * from './ledger/signers'
 export * from './ledger/signing'
-export * from './ledger/transform'
 export * from './transaction-builder/builder'
+export * from './transaction-builder/cml-value'
 export * from './transaction-builder/helpers'
 export * from './transaction-builder/multiparty'
 export * from './transaction-builder/types'
@@ -14,7 +10,6 @@ export * from './types'
 export * from './utils/adapters'
 export * from './utils/addresses'
 export * from './utils/assets'
-export * from './utils/signing'
 export * from './utils/transactions'
 export * from './utils/utxo'
 export * from './utxo'
@@ -30,6 +25,7 @@ export {
   addCollateralInputs,
   addInput,
   addInputs,
+  addNativeScriptInput,
   addMetadata,
   addOutput,
   addOutputs,
@@ -64,7 +60,23 @@ export {
   setRequiredSigners,
 } from './transaction-builder/multiparty'
 
-export {createUtxoService, init as initUtxo} from './utxo'
+export {
+  createCardanoWalletBackendUtxoSource,
+  createCurrentStateUtxoService,
+  createPersistentPendingUtxoOverlayStore,
+  applyPendingUtxoOverlays,
+  createUtxoService,
+  init as initUtxo,
+} from './utxo'
+export type {
+  CurrentStateAsset,
+  CurrentStateUtxo,
+  CurrentStateUtxoSource,
+  CurrentStateWalletSource,
+  PendingUtxoOverlay,
+  PendingUtxoOverlayStore,
+  PersistentPendingUtxoOverlayStore,
+} from './utxo'
 
 // Export types
 export type {
@@ -74,21 +86,17 @@ export type {
   UtxoDiffToBestBlock,
 } from './utxo/models'
 
-// Export Ledger functions
-export {buildLedgerPayload, buildVotingLedgerPayloadV5} from './ledger/payload'
-export {createLedgerPlutusPayload} from './ledger/plutus'
-export {getAllSigners} from './ledger/signers'
+// Export the serialized-CBOR CML Ledger witness integration.
 export {
   buildLedgerSignedTx,
   createSignedLedgerTxFromCbor,
-  signRawTransaction,
 } from './ledger/signing'
 
 // Export utility functions
 export {
   derivePublicByAddressing,
   isByronAddress,
-  normalizeToAddress,
+  normalizeAddressToHex,
   validateAndExtractAddressInfo,
   type AddressInfo,
 } from './utils/addresses'
@@ -100,9 +108,9 @@ export {
   cardanoValueFromAmounts,
   parseTokenList,
 } from './utils/assets'
-export {signTransaction} from './utils/signing'
 export {
   calculateTxId,
+  getTransactionFee,
   getBalanceForStakingCredentials,
   hashTransaction,
 } from './utils/transactions'

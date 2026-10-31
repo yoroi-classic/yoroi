@@ -7,15 +7,68 @@ import {RemoteUnspentOutput} from '../types'
 import type {SendToken} from '../types'
 import {
   ASCII_ASSET_NAME_BLACKLIST,
+  amountsFromCardanoValue,
   amountsFromRemote,
   buildSendTokenList,
   cardanoAssetToIdentifier,
+  cardanoValueFromAmounts,
   identifierToCardanoAsset,
   parseTokenList,
   resolveCip67Tag,
 } from './assets'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  valueFromAmountsHex: jest.fn(() => '82182aa0'),
+  valueFromHexInfoJson: jest.fn(() => JSON.stringify({coin: '0', assets: []})),
+}))
+
 describe('assets utils', () => {
+  describe('serialized CML values', () => {
+    it('encodes asset quantities as decimal strings through the CML bridge', () => {
+      const {valueFromAmountsHex} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      const amounts = {
+        '.': '900719925474099312345',
+        [`${'ab'.repeat(28)}.00ff`]: '900719925474099312346',
+      } as unknown as Balance.Amounts
+
+      expect(cardanoValueFromAmounts(amounts, '.' as TokenId)).toBe('82182aa0')
+      expect(valueFromAmountsHex).toHaveBeenCalledWith({
+        coin: '900719925474099312345',
+        assets: [
+          {
+            policyIdHex: 'ab'.repeat(28),
+            assetNameHex: '00ff',
+            quantity: '900719925474099312346',
+          },
+        ],
+      })
+    })
+
+    it('decodes asset and lovelace amounts without Number conversion', () => {
+      const {valueFromHexInfoJson} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      valueFromHexInfoJson.mockReturnValue(
+        JSON.stringify({
+          coin: '900719925474099312345',
+          assets: [
+            {
+              policyIdHex: 'ab'.repeat(28),
+              assetNameHex: '00ff',
+              quantity: '900719925474099312346',
+            },
+          ],
+        }),
+      )
+      expect(amountsFromCardanoValue('82182aa0', '.' as TokenId)).toEqual({
+        '.': '900719925474099312345',
+        [`${'ab'.repeat(28)}.00ff`]: '900719925474099312346',
+      })
+    })
+  })
+
   describe('amountsFromRemote', () => {
     it('should return balance from RemoteUnspentOutput', () => {
       const token1 = 'token1' as TokenId
@@ -100,109 +153,44 @@ describe('assets utils', () => {
 
   describe('cardanoAssetToIdentifier', () => {
     it('should convert Cardano asset to identifier', () => {
-      const policyIdBytes = Buffer.from('policy1hex', 'hex')
-      const assetNameBytes = Buffer.from('asset1hex', 'hex')
-      const mockPolicyId = {
-        toBytes: jest.fn(() => policyIdBytes),
-      }
-      const mockAssetName = {
-        name: jest.fn(() => assetNameBytes),
-      }
-
-      const result = cardanoAssetToIdentifier(
-        mockPolicyId as any,
-        mockAssetName as any,
+      expect(cardanoAssetToIdentifier('ab'.repeat(28), '00ff')).toBe(
+        `${'ab'.repeat(28)}.00ff`,
       )
-
-      expect(result).toContain(policyIdBytes.toString('hex'))
-      expect(result).toContain(assetNameBytes.toString('hex'))
-      expect(result).toContain('.')
     })
   })
 
   describe('identifierToCardanoAsset', () => {
     it('should convert identifier to Cardano asset', () => {
-      const mockPolicyId = {}
-      const mockAssetName = {}
-      const mockCsl = {
-        ScriptHash: {
-          fromHex: jest.fn(() => mockPolicyId),
-        },
-        AssetName: {
-          fromHex: jest.fn(() => mockAssetName),
-        },
-      }
-
-      const result = identifierToCardanoAsset(mockCsl as any, 'policy1.asset1')
-
-      expect(result.policyId).toBe(mockPolicyId)
-      expect(result.name).toBe(mockAssetName)
-      expect(mockCsl.ScriptHash.fromHex).toHaveBeenCalledWith('policy1')
-      expect(mockCsl.AssetName.fromHex).toHaveBeenCalledWith('asset1')
+      expect(identifierToCardanoAsset(`${'ab'.repeat(28)}.00ff`)).toEqual({
+        policyIdHex: 'ab'.repeat(28),
+        assetNameHex: '00ff',
+      })
     })
   })
 
   describe('parseTokenList', () => {
-    it('should parse token list from MultiAsset', () => {
-      const mockAmount1 = {toStr: () => '100'}
-      const mockAmount2 = {toStr: () => '200'}
-      const mockAssetName1 = {}
-      const mockAssetName2 = {}
-      const policyIdBytes = Buffer.from('policy1', 'hex')
-      const mockPolicyId = {
-        toBytes: jest.fn(() => policyIdBytes),
-      }
-      const assetNameBytes1 = Buffer.from('asset1', 'hex')
-      const assetNameBytes2 = Buffer.from('asset2', 'hex')
-      const mockAssetsForPolicy = {
-        keys: jest.fn(() => ({
-          len: () => 2,
-          get: jest
-            .fn()
-            .mockReturnValueOnce(mockAssetName1)
-            .mockReturnValueOnce(mockAssetName2),
-        })),
-        get: jest
-          .fn()
-          .mockReturnValueOnce(mockAmount1)
-          .mockReturnValueOnce(mockAmount2),
-      }
-      const mockMultiAsset = {
-        keys: jest.fn(() => ({
-          len: () => 1,
-          get: () => mockPolicyId,
-        })),
-        get: jest.fn(() => mockAssetsForPolicy),
-      }
-
-      // Add name() method to asset name mocks
-      const mockAssetName1WithName = {
-        ...mockAssetName1,
-        name: jest.fn(() => assetNameBytes1),
-      }
-      const mockAssetName2WithName = {
-        ...mockAssetName2,
-        name: jest.fn(() => assetNameBytes2),
-      }
-      const mockAssetsForPolicyWithNames = {
-        ...mockAssetsForPolicy,
-        keys: jest.fn(() => ({
-          len: () => 2,
-          get: jest
-            .fn()
-            .mockReturnValueOnce(mockAssetName1WithName)
-            .mockReturnValueOnce(mockAssetName2WithName),
-        })),
-      }
-      const mockMultiAssetWithNames = {
-        ...mockMultiAsset,
-        get: jest.fn(() => mockAssetsForPolicyWithNames),
-      }
-
-      const result = parseTokenList({} as any, mockMultiAssetWithNames as any)
-
-      expect(result.length).toBeGreaterThan(0)
-      expect(result[0]?.amount).toBe('100')
+    it('parses token list from serialized CML Value without numeric coercion', () => {
+      const {valueFromHexInfoJson} = jest.requireMock(
+        '@yoroi-classic/cml-mobile-bridge',
+      )
+      valueFromHexInfoJson.mockReturnValue(
+        JSON.stringify({
+          coin: '42',
+          assets: [
+            {
+              policyIdHex: 'ab'.repeat(28),
+              assetNameHex: '00ff',
+              quantity: '900719925474099312346',
+            },
+          ],
+        }),
+      )
+      expect(parseTokenList('82182aa0')).toEqual([
+        {
+          assetId: `${'ab'.repeat(28)}.00ff`,
+          amount: '900719925474099312346',
+        },
+      ])
     })
   })
 

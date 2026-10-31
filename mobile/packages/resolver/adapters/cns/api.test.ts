@@ -1,25 +1,19 @@
 import {isError} from '@yoroi/common'
 import {Api, Resolver} from '@yoroi/types'
 
-import {init} from '@emurgo/cross-csl-nodejs'
 import {ZodError, ZodIssue} from 'zod'
 
 import {cnsCryptoAddress, handleCnsApiError} from './api'
 import {resolveAddress} from './api-helpers'
 
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  resolveCnsAddressRecord: jest.fn(() => ({addressBech32: 'cns-address'})),
+}))
 jest.mock('./api-helpers')
-jest.mock('@yoroi/cardano-wallet', () => {
-  const {init: mockInit} = jest.requireActual('@emurgo/cross-csl-nodejs')
-  return {
-    CardanoMobile: mockInit,
-  }
-})
-
 describe('cnsCryptoAddress', () => {
   beforeEach(jest.clearAllMocks)
 
   it('should return an address for a valid receiver in mainnet', async () => {
-    const cls = init
     const receiver = 'fake.ada'
     const address = 'fake-address'
     const isMainnet = true
@@ -27,12 +21,11 @@ describe('cnsCryptoAddress', () => {
     // @ts-ignore
     resolveAddress.mockReturnValue(address)
 
-    const getAddress = cnsCryptoAddress(cls, isMainnet)
+    const getAddress = cnsCryptoAddress(isMainnet)
     await expect(getAddress(receiver)).resolves.toBe(address)
   })
 
   it('should return an address for a valid receiver  in preprod', async () => {
-    const cls = init
     const receiver = 'fake.ada'
     const address = 'fake-address'
     const isMainnet = false
@@ -40,16 +33,15 @@ describe('cnsCryptoAddress', () => {
     // @ts-ignore
     resolveAddress.mockReturnValue(address)
 
-    const getAddress = cnsCryptoAddress(cls, isMainnet)
+    const getAddress = cnsCryptoAddress(isMainnet)
     await expect(getAddress(receiver)).resolves.toBe(address)
   })
 
   it('should throw invalid domain error', async () => {
-    const cls = init
     const receiver = 'fake-wrong-domain'
 
     try {
-      const getAddress = cnsCryptoAddress(cls)
+      const getAddress = cnsCryptoAddress()
       await getAddress(receiver)
 
       fail('it should crash before')
@@ -59,11 +51,10 @@ describe('cnsCryptoAddress', () => {
   })
 
   it('should throw unssupported tld error', async () => {
-    const cls = init
     const receiver = 'fake-wrong-domain.com'
 
     try {
-      const getAddress = cnsCryptoAddress(cls)
+      const getAddress = cnsCryptoAddress()
       await getAddress(receiver)
 
       fail('it should crash before')
@@ -73,7 +64,6 @@ describe('cnsCryptoAddress', () => {
   })
 
   it('should catch a resolveAddress error', async () => {
-    const cls = init
     const receiver = 'domain.ada'
     const error = new Error('random')
     // @ts-ignore
@@ -82,7 +72,7 @@ describe('cnsCryptoAddress', () => {
     })
 
     try {
-      const getAddress = cnsCryptoAddress(cls)
+      const getAddress = cnsCryptoAddress()
       await getAddress(receiver)
 
       fail('it should crash before')

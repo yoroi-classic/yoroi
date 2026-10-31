@@ -1,25 +1,31 @@
 import {RawUtxo, toAssetNameHex, toPolicyId} from '@yoroi/api'
 import {cardanoConfig} from '@yoroi/blockchains'
-import {isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {
   CIP30TransactionError,
   RemoteUnspentOutput,
   calculateTxId,
-  normalizeToAddress,
-  parseTokenList,
-  signRawTransaction,
+  normalizeAddressToHex,
   validateTransactionCbor,
 } from '@yoroi/tx'
-import {Balance, BaseAsset, Branded, Portfolio, Wallet} from '@yoroi/types'
+import {AddressHex, Balance, Branded, Portfolio, Wallet} from '@yoroi/types'
 
-import * as CSL from '@emurgo/cross-csl-core'
-import {Address, WasmModuleProxy} from '@emurgo/cross-csl-core'
+import {
+  addressInfoFromAddress,
+  addressToHex,
+  deriveWalletPublicKeyHex,
+  emptyWitnessTransactionHex,
+  rewardAddressFromAddress,
+  signWalletData,
+  transactionReviewInfoJson,
+  transactionUnspentOutputHex,
+  valueFromAmountsHex,
+  valueFromHexInfoJson,
+} from '@yoroi-classic/cml-mobile-bridge'
 import {BigNumber} from 'bignumber.js'
 import {Buffer} from 'buffer'
-import * as _ from 'lodash'
 
-import {identifierToCardanoAsset} from '../assetUtils'
+import {identifierToAssetHex} from '../assetUtils'
 import * as cip8 from '../cip8/cip8'
 import {
   getDerivationPathForAddress,
@@ -28,26 +34,21 @@ import {
 import {CardanoWalletDependencies} from '../dependencies'
 import {createSendTxFromWallet} from '../transaction-recipes'
 import {Pagination, YoroiWallet} from '../types'
-import {copyFromCSL, copyMultipleFromCSL, createRawTxSigningKey} from '../utils'
 import {Utxos, asQuantity} from '../utils/utils'
 import {
   collateralConfig,
   findCollateralCandidates,
   utxosMaker,
 } from '../utxoManager/utxos'
-import {CardanoMobile, CardanoMobileWrapped} from '../wrappedCsl'
 
 export type CIP30Extension = {
-  getBalance(tokenId?: string): CSL.Value
-  getUnusedAddresses(): CSL.Address[]
-  getUsedAddresses(pagination?: Pagination): CSL.Address[]
-  getChangeAddress(): CSL.Address
-  getRewardAddresses(): CSL.Address[]
-  getUtxos(
-    value?: string,
-    pagination?: Pagination,
-  ): Promise<CSL.TransactionUnspentOutput[] | null>
-  getCollateral(value?: string): Promise<CSL.TransactionUnspentOutput[] | null>
+  getBalance(tokenId?: string): string
+  getUnusedAddresses(): string[]
+  getUsedAddresses(pagination?: Pagination): string[]
+  getChangeAddress(): string
+  getRewardAddresses(): string[]
+  getUtxos(value?: string, pagination?: Pagination): Promise<string[] | null>
+  getCollateral(value?: string): Promise<string[] | null>
   submitTx(cbor: string): Promise<string>
   signData(
     rootKey: string,
@@ -66,231 +67,196 @@ export const cip30ExtensionMaker = (
   const {createCollateralEntry} = dependencies
   return {
     getBalance(tokenId = '*') {
-      return CardanoMobileWrapped.cslScope((csl) => {
-        const value = _getBalance(
-          tokenId,
-          wallet.utxos(),
-          wallet.portfolioPrimaryTokenInfo.id,
-          csl,
-        )
-        return copyFromCSL(CardanoMobile.Value, value)
-      })
+      return _getBalance(
+        tokenId,
+        wallet.utxos(),
+        wallet.portfolioPrimaryTokenInfo.id,
+      )
     },
 
     getUnusedAddresses() {
-      return CardanoMobileWrapped.cslScope((csl) => {
-        const bech32Addresses = wallet
-          .receiveAddresses()
-          .filter((address) => !wallet.isUsedAddressIndex()[address])
-        const addresses = bech32Addresses
-          .map((addr) => normalizeToAddress(csl, addr))
-          .filter((addr): addr is Address => addr !== undefined)
-        return copyMultipleFromCSL(addresses, CardanoMobile.Address)
-      })
+      return wallet
+        .receiveAddresses()
+        .filter((address) => !wallet.isUsedAddressIndex()[address])
+        .map(normalizeAddressToHex)
+        .filter((address): address is AddressHex => address !== undefined)
     },
 
     getUsedAddresses(pagination?: Pagination) {
-      return CardanoMobileWrapped.cslScope((csl) => {
-        const allAddresses = wallet.externalAddresses()
-        const selectedAddresses = paginate(allAddresses, pagination)
-        const addresses = selectedAddresses
-          .map((addr) => normalizeToAddress(csl, addr))
-          .filter((addr): addr is Address => addr !== undefined)
-        return copyMultipleFromCSL(addresses, CardanoMobile.Address)
-      })
+      return paginate(wallet.externalAddresses(), pagination)
+        .map(normalizeAddressToHex)
+        .filter((address): address is AddressHex => address !== undefined)
     },
 
     getChangeAddress() {
-      return CardanoMobileWrapped.cslScope((csl) => {
-        const changeAddr = wallet.getChangeAddress(meta.addressMode)
-        // Use normalizeToAddress to handle Byron (base58), Shelley (bech32), and hex addresses
-        const address = normalizeToAddress(csl, changeAddr)
-        if (!address) {
-          throw new Error(`Invalid change address: ${changeAddr}`)
-        }
-        return copyFromCSL(CardanoMobile.Address, address)
-      })
+      const changeAddr = wallet.getChangeAddress(meta.addressMode)
+      const addressHex = normalizeAddressToHex(changeAddr)
+      if (!addressHex) throw new Error(`Invalid change address: ${changeAddr}`)
+      return addressHex
     },
 
     getRewardAddresses() {
-      return CardanoMobileWrapped.cslScope((csl) => {
-        const address = csl.Address.fromHex(wallet.rewardAddressHex)
-        return [copyFromCSL(CardanoMobile.Address, address)]
-      })
+      const addressHex = normalizeAddressToHex(wallet.rewardAddressHex)
+      if (!addressHex) throw new Error('Invalid reward address')
+      return [addressHex]
     },
 
     async getUtxos(value?: string, pagination?: Pagination) {
-      return CardanoMobileWrapped.cslScope(async (csl) => {
-        const utxos = await _getUtxos(csl, wallet, meta, value, pagination)
-        if (utxos === null) return null
-        return copyMultipleFromCSL(
-          utxos,
-          CardanoMobile.TransactionUnspentOutput,
-        )
-      })
+      return _getUtxos(wallet, meta, value, pagination)
     },
 
     async getCollateral(value?: string) {
-      return CardanoMobileWrapped.cslScope(async (csl) => {
-        const valueStr =
-          value?.trim() ?? collateralConfig.minLovelace.toString()
-        const valueNum = new BigNumber(valueStr)
+      const valueStr = value?.trim() ?? collateralConfig.minLovelace.toString()
+      const valueNum = new BigNumber(valueStr)
 
-        assertCollateralValue(valueNum)
+      assertCollateralValue(valueNum)
 
-        const currentCollateral = wallet.getCollateralInfo()
-        const canUseCurrentCollateral =
-          currentCollateral.utxo && valueNum.lte(currentCollateral.utxo.amount)
+      const currentCollateral = wallet.getCollateralInfo()
+      const canUseCurrentCollateral =
+        currentCollateral.utxo && valueNum.lte(currentCollateral.utxo.amount)
 
-        if (canUseCurrentCollateral && currentCollateral.utxo) {
-          try {
-            const utxo = cardanoUtxoFromRemoteFormat(
-              csl,
-              rawUtxoToRemoteUnspentOutput(
-                currentCollateral.utxo,
-                wallet.portfolioPrimaryTokenInfo.id,
-              ),
+      if (canUseCurrentCollateral && currentCollateral.utxo) {
+        try {
+          const utxo = cardanoUtxoFromRemoteFormat(
+            rawUtxoToRemoteUnspentOutput(
+              currentCollateral.utxo,
               wallet.portfolioPrimaryTokenInfo.id,
-            )
-            return [recreateTransactionUnspentOutput(utxo)]
-          } catch (error) {
-            getLogger().error(
-              'Error converting collateral UTXO to CSL format',
-              {
-                error: error instanceof Error ? error.message : String(error),
-                utxoIndex: currentCollateral.utxo.tx_index,
-                utxoAmount: currentCollateral.utxo.amount,
-                utxoAssetsCount: currentCollateral.utxo.assets?.length ?? 0,
-                utxoReceiver: currentCollateral.utxo.receiver,
-                txHash: currentCollateral.utxo.tx_hash,
-                txIndex: currentCollateral.utxo.tx_index,
-              },
-            )
-            throw error
-          }
-        }
-
-        const oneUtxoCollateral = _drawCollateralInOneUtxo(
-          csl,
-          wallet,
-          asQuantity(valueNum),
-        )
-        if (oneUtxoCollateral) {
-          return [recreateTransactionUnspentOutput(oneUtxoCollateral)]
-        }
-
-        const multipleUtxosCollateral = await _drawCollateralInMultipleUtxos(
-          wallet,
-          meta,
-          asQuantity(valueNum),
-          csl,
-        )
-        if (multipleUtxosCollateral && multipleUtxosCollateral.length > 0) {
-          return copyMultipleFromCSL(
-            multipleUtxosCollateral,
-            CardanoMobile.TransactionUnspentOutput,
+            ),
+            wallet.portfolioPrimaryTokenInfo.id,
           )
+          return [utxo]
+        } catch (error) {
+          getLogger().error(
+            'Error converting collateral UTXO to Cardano CBOR',
+            {
+              error: error instanceof Error ? error.message : String(error),
+              utxoIndex: currentCollateral.utxo.tx_index,
+              utxoAmount: currentCollateral.utxo.amount,
+              utxoAssetsCount: currentCollateral.utxo.assets?.length ?? 0,
+              utxoReceiver: currentCollateral.utxo.receiver,
+              txHash: currentCollateral.utxo.tx_hash,
+              txIndex: currentCollateral.utxo.tx_index,
+            },
+          )
+          throw error
         }
+      }
 
-        return null
-      })
+      const oneUtxoCollateral = _drawCollateralInOneUtxo(
+        wallet,
+        asQuantity(valueNum),
+      )
+      if (oneUtxoCollateral) {
+        return [oneUtxoCollateral]
+      }
+
+      const multipleUtxosCollateral = await _drawCollateralInMultipleUtxos(
+        wallet,
+        meta,
+        asQuantity(valueNum),
+      )
+      if (multipleUtxosCollateral && multipleUtxosCollateral.length > 0) {
+        return multipleUtxosCollateral
+      }
+
+      return null
     },
 
     async submitTx(cbor: string) {
       const base64 = Branded.asTransactionCborBase64(
         Buffer.from(cbor, 'hex').toString('base64'),
       )
-      const txId = await CardanoMobileWrapped.cslScope(async (csl) => {
-        return await calculateTxId(csl, cbor, 'hex')
-      })
+      const txId = await calculateTxId(cbor, 'hex')
       await wallet.submitTransaction(base64)
       return txId
     },
 
     async signData(rootKey: string, address: string, payload: string) {
-      return CardanoMobileWrapped.cslScope(async (csl) => {
-        const payloadInBytes = Buffer.from(payload, 'hex')
-        // Parse address within this scope to avoid WASM pointer issues
-        let normalisedAddress: Address | null = null
-        if (csl.ByronAddress.isValid(address)) {
-          const byronAddr = csl.ByronAddress.fromBase58(address)
-          normalisedAddress = byronAddr.toAddress()
-        } else {
-          const isHexAddr = /^[0-9a-fA-F]+$/.test(address)
-          normalisedAddress = isHexAddr
-            ? csl.Address.fromHex(address)
-            : csl.Address.fromBech32(address)
-        }
-
-        if (!normalisedAddress || normalisedAddress.isMalformed()) {
-          throw new Error('Invalid address')
-        }
-
-        const bech32Address = normalisedAddress.toBech32(undefined)
-        if (!bech32Address) throw new Error('Invalid address')
-
-        const rewardAddress = csl.RewardAddress.fromAddress(normalisedAddress)
-        const rewardAddressHex = rewardAddress?.toAddress().toHex()
-
-        const stakingSigningPath =
-          meta.implementation === 'cardano-cip1852'
-            ? cardanoConfig.implementations[meta.implementation].features
-                .staking.addressing
-            : null
-
-        const signingPath =
-          rewardAddressHex === wallet.rewardAddressHex &&
-          Array.isArray(stakingSigningPath)
-            ? stakingSigningPath
-            : getDerivationPathForAddress(bech32Address, wallet, meta, true)
-
-        const signingKey = createRawTxSigningKey(rootKey, signingPath, csl)
-        const publicKeyBytes = signingKey.toPublic().asBytes()
-        const coseSign1 = await cip8.sign(
-          Buffer.from(normalisedAddress.toHex(), 'hex'),
-          signingKey,
-          payloadInBytes,
-          publicKeyBytes,
+      const addressInfo = addressInfoFromAddress(address)
+      if (!addressInfo.isValid || !addressInfo.bech32) {
+        throw new Error('Invalid address')
+      }
+      const bech32Address = addressInfo.bech32
+      const payloadInBytes = Buffer.from(payload, 'hex')
+      const addressBytes = Buffer.from(addressInfo.hex, 'hex')
+      let rewardAddressHex: string | undefined
+      try {
+        rewardAddressHex = addressToHex(
+          rewardAddressFromAddress(address, wallet.networkManager.chainId),
         )
-        const key = await cip8.makeCip8Key(publicKeyBytes)
+      } catch {
+        // Byron and enterprise addresses do not carry a stake credential.
+      }
 
-        return {
-          signature: Buffer.from(coseSign1.toBytes()).toString('hex'),
-          key: Buffer.from(key.toBytes()).toString('hex'),
-        }
+      const stakingSigningPath =
+        meta.implementation === 'cardano-cip1852'
+          ? cardanoConfig.implementations[meta.implementation].features.staking
+              .addressing
+          : null
+
+      const signingPath =
+        rewardAddressHex === wallet.rewardAddressHex &&
+        Array.isArray(stakingSigningPath)
+          ? stakingSigningPath
+          : getDerivationPathForAddress(bech32Address, wallet, meta, true)
+
+      const publicKeyHex = deriveWalletPublicKeyHex({
+        masterKeyHex: rootKey,
+        signerPath: signingPath,
       })
+      const publicKeyBytes = Buffer.from(publicKeyHex, 'hex')
+      const dataToSign = cip8.makeCip8DataToSign(
+        addressBytes,
+        payloadInBytes,
+        publicKeyBytes,
+      )
+      const {signatureHex, publicKeyHex: signedPublicKeyHex} = signWalletData({
+        messageHex: dataToSign.toString('hex'),
+        masterKeyHex: rootKey,
+        signerPath: signingPath,
+      })
+      if (signedPublicKeyHex !== publicKeyHex) {
+        throw new Error('CML signing key changed during CIP-8 signing')
+      }
+      const coseSign1 = await cip8.buildCoseSign1FromSignature(
+        addressBytes,
+        Buffer.from(signatureHex, 'hex'),
+        payloadInBytes,
+        publicKeyBytes,
+      )
+      const key = await cip8.makeCip8Key(publicKeyBytes)
+
+      return {
+        signature: Buffer.from(coseSign1.toBytes()).toString('hex'),
+        key: Buffer.from(key.toBytes()).toString('hex'),
+      }
     },
 
     async signTx(rootKey: string, cbor: string, partial = false) {
-      return CardanoMobileWrapped.cslScope(async (csl) => {
-        // Validate transaction CBOR before signing
-        const validation = validateTransactionCbor(csl, cbor)
-        if (!validation.valid) {
-          throw new CIP30TransactionError(
-            `Transaction validation failed: ${validation.errors.join(', ')}`,
-            validation,
-          )
-        }
-
-        // Log warnings if any
-        if (validation.warnings.length > 0) {
-          getLogger().warn('CIP-30 transaction validation warnings', {
-            warnings: validation.warnings,
-          })
-        }
-
-        // Get transaction signers
-        const signers = await getTransactionSigners(cbor, wallet, meta, partial)
-        const keys = signers.map((signer) =>
-          createRawTxSigningKey(rootKey, signer, csl),
+      // Validate transaction CBOR before signing
+      const validation = validateTransactionCbor(cbor)
+      if (!validation.valid) {
+        throw new CIP30TransactionError(
+          `Transaction validation failed: ${validation.errors.join(', ')}`,
+          validation,
         )
+      }
 
-        // Sign the transaction
-        const signedTxBytes = await signRawTransaction(cbor, keys)
+      // Log warnings if any
+      if (validation.warnings.length > 0) {
+        getLogger().warn('CIP-30 transaction validation warnings', {
+          warnings: validation.warnings,
+        })
+      }
 
-        // Return signed transaction CBOR hex string (CIP-30 spec requirement)
-        return Buffer.from(signedTxBytes).toString('hex')
-      })
+      // Get transaction signers
+      const signers = await getTransactionSigners(cbor, wallet, meta, partial)
+      // Derivation and witness construction run in the CML native bridge.
+      const signedTxBytes = await wallet.signRawTx(cbor, rootKey, signers)
+      if (!signedTxBytes) throw new Error('Unable to sign transaction')
+
+      // Return signed transaction CBOR hex string (CIP-30 spec requirement)
+      return Buffer.from(signedTxBytes).toString('hex')
     },
 
     async buildReorganisationTx(value?: string) {
@@ -305,59 +271,15 @@ export const cip30ExtensionMaker = (
         addressMode: meta.addressMode,
       })
 
-      return CardanoMobileWrapped.cslScope((csl) => {
-        const tx = csl.Transaction.fromHex(yoroiUnsignedTx.cbor)
-        const txBody = tx.body()
-        const emptyWitnessSet = csl.TransactionWitnessSet.new()
-        const newTx = csl.Transaction.new(txBody, emptyWitnessSet, undefined)
-        return newTx.toHex()
-      })
+      return emptyWitnessTransactionHex(yoroiUnsignedTx.cbor)
     },
   }
 }
 
-const recreateTransactionUnspentOutput = (
-  utxo: CSL.TransactionUnspentOutput,
-) => {
-  return copyFromCSL(CardanoMobile.TransactionUnspentOutput, utxo)
-}
-
-const remoteAssetToMultiasset = (
-  remoteAssets: BaseAsset[],
-  csl: WasmModuleProxy,
-): CSL.MultiAsset => {
-  const groupedAssets = remoteAssets.reduce(
-    (res, a) => {
-      ;(res[toPolicyId(a.tokenId)] = res[toPolicyId(a.tokenId)] || []).push(a)
-      return res
-    },
-    {} as Record<string, BaseAsset[]>,
-  )
-  const multiasset = csl.MultiAsset.new()
-  for (const policyHex of Object.keys(groupedAssets)) {
-    const assetGroup = groupedAssets[policyHex]
-    if (!assetGroup) continue
-    const policyId = csl.ScriptHash.fromBytes(
-      new Uint8Array(Buffer.from(policyHex, 'hex')),
-    )
-    const assets = csl.Assets.new()
-    for (const asset of assetGroup) {
-      assets.insert(
-        csl.AssetName.new(
-          new Uint8Array(Buffer.from(toAssetNameHex(asset.tokenId), 'hex')),
-        ),
-        csl.BigNum.fromStr(asset.amount),
-      )
-    }
-    multiasset.insert(policyId, assets)
-  }
-  return multiasset
-}
 const cardanoUtxoFromRemoteFormat = (
-  csl: WasmModuleProxy,
   u: RemoteUnspentOutput,
   primaryTokenId: Portfolio.Token.Id,
-): CSL.TransactionUnspentOutput => {
+): string => {
   // Validate input data
   if (!u.txHash || typeof u.txHash !== 'string') {
     throw new Error(`Invalid txHash: ${u.txHash}`)
@@ -372,83 +294,32 @@ const cardanoUtxoFromRemoteFormat = (
     throw new Error(`Invalid receiver: ${u.receiver}`)
   }
 
-  const txHash = csl.TransactionHash.fromHex(u.txHash)
-  if (!txHash) {
-    throw new Error(`Failed to create TransactionHash from: ${u.txHash}`)
-  }
-
-  const input = csl.TransactionInput.new(txHash, u.txIndex)
-  if (!input) {
-    throw new Error(
-      `Failed to create TransactionInput for ${u.txHash}:${u.txIndex}`,
-    )
-  }
-
-  // Get primary token amount (ADA)
   const primaryAmount = u.balance[primaryTokenId] ?? Branded.ZERO_QUANTITY
-  const amountBigNum = csl.BigNum.fromStr(primaryAmount)
-  if (!amountBigNum) {
-    throw new Error(`Failed to create BigNum from amount: ${primaryAmount}`)
-  }
-
-  const value = csl.Value.new(amountBigNum)
-  if (!value) {
-    throw new Error(`Failed to create Value from amount: ${primaryAmount}`)
-  }
-
-  // Convert Balance.Amounts to multiasset
-  const assets = Object.entries(u.balance)
-    .filter(([tokenId]) => tokenId !== primaryTokenId)
-    .map(([tokenId, amount]) => ({
-      tokenId: tokenId as Portfolio.Token.Id,
-      amount: Branded.asBalanceQuantity(amount as string),
-      policyId: Branded.asPolicyId(''),
-      name: Branded.asAssetName(''),
-    }))
-
-  if (assets.length > 0) {
-    const multiasset = remoteAssetToMultiasset(assets, csl)
-    if (!multiasset) {
-      throw new Error('Failed to create MultiAsset')
-    }
-    value.setMultiasset(multiasset)
-  }
-
-  // Use normalizeToAddress to handle Byron (base58), Shelley (bech32), and hex addresses
-  const receiver = normalizeToAddress(csl, u.receiver)
-  if (!receiver) {
-    throw new Error(`Invalid receiver address: ${u.receiver}`)
-  }
-
-  const output = csl.TransactionOutput.new(receiver, value)
-  if (!output) {
-    throw new Error(
-      `Failed to create TransactionOutput: Pointer is NULL for utxo ${u.txHash}:${u.txIndex}`,
-    )
-  }
-
-  const unspentOutput = csl.TransactionUnspentOutput.new(input, output)
-  if (!unspentOutput) {
-    throw new Error(
-      `Failed to create TransactionUnspentOutput for utxo ${u.txHash}:${u.txIndex}`,
-    )
-  }
-
-  return unspentOutput
+  return transactionUnspentOutputHex({
+    txHashHex: u.txHash,
+    index: String(u.txIndex),
+    address: u.receiver,
+    lovelace: primaryAmount,
+    assets: Object.entries(u.balance)
+      .filter(
+        ([tokenId, quantity]) => tokenId !== primaryTokenId && quantity !== '0',
+      )
+      .map(([tokenId, quantity]) => ({
+        policyIdHex: toPolicyId(tokenId),
+        assetNameHex: toAssetNameHex(tokenId),
+        quantity,
+      })),
+  })
 }
 
 const _getBalance = (
   tokenId = '*',
   utxos: RawUtxo[],
   primaryTokenId: Portfolio.Token.Id,
-  csl: WasmModuleProxy,
-) => {
+): string => {
   if (tokenId === 'TADA' || tokenId === 'ADA') tokenId = '.'
   const amounts = Utxos.toAmounts(utxos, primaryTokenId)
-  const value = csl.Value.new(
-    csl.BigNum.fromStr(amounts[primaryTokenId] ?? Branded.ZERO_QUANTITY),
-  )
-  const normalizedInHex = Object.keys(amounts)
+  const assets = Object.keys(amounts)
     .filter((t) => {
       if (tokenId === '*') return true
       return t === tokenId
@@ -456,43 +327,25 @@ const _getBalance = (
     .map((tokenId) => {
       if (tokenId === '.' || tokenId === '' || tokenId === primaryTokenId)
         return null
-      const {policyId, name} = identifierToCardanoAsset(csl, tokenId)
+      const {policyIdHex, assetNameHex} = identifierToAssetHex(tokenId)
       const amount = amounts[tokenId as Portfolio.Token.Id] as string
-      return {policyIdHex: policyId.toHex(), nameHex: name.toHex(), amount}
+      return {policyIdHex, assetNameHex, quantity: amount}
     })
 
-  const groupedByPolicyId = _.groupBy(
-    normalizedInHex.filter(Boolean),
-    'policyIdHex',
-  )
-
-  const multiAsset = csl.MultiAsset.new()
-  for (const policyIdHex of Object.keys(groupedByPolicyId)) {
-    const assetValue = groupedByPolicyId[policyIdHex]
-    if (!assetValue) continue
-    const policyId = csl.ScriptHash.fromHex(policyIdHex)
-    const assets = csl.Assets.new()
-    for (const asset of assetValue) {
-      if (!asset) continue
-      const assetName = csl.AssetName.fromHex(asset.nameHex)
-      const assetValue = csl.BigNum.fromStr(
-        asset.amount ?? Branded.ZERO_QUANTITY,
-      )
-      assets.insert(assetName, assetValue)
-    }
-    multiAsset.insert(policyId, assets)
-  }
-  value.setMultiasset(multiAsset)
-  return value
+  return valueFromAmountsHex({
+    coin: amounts[primaryTokenId] ?? Branded.ZERO_QUANTITY,
+    assets: assets.filter(
+      (asset): asset is NonNullable<typeof asset> => asset !== null,
+    ),
+  })
 }
 
 const _getUtxos = async (
-  csl: WasmModuleProxy,
   wallet: YoroiWallet,
   meta: Wallet.Meta,
   value?: string,
   pagination?: Pagination,
-): Promise<CSL.TransactionUnspentOutput[] | null> => {
+): Promise<string[] | null> => {
   const valueStr = value?.trim() ?? ''
 
   if (valueStr.length === 0) {
@@ -500,12 +353,11 @@ const _getUtxos = async (
     const validUtxos = wallet.utxos().map((o) => {
       try {
         return cardanoUtxoFromRemoteFormat(
-          csl,
           rawUtxoToRemoteUnspentOutput(o, primaryTokenId),
           primaryTokenId,
         )
       } catch (error) {
-        getLogger().error('Error converting UTXO to CSL format', {
+        getLogger().error('Error converting UTXO to Cardano CBOR', {
           error: error instanceof Error ? error.message : String(error),
           utxoIndex: o.tx_index,
           utxoAmount: o.amount,
@@ -530,7 +382,7 @@ const _getUtxos = async (
     try {
       Object.assign(
         amounts,
-        getAmountsFromValue(valueStr, wallet.portfolioPrimaryTokenInfo.id, csl),
+        getAmountsFromValue(valueStr, wallet.portfolioPrimaryTokenInfo.id),
       )
     } catch (error) {
       getLogger().error('cip30 Failed to parse value _getUtxos', {error})
@@ -542,7 +394,6 @@ const _getUtxos = async (
     amounts,
     wallet.utxos(),
     meta,
-    csl,
   )
   if (validUtxos === null) return null
   return paginate(validUtxos, pagination)
@@ -553,27 +404,15 @@ export const _getRequiredUtxos = async (
   amounts: Balance.Amounts,
   allUtxos: RawUtxo[],
   meta: Wallet.Meta,
-  csl: WasmModuleProxy,
-): Promise<CSL.TransactionUnspentOutput[] | null> => {
+): Promise<string[] | null> => {
   const primaryTokenId = wallet.portfolioPrimaryTokenInfo.id
   const remoteUnspentOutputs: RemoteUnspentOutput[] = allUtxos.map((utxo) =>
     rawUtxoToRemoteUnspentOutput(utxo, primaryTokenId),
   )
-  // Create address within the provided csl scope to avoid pointer issues
-  let normalisedRewardAddress: Address | null = null
-  if (csl.ByronAddress.isValid(wallet.rewardAddressHex)) {
-    const byronAddr = csl.ByronAddress.fromBase58(wallet.rewardAddressHex)
-    normalisedRewardAddress = byronAddr.toAddress()
-  } else {
-    const isHexAddr = isHex(wallet.rewardAddressHex)
-    normalisedRewardAddress = isHexAddr
-      ? csl.Address.fromHex(wallet.rewardAddressHex)
-      : csl.Address.fromBech32(wallet.rewardAddressHex)
-  }
-  if (!normalisedRewardAddress || normalisedRewardAddress.isMalformed()) {
-    throw new Error('Invalid wallet state')
-  }
-  const rewardAddress = normalisedRewardAddress.toBech32(undefined)
+  const rewardAddressInfo = addressInfoFromAddress(wallet.rewardAddressHex)
+  const rewardAddress = rewardAddressInfo.isValid
+    ? rewardAddressInfo.bech32
+    : undefined
   if (!rewardAddress) throw new Error('Invalid wallet state')
 
   try {
@@ -588,9 +427,9 @@ export const _getRequiredUtxos = async (
     const primaryTokenId = wallet.portfolioPrimaryTokenInfo.id
     return requiredUtxos.map((o) => {
       try {
-        return cardanoUtxoFromRemoteFormat(csl, o, primaryTokenId)
+        return cardanoUtxoFromRemoteFormat(o, primaryTokenId)
       } catch (error) {
-        getLogger().error('Error converting UTXO to CSL format', {
+        getLogger().error('Error converting UTXO to Cardano CBOR', {
           error: error instanceof Error ? error.message : String(error),
           utxoIndex: o.txIndex,
           utxoBalance: o.balance,
@@ -633,21 +472,18 @@ const findUtxosInUnsignedTx = (
   unsignedTx: {cbor: string},
   utxos: RemoteUnspentOutput[],
 ) => {
-  return CardanoMobileWrapped.cslScope((csl) => {
-    const tx = csl.Transaction.fromHex(unsignedTx.cbor)
-    const txBody = tx.body()
-    const inputs = txBody.inputs()
-    const filteredUtxos: RemoteUnspentOutput[] = []
-    for (let i = 0; i < inputs.len(); i++) {
-      const input = inputs.get(i)
-      const inputTxHash = input.transactionId().toHex()
-      const inputIndex = input.index()
-      const utxo = utxos.find(
-        (utxo) => utxo.txHash === inputTxHash && utxo.txIndex === inputIndex,
-      )
-      if (utxo) filteredUtxos.push(utxo)
-    }
-    return filteredUtxos
+  const transaction = JSON.parse(
+    transactionReviewInfoJson(unsignedTx.cbor),
+  ) as {
+    body: {inputs: Array<{transactionIdHex: string; index: string}>}
+  }
+  return transaction.body.inputs.flatMap((input) => {
+    const utxo = utxos.find(
+      (candidate) =>
+        candidate.txHash === input.transactionIdHex &&
+        String(candidate.txIndex) === input.index,
+    )
+    return utxo ? [utxo] : []
   })
 }
 
@@ -664,7 +500,6 @@ const paginate = <T>(
 }
 
 const _drawCollateralInOneUtxo = (
-  csl: WasmModuleProxy,
   wallet: YoroiWallet,
   quantity: Balance.Quantity,
 ) => {
@@ -681,12 +516,11 @@ const _drawCollateralInOneUtxo = (
   const primaryTokenId = wallet.portfolioPrimaryTokenInfo.id
   try {
     return cardanoUtxoFromRemoteFormat(
-      csl,
       rawUtxoToRemoteUnspentOutput(collateralUtxo, primaryTokenId),
       primaryTokenId,
     )
   } catch (error) {
-    getLogger().error('Error converting collateral UTXO to CSL format', {
+    getLogger().error('Error converting collateral UTXO to Cardano CBOR', {
       error: error instanceof Error ? error.message : String(error),
       utxoIndex: collateralUtxo.tx_index,
       utxoAmount: collateralUtxo.amount,
@@ -703,7 +537,6 @@ const _drawCollateralInMultipleUtxos = async (
   wallet: YoroiWallet,
   meta: Wallet.Meta,
   quantity: Balance.Quantity,
-  csl: WasmModuleProxy,
 ) => {
   const possibleUtxos = findCollateralCandidates(wallet.utxos(), {
     maxLovelace: collateralConfig.maxLovelace,
@@ -727,7 +560,6 @@ const _drawCollateralInMultipleUtxos = async (
     {[wallet.portfolioPrimaryTokenInfo.id]: quantity},
     utxosWithLimitAccounted,
     meta,
-    csl,
   )
 
   if (utxos !== null && utxos.length > 0) {
@@ -736,25 +568,41 @@ const _drawCollateralInMultipleUtxos = async (
   return null
 }
 
-const getAmountsFromValue = (
-  value: string,
-  primaryTokenId: string,
-  csl: WasmModuleProxy,
-) => {
-  const valueFromHex = csl.Value.fromHex(value)
+const getAmountsFromValue = (value: string, primaryTokenId: string) => {
+  const decoded: unknown = JSON.parse(valueFromHexInfoJson(value))
+  if (
+    typeof decoded !== 'object' ||
+    decoded === null ||
+    !('coin' in decoded) ||
+    typeof decoded.coin !== 'string' ||
+    !/^(0|[1-9][0-9]*)$/.test(decoded.coin) ||
+    !('assets' in decoded) ||
+    !Array.isArray(decoded.assets)
+  ) {
+    throw new Error('Invalid CML value response')
+  }
   const amounts: Balance.Amounts = {}
 
-  if (valueFromHex.hasValue()) {
-    amounts[primaryTokenId as Portfolio.Token.Id] = asQuantity(
-      valueFromHex.coin().toStr(),
-    )
-  }
-  const ma = valueFromHex.multiasset()
-  if (ma) {
-    for (const token of parseTokenList(csl, ma)) {
-      const {assetId, amount} = token
-      amounts[assetId as Portfolio.Token.Id] = asQuantity(amount)
+  amounts[primaryTokenId as Portfolio.Token.Id] = asQuantity(decoded.coin)
+  for (const asset of decoded.assets) {
+    if (
+      typeof asset !== 'object' ||
+      asset === null ||
+      !('policyIdHex' in asset) ||
+      typeof asset.policyIdHex !== 'string' ||
+      !/^[0-9a-f]{56}$/i.test(asset.policyIdHex) ||
+      !('assetNameHex' in asset) ||
+      typeof asset.assetNameHex !== 'string' ||
+      !/^(?:[0-9a-f]{2}){0,32}$/i.test(asset.assetNameHex) ||
+      !('quantity' in asset) ||
+      typeof asset.quantity !== 'string' ||
+      !/^(0|[1-9][0-9]*)$/.test(asset.quantity)
+    ) {
+      throw new Error('Invalid CML value asset response')
     }
+    const id =
+      `${asset.policyIdHex}.${asset.assetNameHex}` as Portfolio.Token.Id
+    amounts[id] = asQuantity(asset.quantity)
   }
   return amounts
 }

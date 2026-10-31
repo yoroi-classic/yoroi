@@ -8,14 +8,7 @@ import {
   TokenId,
   TransactionMetadata,
 } from '@yoroi/types'
-
-// Transaction types
-// These are WASM types from CSL
-import type {
-  AuxiliaryData,
-  Transaction as CSLTransaction,
-  TransactionBody,
-} from '@emurgo/cross-csl-core'
+import type {UnsignedTransaction} from '../transaction-builder/types'
 
 type Bip44DerivationLevel = {
   level: number
@@ -137,19 +130,26 @@ export type CardanoHaskellConfig = {
   networkId: number
   collateralPercentage?: string
   refScriptCoinsPerByte?: {numerator: string; denominator: string}
+  refScriptTierStepBytes?: string
+  refScriptMultiplier?: string
+  /** Protocol parameter ratios used to price Plutus execution units. */
+  scriptExecutionPrices?: {
+    memory: {numerator: string; denominator: string}
+    cpu: {numerator: string; denominator: string}
+  }
+  /** Plutus V1 cost model values, needed for V1 reference-script spends. */
+  plutusV1CostModel?: number[]
+  /** Plutus V2 cost model values, needed for V2 reference-script spends. */
+  plutusV2CostModel?: number[]
   /** PlutusV3 cost model values (array of integers). Required for Plutus script transactions. */
   plutusV3CostModel?: number[]
 }
 
-// UnsignedTx type - matches TransactionBody structure
-export type UnsignedTx = TransactionBody
-export type SignedTx = CSLTransaction
+// Transactions cross package boundaries as serialized bytes, never WASM objects.
+export type UnsignedTx = UnsignedTransaction
+export type SignedTx = Uint8Array
 
-// Extended type for runtime objects that have additional properties
-// This is used internally where we know the object has these properties
-export type UnsignedTxWithProperties = TransactionBody & {
-  readonly txBody: TransactionBody
-  readonly auxiliaryData?: AuxiliaryData | null
+export type UnsignedTxWithProperties = UnsignedTransaction & {
   readonly catalystRegistrationData?: unknown
 }
 

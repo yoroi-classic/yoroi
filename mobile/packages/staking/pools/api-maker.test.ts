@@ -1,5 +1,3 @@
-import {init} from '@emurgo/cross-csl-nodejs'
-
 import {poolInfoApiMaker} from './api-maker'
 import {
   getMaybeNewEntriesByPool,
@@ -13,6 +11,9 @@ import {
 } from './pool-info-api-helpers'
 
 jest.mock('./pool-info-api-helpers')
+jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
+  normalizePoolIdentifier: jest.fn(),
+}))
 jest.mock('./pool-info-api', () => {
   const actual = jest.requireActual('./pool-info-api')
   return {
@@ -25,8 +26,6 @@ jest.mock('./pool-info-api', () => {
 const mockFetchData = jest.fn()
 const mockZeroApiUrl = 'https://api.example.com'
 const mockLegacyApiBaseUrl = 'https://legacy.example.com'
-const mockWasmModule = init('test')
-const mockWasmFactory = (_scope: string) => mockWasmModule
 
 const mockExplorerPoolInfo = {
   id: 'pool123',
@@ -306,7 +305,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toEqual({
         current: mockExplorerPoolInfo,
@@ -323,7 +322,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toBeNull()
     })
@@ -336,7 +335,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toBeNull()
     })
@@ -349,7 +348,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toBeNull()
     })
@@ -364,7 +363,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toBeNull()
     })
@@ -380,7 +379,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      await api.getTransition('hash123', mockWasmFactory)
+      await api.getTransition('hash123')
 
       // Verify that getFirstUnsaturatedPoolFn was called with default threshold
       expect(getSingleExplorerPoolInfo).toHaveBeenCalled()
@@ -398,7 +397,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      await api.getTransition('hash123', mockWasmFactory)
+      await api.getTransition('hash123')
 
       expect(getSingleExplorerPoolInfo).toHaveBeenCalled()
     })
@@ -421,7 +420,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toBeDefined()
       expect(result?.suggested.saturation).toBe('0.5')
@@ -444,7 +443,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toBeDefined()
       expect(result?.suggested.saturation).toBe('0.9')
@@ -467,7 +466,7 @@ describe('poolInfoApiMaker', () => {
         request: mockFetchData,
       })
 
-      const result = await api.getTransition('hash123', mockWasmFactory)
+      const result = await api.getTransition('hash123')
 
       expect(result).toBeDefined()
       expect(result?.suggested.saturation).toBe('0.5')

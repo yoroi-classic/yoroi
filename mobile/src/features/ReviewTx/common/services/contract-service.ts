@@ -3,11 +3,14 @@
  *
  * Queries a service to get information about smart contract addresses
  */
-import {CardanoMobileWrapped} from '@yoroi/cardano-wallet'
-
-import {CredKind} from '@emurgo/cross-csl-core'
+import {addressInfoFromAddress} from '@yoroi-classic/cml-mobile-bridge'
 
 import {logger} from '~/kernel/logger/logger'
+
+import {
+  AddressCredentialKind,
+  addressCredentialKindFromHex,
+} from '../address-kind'
 
 export type SmartContractInfo = {
   address: string
@@ -101,20 +104,13 @@ export function createContractService(
  * This can be done locally by checking the address type
  */
 export function isContractAddress(address: string): boolean {
-  return CardanoMobileWrapped.cslScope((csl) => {
-    try {
-      const cslAddress = csl.Address.fromBech32(address)
-      const paymentCred = cslAddress.paymentCred()
-      if (!paymentCred) {
-        return false
-      }
-      const credKind = paymentCred.kind()
-      // Script addresses have CredKind.Script (value 1)
-      // Key addresses have CredKind.Key (value 0)
-      return credKind === CredKind.Script
-    } catch {
-      // If address parsing fails, it's not a valid address, so not a contract
-      return false
-    }
-  })
+  try {
+    const {hex, isValid} = addressInfoFromAddress(address)
+    return (
+      isValid &&
+      addressCredentialKindFromHex(hex) === AddressCredentialKind.Script
+    )
+  } catch {
+    return false
+  }
 }

@@ -38,7 +38,10 @@ import {
 // TransactionInfo is kept internally for deprecated code - import directly from source
 import type {TransactionInfo} from '@yoroi/types'
 
-import * as CSL from '@emurgo/cross-csl-core'
+import {
+  derivePublicKeyFromAccountPathHex,
+  publicKeyHashHexFromRawHex,
+} from '@yoroi-classic/cml-mobile-bridge'
 import BigNumber from 'bignumber.js'
 import {noop} from 'lodash'
 import {Observable} from 'rxjs'
@@ -48,7 +51,6 @@ import {buildPortfolioTokenManagers} from '~/features/Portfolio/common/helpers/b
 import type {ManualAddress} from '../../storage/manual-address-storage'
 import type {CardanoTypes, WalletSubscription, YoroiWallet} from '../../types'
 import {getTokenFingerprint} from '../../utils/format'
-import {CardanoMobile} from '../../wrappedCsl'
 import {mockEncryptedStorage} from './storage'
 import {mockTransactionInfo, mockTransactionInfos} from './transaction'
 import {utxos} from './utxos'
@@ -209,19 +211,21 @@ const wallet: YoroiWallet = {
   getStakingKey: () => {
     const pubKeyHex =
       '8e4e2f11b6ac2a269913286e26339779ab8767579d18d173cdd324929d94e2c43e3ec212cc8a36ed9860579dfe1e3ef4d6de778c5dbdd981623b48727cd96247'
-    const accountPubKey = CardanoMobile.Bip32PublicKey.fromBytes(
-      Buffer.from(pubKeyHex, 'hex'),
-    )
-    return accountPubKey
-      .derive(
-        cardanoConfig.implementations['cardano-cip1852'].features.staking
-          .derivation.role,
-      )
-      .derive(
-        cardanoConfig.implementations['cardano-cip1852'].features.staking
-          .derivation.index,
-      )
-      .toRawKey()
+    const derivation =
+      cardanoConfig.implementations['cardano-cip1852'].features.staking
+        .derivation
+    const rawPublicKeyHex = derivePublicKeyFromAccountPathHex(pubKeyHex, [
+      derivation.role,
+      derivation.index,
+    ])
+    const keyHashHex = publicKeyHashHexFromRawHex(rawPublicKeyHex)
+    return {
+      toHex: () => rawPublicKeyHex,
+      hash: () => ({
+        toHex: () => keyHashHex,
+        toBytes: () => Uint8Array.from(Buffer.from(keyHashHex, 'hex')),
+      }),
+    } as unknown as CardanoTypes.PublicKey
   },
   signRawTx(): Promise<Uint8Array | undefined> {
     throw new Error('not implemented: signRawTx')
@@ -466,23 +470,23 @@ const createVotingRegTx = {
 
 const signTx = {
   success: async (..._args: Array<never>) => {
-    return mocks.signedTransaction
+    return new Uint8Array()
   },
   error: async (..._args: Array<never>) => {
     return Promise.reject(new Error('Mock error'))
   },
   loading: async (..._args: Array<never>) => {
-    return new Promise<CSL.Transaction>(() => null)
+    return new Promise<Uint8Array>(() => null)
   },
 }
 const signTxWithLedger = {
   success: async (..._args: Array<never>) => {
-    return mocks.signedTransaction
+    return new Uint8Array()
   },
   error: async (..._args: Array<never>) => {
     return Promise.reject(new Error('Mock error'))
   },
-  loading: async (..._args: Array<never>): Promise<CSL.Transaction> => {
+  loading: async (..._args: Array<never>): Promise<Uint8Array> => {
     return new Promise(() => null)
   },
 }
@@ -929,15 +933,14 @@ const unsignedTransaction: UnsignedTransaction & {mock: true} = {
   mock: true,
 }
 
-// Mock signed transaction - we'll create a minimal CSL.Transaction mock
-// In practice, tests should use actual CSL.Transaction objects
+// Mock signed transaction with the methods consumed by these fixtures.
 const signedTransaction = {
   toBytes: () => new Uint8Array([1, 2, 3]),
   toHex: () => 'mock-tx-hex',
-  body: () => ({}) as CSL.TransactionBody,
-  witnessSet: () => ({}) as CSL.TransactionWitnessSet,
+  body: () => ({}),
+  witnessSet: () => ({}),
   auxiliaryData: () => undefined,
-} as CSL.Transaction
+} as unknown as CardanoTypes.SignedTx
 
 export const nft: Balance.TokenInfo = {
   kind: 'nft',

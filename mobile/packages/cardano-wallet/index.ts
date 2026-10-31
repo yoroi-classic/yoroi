@@ -22,9 +22,10 @@ export type {AddressChain} from './account-manager/account-manager'
 export {deriveAddressFromXPub} from './account-manager/derive-address-from-xpub'
 export type {ReadOnlyAddressChain} from './account-manager/read-only-account-manager'
 
+export type {GovernanceCertificateInput} from './transaction-recipes/createUnsignedGovernanceTx'
+
 // Utils
 export {
-  createRawTxSigningKey,
   deriveRewardAddressFromAddress,
   deriveRewardAddressHex,
   isByron,
@@ -64,7 +65,7 @@ export {
   calcLockedDepositAfterRemovingTokens,
   calcLockedDepositForRemainingUtxos,
   calcOptimizedLockedDeposit,
-  identifierToCardanoAsset,
+  identifierToAssetHex,
 } from './assetUtils'
 
 // UTXO Service
@@ -104,7 +105,6 @@ export type {
 // Mnemonic
 export {
   generateAdaMnemonic,
-  generateWalletRootKey,
   getMasterKeyFromMnemonic,
 } from './mnemonic/mnemonic'
 
@@ -118,9 +118,6 @@ export {
 // Catalyst
 export {encryptWithPassword, generatePrivateKeyForCatalyst} from './catalyst'
 export {encryptWithPassword as encryptWithPasswordFromCipher} from './catalyst/catalystCipher'
-
-// Wrapped CSL (re-exported from common for backward compatibility)
-export {CardanoMobile, CardanoMobileWrapped} from '@yoroi/common'
 
 // Operations
 export * from './operations'
@@ -167,7 +164,7 @@ export {
 export {
   getSpendingKey,
   getStakingKey,
-  toWasmAddress,
+  toCardanoAddressInfo,
 } from './addressInfo/addressInfo'
 
 // Common

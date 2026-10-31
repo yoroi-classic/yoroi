@@ -3,7 +3,6 @@ import {UnsignedTransaction} from '@yoroi/tx'
 import {App} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import * as CSL from '@emurgo/cross-csl-core'
 import * as React from 'react'
 import {ActivityIndicator, TextInput as RNTextInput, View} from 'react-native'
 
@@ -17,7 +16,7 @@ import {Text} from '~/ui/Text/Text'
 import {Checkmark, TextInput} from '~/ui/TextInput/TextInput'
 
 type Props = {
-  onSuccess?: (signedTx: CSL.Transaction) => void
+  onSuccess?: (signedTx: Uint8Array) => void
   unsignedTx: UnsignedTransaction
   onError?: (error: unknown) => void
 }
@@ -39,7 +38,7 @@ export const SignWithPasswordModal = ({
     submitTx,
     error: submitError,
     isPending: submitIsLoading,
-  } = useSubmitTx(
+  } = useSubmitTx<Uint8Array>(
     {
       wallet,
     },

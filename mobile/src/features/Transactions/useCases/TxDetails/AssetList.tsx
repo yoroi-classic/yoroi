@@ -1,5 +1,4 @@
 import {
-  CardanoTypes,
   asQuantity,
   formatTokenAmount,
   isEmptyString,
@@ -10,6 +9,7 @@ import {
   usePortfolioTokenInfo,
 } from '@yoroi/portfolio'
 import {atoms as a, useTheme} from '@yoroi/theme'
+import type {TokenEntry} from '@yoroi/tx'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
 import * as React from 'react'
@@ -20,8 +20,8 @@ import {useStrings} from '~/kernel/i18n/useStrings'
 import {Boundary} from '~/ui/Boundary/Boundary'
 
 type AssetListProps = {
-  assets: Array<CardanoTypes.TokenEntry>
-  onSelect?: (tokenEntry: CardanoTypes.TokenEntry) => void
+  assets: Array<TokenEntry>
+  onSelect?: (tokenEntry: TokenEntry) => void
 }
 export const AssetList = ({assets, onSelect}: AssetListProps) => {
   const strings = useStrings()
@@ -57,8 +57,8 @@ export const AssetList = ({assets, onSelect}: AssetListProps) => {
 }
 
 type AssetRowProps = {
-  entry: CardanoTypes.TokenEntry
-  onSelect?: (tokenEntry: CardanoTypes.TokenEntry) => void
+  entry: TokenEntry
+  onSelect?: (tokenEntry: TokenEntry) => void
 }
 
 const AssetRow = ({entry, onSelect}: AssetRowProps) => {

@@ -9,7 +9,6 @@
  * - CNT-specific transfer requirements
  */
 import {RawUtxo} from '@yoroi/api'
-import {CardanoMobileWrapped, isHex} from '@yoroi/common'
 import {getLogger} from '@yoroi/logger'
 import {primaryTokenId as defaultPrimaryTokenId} from '@yoroi/portfolio'
 import {ModernUtxo, filterPureAdaUtxos, selectUtxosForAmounts} from '@yoroi/tx'
@@ -29,7 +28,7 @@ import {
   calcLockedDepositAfterRemovingTokens,
   calcOptimizedLockedDeposit,
 } from './assetUtils'
-import {cardanoValueFromAmounts} from './cardanoValueFromAmounts'
+import {minimumAdaForAssetsCml} from './cml/minimumAda'
 import {
   FeeEstimationError,
   InsufficientTokensError,
@@ -265,7 +264,7 @@ export async function selectUtxosForTransfer(
       }
     }
 
-    // Calculate minimum ADA for change output using CSL
+    // Calculate minimum ADA for change output using the CML-backed helper
     const changeOutputMinAda = await calculateChangeOutputMinAda(
       changeAddress,
       changeOutputTokens,
@@ -670,7 +669,7 @@ export async function calculateCntTransferRequirements(
 }
 
 /**
- * Calculate minimum ADA for change output using CSL
+ * Calculate minimum ADA for change output using the CML-backed helper
  * Exported for use in transaction building
  */
 export async function calculateChangeOutputMinAda(
@@ -684,57 +683,31 @@ export async function calculateChangeOutputMinAda(
     return BigInt(protocolParams.minimumUtxoVal || '1000000')
   }
 
-  return CardanoMobileWrapped.cslScope(async (csl) => {
-    try {
-      // Normalize address
-      let normalizedAddress
-      if (csl.ByronAddress.isValid(changeAddress)) {
-        const byronAddr = csl.ByronAddress.fromBase58(changeAddress)
-        normalizedAddress = byronAddr.toAddress()
-      } else {
-        const isHexAddr = isHex(changeAddress)
-        normalizedAddress = isHexAddr
-          ? csl.Address.fromHex(changeAddress)
-          : csl.Address.fromBech32(changeAddress)
-      }
+  try {
+    const amounts = Object.fromEntries(
+      Object.entries(changeTokens).map(([tokenId, quantity]) => [
+        tokenId,
+        quantity.toString(),
+      ]),
+    )
+    return minimumAdaForAssetsCml({
+      address: changeAddress,
+      amounts,
+      primaryTokenId,
+      coinsPerUtxoByte: protocolParams.coinsPerUtxoByte,
+    })
+  } catch (error) {
+    logger.error(error as Error, {
+      function: 'calculateChangeOutputMinAda',
+      changeAddress,
+      tokenCount: Object.keys(changeTokens).length,
+    })
 
-      if (!normalizedAddress || normalizedAddress.isMalformed()) {
-        throw new Error(`Invalid change address: ${changeAddress}`)
-      }
-
-      // Create value with tokens (using 0 ADA initially to calculate minimum)
-      const amounts: Balance.Amounts = {
-        [primaryTokenId]: Branded.ZERO_QUANTITY,
-      } as Balance.Amounts
-      for (const [tokenId, quantity] of Object.entries(changeTokens)) {
-        amounts[tokenId as TokenId] = quantity.toString() as Balance.Quantity
-      }
-
-      const value = cardanoValueFromAmounts(csl, amounts, primaryTokenId)
-      const txOutput = csl.TransactionOutput.new(normalizedAddress, value)
-      if (!txOutput) {
-        throw new Error('Failed to create TransactionOutput')
-      }
-
-      const dataCost = csl.DataCost.newCoinsPerByte(
-        csl.BigNum.fromStr(protocolParams.coinsPerUtxoByte),
-      )
-      const minAda = csl.minAdaForOutput(txOutput, dataCost)
-
-      return BigInt(minAda.toStr())
-    } catch (error) {
-      logger.error(error as Error, {
-        function: 'calculateChangeOutputMinAda',
-        changeAddress,
-        tokenCount: Object.keys(changeTokens).length,
-      })
-
-      // Fallback to conservative estimate
-      const baseMin = BigInt(protocolParams.minimumUtxoVal || '1000000')
-      const tokenCount = Object.keys(changeTokens).length
-      return baseMin + BigInt(tokenCount) * BigInt('100000') // 0.1 ADA per token
-    }
-  })
+    // Keep the historical conservative estimate when parsing fails.
+    const baseMin = BigInt(protocolParams.minimumUtxoVal || '1000000')
+    const tokenCount = Object.keys(changeTokens).length
+    return baseMin + BigInt(tokenCount) * BigInt('100000')
+  }
 }
 
 /**

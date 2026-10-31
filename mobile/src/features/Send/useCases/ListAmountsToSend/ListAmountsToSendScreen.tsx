@@ -6,7 +6,6 @@ import {NotEnoughMoneyToSendError, TransactionOutput} from '@yoroi/tx'
 import {Branded, Portfolio} from '@yoroi/types'
 import {useSelectedWallet} from '@yoroi/wallet-manager'
 
-import * as CSL from '@emurgo/cross-csl-core'
 import {useNavigation} from '@react-navigation/native'
 import * as React from 'react'
 import {TouchableOpacity, View} from 'react-native'
@@ -155,12 +154,9 @@ export const ListAmountsToSendScreen = () => {
     amountRemoved(tokenId)
   }
 
-  const handleOnSuccess = React.useCallback(
-    async (_signedTx?: CSL.Transaction) => {
-      reset()
-    },
-    [reset],
-  )
+  const handleOnSuccess = React.useCallback(async () => {
+    reset()
+  }, [reset])
 
   const handleOnAdd = () => {
     clearSearch()
@@ -202,11 +198,7 @@ export const ListAmountsToSendScreen = () => {
     (result: {cbor: string}) => {
       navigateToTxReview({
         cbor: result.cbor,
-        onSuccess: () => {
-          // signedTx can be Transaction or a function, but handleOnSuccess expects Transaction | undefined
-          // Since handleOnSuccess doesn't use the parameter, pass undefined
-          handleOnSuccess(undefined)
-        },
+        onSuccess: handleOnSuccess,
         context: 'send',
       })
     },

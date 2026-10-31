@@ -50,7 +50,7 @@ The current backend `/v1` contract uses different resource shapes:
 - `GET /v1/account/{stake}/txs`
 - `GET /v1/account/{stake}/rewards`
 - `POST /v1/addresses/filter-used`
-- `POST /v1/addresses/utxos`
+- `POST /v1/addresses/utxos` with `{"addresses": [...]}`
 - `POST /v1/addresses/txs`
 - `POST /v1/tx/submit`
 - `GET /v1/tx/{hash}/status`

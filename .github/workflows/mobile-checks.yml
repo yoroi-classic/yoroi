@@ -87,3 +87,49 @@ jobs:
           fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  android-native-build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.12.0"
+          cache: "npm"
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
+        with:
+          toolchain: 1.86.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+          {
+            echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/27.0.12077973"
+            echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973"
+            echo "ANDROID_NDK=${ANDROID_HOME}/ndk/27.0.12077973"
+          } >> "$GITHUB_ENV"
+      - name: Install mobile dependencies
+        run: npm ci
+        working-directory: mobile
+      - name: Test CML bridge Rust vectors
+        run: cargo test --manifest-path node_modules/@yoroi-classic/cml-mobile-bridge/rust/Cargo.toml
+        working-directory: mobile
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+        working-directory: mobile
+      - name: Build CML and MSL Rust libraries
+        run: EAS_BUILD_PLATFORM=android bash ./scripts/eas-post-install.sh
+        working-directory: mobile
+      - name: Compile Android app and native modules
+        run: ./gradlew :app:assembleDebug
+        working-directory: mobile/android
