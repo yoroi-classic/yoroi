@@ -99,7 +99,7 @@ function validatePinnedDependencyLock() {
   const packageJson = readJsonFile('package.json')
   const packageLock = readJsonFile('package-lock.json')
   const bunLock = fs.readFileSync(path.join(mobileRoot, 'bun.lock'), 'utf8')
-  const bunLockRoot = bunLock.split(/\n\s*"packages"\s*:/, 1)[0]
+  const bunLockRoot = bunLock.split(/\n\s*"packages"\s*:/, 1)[0] ?? ''
   const rootLockPackage = packageLock.packages?.[''] ?? {}
   const rootLockDependencyGroups = [
     rootLockPackage.dependencies,
