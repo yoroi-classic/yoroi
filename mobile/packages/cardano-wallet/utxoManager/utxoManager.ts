@@ -147,7 +147,7 @@ export const makeCurrentStateUtxoManager = async ({
           (overlay) =>
             overlay.ttlSlot !== undefined &&
             overlay.spentUtxoIds.length > 0 &&
-            overlay.spentUtxoIds.every((utxoId) => currentIds.has(utxoId)),
+            overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId)),
         )
         const currentSlot =
           overlaysWithUnspentInputs.length > 0
@@ -161,14 +161,14 @@ export const makeCurrentStateUtxoManager = async ({
           const observed =
             overlay.spentUtxoIds.length > 0 &&
             overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
-          const expiredWithInputsUnspent =
+          const expiredWithInputsRemaining =
             overlay.ttlSlot !== undefined &&
             overlay.spentUtxoIds.length > 0 &&
-            overlay.spentUtxoIds.every((utxoId) => currentIds.has(utxoId)) &&
+            overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId)) &&
             currentSlot !== undefined &&
             currentSlot !== null &&
             BigInt(currentSlot) > BigInt(overlay.ttlSlot)
-          if (observed || expiredWithInputsUnspent) {
+          if (observed || expiredWithInputsRemaining) {
             await pendingStore.removePendingUtxoOverlay(
               stakeAddress,
               overlay.txHash,

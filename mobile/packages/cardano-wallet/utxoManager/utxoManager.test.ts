@@ -337,6 +337,73 @@ describe('current-state UTxO manager', () => {
     ).resolves.toEqual([])
   })
 
+  it('expires a pending overlay after its TTL when only some inputs remain', async () => {
+    const accountStorage = rootStorage.join(
+      'current-state-partially-spent-expired-overlay-test/',
+    )
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const spentInput = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1spent'),
+      amount: '1234567' as Balance.Quantity,
+      assets: [],
+    }
+    const remainingInput = {
+      ...spentInput,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      receiver: Branded.asAddress('addr_test1remaining'),
+    }
+    const change = {
+      ...spentInput,
+      utxoId: Branded.asUtxoId(`${'c'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('c'.repeat(64)),
+      txIndex: 1,
+      receiver: Branded.asAddress('addr_test1change'),
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn().mockResolvedValue({
+        bestBlock: {
+          height: 1_000_000,
+          slot: 1_000_000,
+          epoch: 1,
+          hash: 'd'.repeat(64),
+          globalSlot: null,
+        },
+      }),
+      getAccountUtxos: jest
+        .fn()
+        .mockResolvedValueOnce([spentInput, remainingInput])
+        .mockResolvedValueOnce([remainingInput]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+    })
+    await manager.sync([])
+    await manager.savePendingOverlay({
+      txHash: change.txHash,
+      ttlSlot: '10',
+      spentUtxoIds: [spentInput.utxoId, remainingInput.utxoId],
+      createdUtxos: [change],
+    })
+
+    await manager.sync([])
+
+    await expect(manager.getCachedUtxos()).resolves.toEqual([
+      expect.objectContaining({utxo_id: remainingInput.utxoId}),
+    ])
+    await expect(
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),
+    ).resolves.toEqual([])
+  })
+
   it('does not commit a new snapshot when the chain tip needed for expiry fails', async () => {
     const accountStorage = rootStorage.join('current-state-tip-failure-test/')
     await accountStorage.clear()
