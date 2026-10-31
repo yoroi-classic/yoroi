@@ -98,6 +98,8 @@ function getPackageVersion(
 function validatePinnedDependencyLock() {
   const packageJson = readJsonFile('package.json')
   const packageLock = readJsonFile('package-lock.json')
+  const bunLock = fs.readFileSync(path.join(mobileRoot, 'bun.lock'), 'utf8')
+  const bunLockRoot = bunLock.split(/\n\s*"packages"\s*:/, 1)[0]
   const rootLockPackage = packageLock.packages?.[''] ?? {}
   const rootLockDependencyGroups = [
     rootLockPackage.dependencies,
@@ -161,6 +163,9 @@ function validatePinnedDependencyLock() {
     if (packageLock.packages?.[`node_modules/${dependencyName}`]) {
       failures.push(`${dependencyName} remains in package-lock.json`)
     }
+    if (bunLock.includes(dependencyName)) {
+      failures.push(`${dependencyName} remains in bun.lock`)
+    }
   }
 
   for (const dependencyName of pinnedDependencySmokeInputs) {
@@ -184,6 +189,12 @@ function validatePinnedDependencyLock() {
       )
     }
 
+    if (!bunLockRoot.includes(`"${dependencyName}": "${packageJsonVersion}"`)) {
+      failures.push(
+        `${dependencyName} bun.lock root version does not match package.json ${packageJsonVersion}`,
+      )
+    }
+
     if (
       dependencyName !== '@yoroi-classic/cml-mobile-bridge' &&
       resolvedVersion !== packageJsonVersion
@@ -197,6 +208,21 @@ function validatePinnedDependencyLock() {
       !resolvedPackage
     ) {
       failures.push(`${dependencyName} has no package-lock entry`)
+    }
+
+    if (dependencyName === '@yoroi-classic/cml-mobile-bridge') {
+      const expectedCommit = packageJsonVersion.split('#')[1]
+
+      if (
+        typeof expectedCommit !== 'string' ||
+        !bunLock.includes(
+          `${dependencyName}@github:yoroi-classic/csl-mobile-bridge#${expectedCommit.slice(0, 7)}`,
+        )
+      ) {
+        failures.push(
+          `${dependencyName} bun.lock resolution does not match package.json ${packageJsonVersion}`,
+        )
+      }
     }
   }
 
