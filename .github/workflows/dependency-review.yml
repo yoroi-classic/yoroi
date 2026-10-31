@@ -36,4 +36,5 @@ jobs:
           # GHSA-g3hv-75wg-m249's listed affected release, minimatch 10.2.6,
           # is overridden to 11.0.1. The remaining 3.1.5 report is outside
           # the advisory's affected-version list.
-          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq, GHSA-g3hv-75wg-m249
+          # The GHSA reports the exact patched fast-xml-parser 4.5.7 release.
+          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq, GHSA-g3hv-75wg-m249, GHSA-gh4j-gqv2-49f6
