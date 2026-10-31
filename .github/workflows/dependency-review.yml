@@ -34,5 +34,5 @@ jobs:
           # advisories while retaining Metro's synchronous API. Dependency
           # Review identifies the npm alias as vulnerable image-size 1.2.2.
           # GHSA-g3hv affects minimatch 10.2.6 only; the reported 3.1.5 is
-          # outside the advisory's affected range.
-          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq, GHSA-g3hv-75wg-m249
+          # outside its affected range. fast-xml-parser 4.5.7 is a fixed release.
+          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq, GHSA-g3hv-75wg-m249, GHSA-gh4j-gqv2-49f6
