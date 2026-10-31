@@ -3,6 +3,7 @@ import {spawnSync} from 'node:child_process'
 import fs from 'node:fs'
 import {createRequire} from 'node:module'
 import path from 'node:path'
+import ts from 'typescript'
 
 const mobileRoot = process.cwd()
 const scriptRequire = createRequire(__filename)
@@ -98,14 +99,29 @@ function getPackageVersion(
 function validatePinnedDependencyLock() {
   const packageJson = readJsonFile('package.json')
   const packageLock = readJsonFile('package-lock.json')
-  const bunLock = fs.readFileSync(path.join(mobileRoot, 'bun.lock'), 'utf8')
-  const bunLockRoot = bunLock.split(/\n\s*"packages"\s*:/, 1)[0] ?? ''
+  const bunLockSource = fs.readFileSync(
+    path.join(mobileRoot, 'bun.lock'),
+    'utf8',
+  )
+  const bunLockParseResult = ts.parseConfigFileTextToJson(
+    'bun.lock',
+    bunLockSource,
+  )
+  const bunLock = bunLockParseResult.config ?? {}
+  const bunLockRootWorkspace = bunLock.workspaces?.['']
+  const bunLockRootDependencyGroups = [
+    bunLockRootWorkspace?.dependencies,
+    bunLockRootWorkspace?.devDependencies,
+  ] as Array<Record<string, string> | undefined>
   const rootLockPackage = packageLock.packages?.[''] ?? {}
   const rootLockDependencyGroups = [
     rootLockPackage.dependencies,
     rootLockPackage.devDependencies,
   ] as Array<Record<string, string> | undefined>
   const failures: Array<string> = []
+  if (bunLockParseResult.error || !bunLockRootWorkspace) {
+    failures.push('bun.lock is invalid or missing the root workspace')
+  }
   const forbiddenCslDependencies = [
     '@emurgo/cardano-serialization-lib-browser',
     '@emurgo/cardano-serialization-lib-nodejs',
@@ -163,7 +179,7 @@ function validatePinnedDependencyLock() {
     if (packageLock.packages?.[`node_modules/${dependencyName}`]) {
       failures.push(`${dependencyName} remains in package-lock.json`)
     }
-    if (bunLock.includes(dependencyName)) {
+    if (bunLockSource.includes(dependencyName)) {
       failures.push(`${dependencyName} remains in bun.lock`)
     }
   }
@@ -189,7 +205,11 @@ function validatePinnedDependencyLock() {
       )
     }
 
-    if (!bunLockRoot.includes(`"${dependencyName}": "${packageJsonVersion}"`)) {
+    const bunLockRootVersion = bunLockRootDependencyGroups
+      .map((dependencies) => dependencies?.[dependencyName])
+      .find(Boolean)
+
+    if (bunLockRootVersion !== packageJsonVersion) {
       failures.push(
         `${dependencyName} bun.lock root version does not match package.json ${packageJsonVersion}`,
       )
@@ -215,7 +235,7 @@ function validatePinnedDependencyLock() {
 
       if (
         typeof expectedCommit !== 'string' ||
-        !bunLock.includes(
+        !bunLockSource.includes(
           `${dependencyName}@github:yoroi-classic/csl-mobile-bridge#${expectedCommit.slice(0, 7)}`,
         )
       ) {
