@@ -143,12 +143,17 @@ export const makeCurrentStateUtxoManager = async ({
           await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(
             stakeAddress,
           )
-        const overlaysWithUnspentInputs = pending.filter(
-          (overlay) =>
-            overlay.ttlSlot !== undefined &&
-            overlay.spentUtxoIds.length > 0 &&
-            overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId)),
-        )
+        const earlierPendingOutputIds = new Set<string>()
+        const overlaysWithUnspentInputs = pending.filter((overlay) => {
+          const hasTrackedInput = overlay.spentUtxoIds.some(
+            (utxoId) =>
+              currentIds.has(utxoId) || earlierPendingOutputIds.has(utxoId),
+          )
+          for (const createdUtxo of overlay.createdUtxos) {
+            earlierPendingOutputIds.add(createdUtxo.utxoId)
+          }
+          return overlay.ttlSlot !== undefined && hasTrackedInput
+        })
         const currentSlot =
           overlaysWithUnspentInputs.length > 0
             ? (await source.getChainTip()).bestBlock.slot
@@ -162,6 +167,9 @@ export const makeCurrentStateUtxoManager = async ({
           const spendsRetainedPendingOutput = overlay.spentUtxoIds.some(
             (utxoId) => retainedPendingOutputIds.has(utxoId),
           )
+          const hasUnspentInput =
+            spendsRetainedPendingOutput ||
+            overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId))
           const observed =
             !spendsRetainedPendingOutput &&
             overlay.spentUtxoIds.length > 0 &&
@@ -169,7 +177,7 @@ export const makeCurrentStateUtxoManager = async ({
           const expiredWithInputsRemaining =
             overlay.ttlSlot !== undefined &&
             overlay.spentUtxoIds.length > 0 &&
-            overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId)) &&
+            hasUnspentInput &&
             currentSlot !== undefined &&
             currentSlot !== null &&
             BigInt(currentSlot) > BigInt(overlay.ttlSlot)
