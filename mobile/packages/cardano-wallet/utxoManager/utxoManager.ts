@@ -118,6 +118,7 @@ export const makeCurrentStateUtxoManager = async ({
     (await managerStorage.collateral.read()) ?? ''
   const initialCollateralId = await getCollateralId()
   const initialUtxos = await getCachedUtxos()
+  let syncQueue = Promise.resolve()
 
   return {
     kind: 'current-state' as const,
@@ -135,42 +136,48 @@ export const makeCurrentStateUtxoManager = async ({
     removePendingOverlay: (txHash: PendingUtxoOverlay['txHash']) =>
       pendingStore.removePendingUtxoOverlay(stakeAddress, txHash),
     sync: async (_addresses: Array<string>) => {
-      const nextUtxos = await source.getAccountUtxos(stakeAddress)
-      const currentIds = new Set(nextUtxos.map((utxo) => utxo.utxoId))
-      const pending =
-        await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress)
-      const overlaysWithUnspentInputs = pending.filter(
-        (overlay) =>
-          overlay.ttlSlot !== undefined &&
-          overlay.spentUtxoIds.length > 0 &&
-          overlay.spentUtxoIds.every((utxoId) => currentIds.has(utxoId)),
-      )
-      const currentSlot =
-        overlaysWithUnspentInputs.length > 0
-          ? (await source.getChainTip()).bestBlock.slot
-          : undefined
-      // Fetch all data needed to reconcile pending transactions before
-      // committing the new authoritative snapshot.
-      await storage.setItem(currentStateCacheKey, nextUtxos)
-      authoritativeUtxos = [...nextUtxos]
-      for (const overlay of pending) {
-        const observed =
-          overlay.spentUtxoIds.length > 0 &&
-          overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
-        const expiredWithInputsUnspent =
-          overlay.ttlSlot !== undefined &&
-          overlay.spentUtxoIds.length > 0 &&
-          overlay.spentUtxoIds.every((utxoId) => currentIds.has(utxoId)) &&
-          currentSlot !== undefined &&
-          currentSlot !== null &&
-          BigInt(currentSlot) > BigInt(overlay.ttlSlot)
-        if (observed || expiredWithInputsUnspent) {
-          await pendingStore.removePendingUtxoOverlay(
+      const sync = syncQueue.then(async () => {
+        const nextUtxos = await source.getAccountUtxos(stakeAddress)
+        const currentIds = new Set(nextUtxos.map((utxo) => utxo.utxoId))
+        const pending =
+          await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(
             stakeAddress,
-            overlay.txHash,
           )
+        const overlaysWithUnspentInputs = pending.filter(
+          (overlay) =>
+            overlay.ttlSlot !== undefined &&
+            overlay.spentUtxoIds.length > 0 &&
+            overlay.spentUtxoIds.every((utxoId) => currentIds.has(utxoId)),
+        )
+        const currentSlot =
+          overlaysWithUnspentInputs.length > 0
+            ? (await source.getChainTip()).bestBlock.slot
+            : undefined
+        // Fetch all data needed to reconcile pending transactions before
+        // committing the new authoritative snapshot.
+        await storage.setItem(currentStateCacheKey, nextUtxos)
+        authoritativeUtxos = [...nextUtxos]
+        for (const overlay of pending) {
+          const observed =
+            overlay.spentUtxoIds.length > 0 &&
+            overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
+          const expiredWithInputsUnspent =
+            overlay.ttlSlot !== undefined &&
+            overlay.spentUtxoIds.length > 0 &&
+            overlay.spentUtxoIds.every((utxoId) => currentIds.has(utxoId)) &&
+            currentSlot !== undefined &&
+            currentSlot !== null &&
+            BigInt(currentSlot) > BigInt(overlay.ttlSlot)
+          if (observed || expiredWithInputsUnspent) {
+            await pendingStore.removePendingUtxoOverlay(
+              stakeAddress,
+              overlay.txHash,
+            )
+          }
         }
-      }
+      })
+      syncQueue = sync.catch(() => undefined)
+      await sync
     },
     initialCollateralId,
     getCollateralId,

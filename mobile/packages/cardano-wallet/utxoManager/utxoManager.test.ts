@@ -92,6 +92,66 @@ describe('current-state UTxO manager', () => {
     expect(source.getAccountUtxos).toHaveBeenCalledTimes(3)
   })
 
+  it('serializes overlapping syncs so newer snapshots commit last', async () => {
+    const accountStorage = rootStorage.join(
+      'current-state-overlapping-sync-test/',
+    )
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const firstUtxo = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1first'),
+      amount: '1000000' as Balance.Quantity,
+      assets: [],
+    }
+    const secondUtxo = {
+      ...firstUtxo,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      receiver: Branded.asAddress('addr_test1second'),
+    }
+    let resolveFirst: (utxos: (typeof firstUtxo)[]) => void = () => undefined
+    let resolveSecond: (utxos: (typeof secondUtxo)[]) => void = () => undefined
+    const firstResult = new Promise<(typeof firstUtxo)[]>((resolve) => {
+      resolveFirst = resolve
+    })
+    const secondResult = new Promise<(typeof secondUtxo)[]>((resolve) => {
+      resolveSecond = resolve
+    })
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest
+        .fn()
+        .mockImplementationOnce(() => firstResult)
+        .mockImplementationOnce(() => secondResult),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+    })
+
+    const firstSync = manager.sync([])
+    await Promise.resolve()
+    const secondSync = manager.sync([])
+    await Promise.resolve()
+    expect(source.getAccountUtxos).toHaveBeenCalledTimes(1)
+
+    resolveFirst([firstUtxo])
+    await firstSync
+    expect(source.getAccountUtxos).toHaveBeenCalledTimes(2)
+    resolveSecond([secondUtxo])
+    await secondSync
+
+    expect(await manager.getCachedUtxos()).toEqual([
+      expect.objectContaining({utxo_id: secondUtxo.utxoId}),
+    ])
+  })
+
   it('rehydrates a pending spend/change overlay after restart', async () => {
     const accountStorage = rootStorage.join('current-state-overlay-test/')
     await accountStorage.clear()
