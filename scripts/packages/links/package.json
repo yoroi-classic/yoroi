@@ -132,5 +132,8 @@
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
+  },
+  "overrides": {
+    "image-size": "npm:image-size-next@1.2.2"
   }
 }
