@@ -13,6 +13,10 @@ const mockWallet = {
   isMainnet: true,
   receiveAddresses: jest.fn(() => []),
 }
+let mockAirdropEnabled = true
+let mockBackendUrl: string | undefined
+const previousReferenceScriptFlag =
+  process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
 
 jest.mock('@yoroi/notifications', () => ({
   useNotificationManager: () => ({
@@ -31,10 +35,14 @@ jest.mock('@yoroi/wallet-manager', () => ({
 }))
 jest.mock('~/common/hooks/useRemoteConfig', () => ({
   useRemoteConfig: () => ({
-    config: {features: {midnightAirdrop: {enabled: true}}},
+    config: {features: {midnightAirdrop: {enabled: mockAirdropEnabled}}},
   }),
 }))
-jest.mock('~/kernel/constants', () => ({cardanoWalletBackendUrl: undefined}))
+jest.mock('~/kernel/constants', () => ({
+  get cardanoWalletBackendUrl() {
+    return mockBackendUrl
+  },
+}))
 jest.mock('~/kernel/i18n/useStrings', () => ({
   useStrings: () => ({airdrop: {bannerTitle: '', bannerBody: ''}}),
 }))
@@ -47,8 +55,43 @@ jest.mock('./useAirdropEligibility', () => ({
 }))
 
 describe('useAirdropBanner', () => {
+  beforeEach(() => {
+    mockAirdropEnabled = true
+    mockBackendUrl = undefined
+    mockRemoveBanner.mockClear()
+    mockShowBanner.mockClear()
+  })
+
+  afterEach(() => {
+    if (previousReferenceScriptFlag == null) {
+      delete process.env
+        .EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
+    } else {
+      process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+        previousReferenceScriptFlag
+    }
+  })
+
   it('removes a persisted banner when the backend endpoint is not configured', async () => {
     mockShowBanner.mockClear()
+    const queryClient = new QueryClient()
+    const wrapper = ({children}: {children: React.ReactNode}) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    renderHook(() => useAirdropBanner(), {wrapper})
+
+    await waitFor(() => expect(mockRemoveBanner).toHaveBeenCalled())
+    expect(mockRemoveBanner).toHaveBeenCalledWith(987654321)
+    expect(mockShowBanner).not.toHaveBeenCalled()
+    queryClient.clear()
+  })
+
+  it('removes a persisted banner when the remote feature is disabled', async () => {
+    mockAirdropEnabled = false
+    mockBackendUrl = 'https://wallet-backend.example'
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
     const queryClient = new QueryClient()
     const wrapper = ({children}: {children: React.ReactNode}) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

@@ -4,6 +4,7 @@ import * as React from 'react'
 import {Menu, MenuNavigator} from './Menu'
 
 let mockBackendUrl: string | undefined
+let mockAirdropEnabled = true
 const previousReferenceScriptFlag =
   process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
 
@@ -66,7 +67,7 @@ jest.mock('~/ui/Space/Space', () => ({
 }))
 jest.mock('~/common/hooks/useRemoteConfig', () => ({
   useRemoteConfig: () => ({
-    config: {features: {midnightAirdrop: {enabled: true}}},
+    config: {features: {midnightAirdrop: {enabled: mockAirdropEnabled}}},
   }),
 }))
 jest.mock('~/kernel/constants', () => ({
@@ -136,6 +137,8 @@ jest.mock('../RegisterCatalyst/common/InsufficientFundsModal', () => ({
 
 describe('MenuNavigator airdrop route', () => {
   afterEach(() => {
+    mockAirdropEnabled = true
+    mockBackendUrl = undefined
     if (previousReferenceScriptFlag == null) {
       delete process.env
         .EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
@@ -155,6 +158,28 @@ describe('MenuNavigator airdrop route', () => {
 
   it('does not render the airdrop menu entry when the backend URL is not configured', () => {
     mockBackendUrl = undefined
+
+    render(<Menu />)
+
+    expect(screen.queryByText('Airdrop')).toBeNull()
+  })
+
+  it('omits the route when the remote airdrop feature is disabled', () => {
+    mockBackendUrl = 'https://wallet-backend.example'
+    mockAirdropEnabled = false
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
+
+    render(<MenuNavigator />)
+
+    expect(screen.queryByTestId('menu-route-airdrop')).toBeNull()
+  })
+
+  it('hides the menu entry when the remote airdrop feature is disabled', () => {
+    mockBackendUrl = 'https://wallet-backend.example'
+    mockAirdropEnabled = false
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
 
     render(<Menu />)
 
