@@ -117,7 +117,7 @@
     "@tanstack/react-query": "5.81.5",
     "@yoroi/common": "^7.0.0-beta",
     "react-native-mmkv": "3.2.0",
-    "axios": "1.10.0",
+    "axios": "1.21.0",
     "bignumber.js": "9.3.0",
     "immer": "10.1.1",
     "react-native": "0.79.5",
