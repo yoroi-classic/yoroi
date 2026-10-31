@@ -29,3 +29,8 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: moderate
+          # Metro 0.82 and 0.80 use image-size 1.x. The lockfile replaces that
+          # package with image-size-next 1.2.2, which fixes both parser DoS
+          # advisories while retaining Metro's synchronous API. Dependency
+          # Review identifies the npm alias as vulnerable image-size 1.2.2.
+          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq
