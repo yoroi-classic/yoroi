@@ -116,15 +116,15 @@
     "@react-native-async-storage/async-storage": "2.1.2",
     "@tanstack/react-query": "5.81.5",
     "@yoroi/common": "^7.0.0-beta",
-    "react-native-mmkv": "3.2.0",
     "axios": "1.21.0",
     "bignumber.js": "9.3.0",
     "immer": "10.1.1",
-    "react-native": "0.79.5",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "react-native": "0.79.5",
+    "react-native-mmkv": "3.2.0",
     "rxjs": "7.8.2",
-    "zod": "3.25.17"
+    "zod": "^4.6.6"
   },
   "packageManager": "npm@10.9.0",
   "engines": {
