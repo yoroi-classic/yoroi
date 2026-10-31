@@ -86,7 +86,7 @@
     "@tanstack/query-async-storage-persister": "5.90.12",
     "@tanstack/react-query": "5.90.10",
     "@tanstack/react-query-persist-client": "5.90.12",
-    "@yoroi-classic/cml-mobile-bridge": "git+https://github.com/yoroi-classic/csl-mobile-bridge.git#3f389cf5de4174b37f7117a4b10e25ede8204cc5",
+    "@yoroi-classic/cml-mobile-bridge": "github:yoroi-classic/csl-mobile-bridge#b51cc28fe4aef271dfa6b44965f8c98bc4c20d30",
     "axios": "1.10.0",
     "bech32": "1.1.4",
     "bignumber.js": "9.3.0",
