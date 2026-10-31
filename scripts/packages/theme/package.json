@@ -58,9 +58,9 @@
   "devDependencies": {
     "@babel/core": "7.26.0",
     "@babel/preset-env": "7.25.3",
-    "@babel/runtime": "7.25.0",
+    "@babel/runtime": "7.29.10",
     "@commitlint/config-conventional": "17.0.2",
-    "@react-native-community/cli": "18.0.0",
+    "@react-native-community/cli": "18.0.1",
     "@react-native-community/cli-platform-android": "18.0.0",
     "@react-native-community/cli-platform-ios": "18.0.0",
     "@react-native/babel-preset": "0.79.2",
@@ -100,17 +100,21 @@
     "@react-native-async-storage/async-storage": "2.1.2",
     "@tanstack/react-query": "5.81.5",
     "@yoroi/common": "^7.0.0-beta",
-    "axios": "1.10.0",
+    "axios": "1.21.0",
     "immer": "10.1.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
-    "zod": "3.25.17",
-    "react-native-mmkv": "3.2.0"
+    "react-native-mmkv": "3.2.0",
+    "zod": "^4.6.6"
   },
   "packageManager": "npm@10.9.0",
   "engines": {
     "node": ">= 22.12.0"
+  },
+  "overrides": {
+    "image-size": "npm:image-size-next@1.2.2",
+    "minimatch@^10.2.2": "11.0.1"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
