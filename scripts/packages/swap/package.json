@@ -65,9 +65,9 @@
   "devDependencies": {
     "@babel/core": "7.26.0",
     "@babel/preset-env": "7.25.3",
-    "@babel/runtime": "7.25.0",
+    "@babel/runtime": "7.26.10",
     "@commitlint/config-conventional": "17.0.2",
-    "@react-native-community/cli": "18.0.0",
+    "@react-native-community/cli": "18.0.1",
     "@react-native-community/cli-platform-android": "18.0.0",
     "@react-native-community/cli-platform-ios": "18.0.0",
     "@react-native/babel-preset": "0.79.2",
@@ -113,7 +113,7 @@
     "@yoroi/api": "^7.0.0-beta",
     "@yoroi/common": "^7.0.0-beta",
     "@yoroi/portfolio": "^7.0.0-beta",
-    "axios": "1.10.0",
+    "axios": "1.21.0",
     "bignumber.js": "9.3.0",
     "immer": "10.1.1",
     "react": "19.0.0",
@@ -121,10 +121,14 @@
     "react-native": "0.79.5",
     "react-native-mmkv": "3.2.0",
     "rxjs": "7.8.2",
-    "zod": "3.25.17"
+    "zod": "^4.6.6"
   },
   "packageManager": "npm@10.9.0",
   "engines": {
     "node": ">= 22.12.0"
+  },
+  "overrides": {
+    "fast-xml-parser": "5.7.0",
+    "image-size": "npm:image-size-next@1.2.2"
   }
 }
