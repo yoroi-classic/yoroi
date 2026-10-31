@@ -27,6 +27,7 @@ type TransactionOutput = {
 type TransactionReviewInfo = {
   isValid: boolean
   body: {
+    ttl: string | null
     inputs: TransactionInput[]
     outputs: TransactionOutput[]
     collateralInputs?: TransactionInput[] | null
@@ -119,9 +120,23 @@ export const createPendingUtxoOverlayFromCbor = ({
     return [utxo]
   })
 
+  if (
+    reviewInfo.body.ttl != null &&
+    !/^(0|[1-9][0-9]*)$/.test(reviewInfo.body.ttl)
+  ) {
+    throw new Error('Invalid transaction TTL slot')
+  }
+
   // Without a locally tracked input this transaction cannot safely be
   // reconciled against an authoritative account snapshot. Avoid projecting
   // owned outputs indefinitely for an unrelated or stale transaction.
   if (spentUtxoIds.length === 0) return undefined
-  return {txHash, spentUtxoIds, createdUtxos}
+  return {
+    txHash,
+    ...(typeof reviewInfo.body.ttl === 'string'
+      ? {ttlSlot: reviewInfo.body.ttl}
+      : {}),
+    spentUtxoIds,
+    createdUtxos,
+  }
 }

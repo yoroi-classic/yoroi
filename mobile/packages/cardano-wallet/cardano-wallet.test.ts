@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as accountManagerApi from './account-manager/account-manager'
 import * as readOnlyAccountManagerApi from './account-manager/read-only-account-manager'
 import * as legacyApi from './api/api'
+import {mockedTipStatusResponse} from './mocks'
 import {selectUtxoBackend} from './cardano-wallet'
 import type {CardanoWalletDependencies} from './dependencies'
 import {keyManager} from './key-manager/key-manager'
@@ -41,6 +42,7 @@ jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
     bech32: 'stake_test1fixture',
     keyHashHex: 'ef'.repeat(28),
   })),
+  stakeCredentialHexFromAddress: jest.fn(() => 'stake-credential-fixture'),
 }))
 
 // Setup network managers and initialize wallet factories before tests
@@ -326,13 +328,48 @@ describe('CardanoWallet', () => {
         readOnlyAddresses: {knownAddress: 'addr_test1fixture'},
       })
 
-      expect(readOnlyAccountManagerSpy).toHaveBeenCalledWith(
-        expect.objectContaining({currentStateSource: undefined}),
-      )
+      const makerOptions = readOnlyAccountManagerSpy.mock.calls[0]?.[0]
+      expect(makerOptions).not.toHaveProperty('currentStateSource')
     } finally {
       readOnlyAccountManagerSpy.mockRestore()
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
       delete mockCardanoWalletDependencies.currentStateUtxoEnabled
+      delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
+    }
+  })
+
+  it('uses the legacy tip for read-only transaction history', async () => {
+    const legacyTip = {
+      ...mockedTipStatusResponse,
+      bestBlock: {
+        ...mockedTipStatusResponse.bestBlock,
+        hash: Branded.asBlockHash('d'.repeat(64)),
+      },
+    }
+    const getTipStatusSpy = jest
+      .spyOn(legacyApi, 'getTipStatus')
+      .mockResolvedValue(legacyTip)
+    const fetchHistorySpy = jest
+      .spyOn(legacyApi, 'fetchNewTxHistory')
+      .mockResolvedValue({isLast: true, transactions: []})
+    try {
+      await readOnlyAccountManagerApi.readOnlyAccountManagerMaker({
+        chainId: 0,
+        knownAddress: 'addr_test1fixture',
+        storage: createMockStorage(),
+        baseApiUrl: 'https://legacy-api.example.com',
+        enableDiscovery: true,
+      })
+
+      expect(getTipStatusSpy).toHaveBeenCalled()
+      expect(fetchHistorySpy).toHaveBeenCalledWith(
+        expect.objectContaining({untilBlock: legacyTip.bestBlock.hash}),
+        'https://legacy-api.example.com',
+        undefined,
+      )
+    } finally {
+      getTipStatusSpy.mockRestore()
+      fetchHistorySpy.mockRestore()
     }
   })
 })

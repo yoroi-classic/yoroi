@@ -7,6 +7,8 @@ import {
 
 export type PendingUtxoOverlay = {
   readonly txHash: TransactionHash
+  /** Transaction expiry slot, omitted for legacy persisted overlays. */
+  readonly ttlSlot?: string
   readonly spentUtxoIds: ReadonlyArray<UtxoId>
   readonly createdUtxos: ReadonlyArray<CurrentStateUtxo>
 }

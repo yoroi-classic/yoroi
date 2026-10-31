@@ -44,7 +44,10 @@ describe('persistent pending UTxO overlay store', () => {
   it('rehydrates versioned overlays in submission order with exact quantities', async () => {
     const root = makeMemoryStorage()
     const accountStorage = root.join('wallet-a/accounts/0/')
-    const first = overlay(hash('a'), hash('1'))
+    const first = {
+      ...overlay(hash('a'), hash('1')),
+      ttlSlot: '9007199254740993000000',
+    }
     const second = overlay(hash('b'), hash('2'), 1)
 
     const writer = createPersistentPendingUtxoOverlayStore(accountStorage)

@@ -40,6 +40,7 @@ describe('createPendingUtxoOverlayFromCbor', () => {
       JSON.stringify({
         isValid: true,
         body: {
+          ttl: '9007199254740993000000',
           inputs: [{transactionIdHex: inputHash, index: '0'}],
           outputs: [reviewOutput(walletAddress), reviewOutput(otherAddress)],
         },
@@ -56,6 +57,7 @@ describe('createPendingUtxoOverlayFromCbor', () => {
 
     expect(overlay).toEqual({
       txHash: Branded.asTransactionHash('ab'.repeat(32)),
+      ttlSlot: '9007199254740993000000',
       spentUtxoIds: [Branded.asUtxoId(`${inputHash}:0`)],
       createdUtxos: [
         {

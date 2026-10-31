@@ -284,15 +284,6 @@ export const makeCardanoWallet = (
           readOnlyAddresses.rewardAddressHex || rewardAddressHex,
         storage: accountStorage,
         baseApiUrl: legacyApiBaseUrl,
-        currentStateSource:
-          implementation === 'cardano-cip1852' &&
-          dependencies.currentStateUtxoEnabled === true &&
-          cardanoWalletBackendUrl
-            ? createCardanoWalletBackendUtxoSource(
-                cardanoWalletBackendUrl,
-                network,
-              )
-            : undefined,
         enableDiscovery: readOnlyAddresses.enableDiscovery ?? false,
       })
 
@@ -759,10 +750,10 @@ function createWalletObject(
 
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
+    // Transaction history is served by the legacy API, so its fence must come
+    // from that API rather than the independent current-state UTxO backend.
     const syncTipStatus =
-      state.utxoManager.kind === 'current-state'
-        ? await state.utxoManager.getChainTip()
-        : tipStatus
+      state.utxoManager.kind === 'current-state' ? undefined : tipStatus
 
     await Promise.all([
       syncUtxos({isForced}),
@@ -798,9 +789,7 @@ function createWalletObject(
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
     const syncTipStatus =
-      state.utxoManager.kind === 'current-state'
-        ? await state.utxoManager.getChainTip()
-        : tipStatus
+      state.utxoManager.kind === 'current-state' ? undefined : tipStatus
 
     await Promise.all([
       syncUtxos({isForced}),

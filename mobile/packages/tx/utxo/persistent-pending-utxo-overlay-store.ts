@@ -105,6 +105,10 @@ const currentStateUtxoSchema = z
 const pendingOverlaySchema = z
   .object({
     txHash: transactionHash,
+    ttlSlot: z
+      .string()
+      .regex(/^(0|[1-9][0-9]*)$/)
+      .optional(),
     spentUtxoIds: z.array(utxoId),
     createdUtxos: z.array(currentStateUtxoSchema),
   })
@@ -239,6 +243,7 @@ const compareText = (left: string, right: string): number =>
 
 const canonicalOverlayForComparison = (overlay: PendingUtxoOverlay) => ({
   txHash: overlay.txHash,
+  ttlSlot: overlay.ttlSlot,
   spentUtxoIds: [...overlay.spentUtxoIds].sort(compareText),
   createdUtxos: overlay.createdUtxos
     .map((utxo) => ({
