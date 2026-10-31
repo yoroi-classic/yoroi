@@ -328,6 +328,7 @@ describe('CardanoWallet', () => {
         readOnlyAddresses: {knownAddress: 'addr_test1fixture'},
       })
 
+      expect(readOnlyAccountManagerSpy).toHaveBeenCalled()
       const makerOptions = readOnlyAccountManagerSpy.mock.calls[0]?.[0]
       expect(makerOptions).not.toHaveProperty('currentStateSource')
     } finally {
@@ -361,7 +362,9 @@ describe('CardanoWallet', () => {
         enableDiscovery: true,
       })
 
-      expect(getTipStatusSpy).toHaveBeenCalled()
+      expect(getTipStatusSpy).toHaveBeenCalledWith(
+        'https://legacy-api.example.com',
+      )
       expect(fetchHistorySpy).toHaveBeenCalledWith(
         expect.objectContaining({untilBlock: legacyTip.bestBlock.hash}),
         'https://legacy-api.example.com',

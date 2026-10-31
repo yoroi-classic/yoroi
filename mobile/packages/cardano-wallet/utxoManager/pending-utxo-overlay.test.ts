@@ -86,6 +86,7 @@ describe('createPendingUtxoOverlayFromCbor', () => {
       JSON.stringify({
         isValid: false,
         body: {
+          ttl: '9007199254740993000000',
           inputs: [{transactionIdHex: 'ef'.repeat(32), index: '0'}],
           outputs: [reviewOutput(otherAddress)],
           collateralInputs: [{transactionIdHex: inputHash, index: '0'}],
@@ -137,6 +138,27 @@ describe('createPendingUtxoOverlayFromCbor', () => {
     const overlay = createPendingUtxoOverlayFromCbor({
       signedTxBase64: 'AQID',
       walletUtxos: [],
+      ownedAddresses: new Set([walletAddress]),
+    })
+
+    expect(overlay).toBeUndefined()
+  })
+
+  it('does not persist pending projections for transactions without a TTL', () => {
+    jest.mocked(transactionReviewInfoJson).mockReturnValue(
+      JSON.stringify({
+        isValid: true,
+        body: {
+          ttl: null,
+          inputs: [{transactionIdHex: inputHash, index: '0'}],
+          outputs: [reviewOutput(walletAddress)],
+        },
+      }),
+    )
+
+    const overlay = createPendingUtxoOverlayFromCbor({
+      signedTxBase64: 'AQID',
+      walletUtxos: [walletUtxo],
       ownedAddresses: new Set([walletAddress]),
     })
 

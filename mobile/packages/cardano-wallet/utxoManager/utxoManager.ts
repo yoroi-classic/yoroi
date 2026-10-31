@@ -136,8 +136,6 @@ export const makeCurrentStateUtxoManager = async ({
       pendingStore.removePendingUtxoOverlay(stakeAddress, txHash),
     sync: async (_addresses: Array<string>) => {
       const nextUtxos = await source.getAccountUtxos(stakeAddress)
-      await storage.setItem(currentStateCacheKey, nextUtxos)
-      authoritativeUtxos = [...nextUtxos]
       const currentIds = new Set(nextUtxos.map((utxo) => utxo.utxoId))
       const pending =
         await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress)
@@ -151,6 +149,10 @@ export const makeCurrentStateUtxoManager = async ({
         overlaysWithUnspentInputs.length > 0
           ? (await source.getChainTip()).bestBlock.slot
           : undefined
+      // Fetch all data needed to reconcile pending transactions before
+      // committing the new authoritative snapshot.
+      await storage.setItem(currentStateCacheKey, nextUtxos)
+      authoritativeUtxos = [...nextUtxos]
       for (const overlay of pending) {
         const observed =
           overlay.spentUtxoIds.length > 0 &&

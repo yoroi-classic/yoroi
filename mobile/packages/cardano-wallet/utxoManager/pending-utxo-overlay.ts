@@ -131,11 +131,13 @@ export const createPendingUtxoOverlayFromCbor = ({
   // reconciled against an authoritative account snapshot. Avoid projecting
   // owned outputs indefinitely for an unrelated or stale transaction.
   if (spentUtxoIds.length === 0) return undefined
+  // Without a TTL there is no ledger-defined point at which an unconfirmed
+  // transaction can be discarded. Do not persist an overlay that can reserve
+  // inputs or project outputs forever if the transaction is dropped.
+  if (reviewInfo.body.ttl == null) return undefined
   return {
     txHash,
-    ...(typeof reviewInfo.body.ttl === 'string'
-      ? {ttlSlot: reviewInfo.body.ttl}
-      : {}),
+    ttlSlot: reviewInfo.body.ttl,
     spentUtxoIds,
     createdUtxos,
   }

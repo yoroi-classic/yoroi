@@ -750,18 +750,13 @@ function createWalletObject(
 
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
-    // Transaction history is served by the legacy API, so its fence must come
-    // from that API rather than the independent current-state UTxO backend.
-    const syncTipStatus =
-      state.utxoManager.kind === 'current-state' ? undefined : tipStatus
-
     await Promise.all([
       syncUtxos({isForced}),
       state.transactionManager.doSync(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        syncTipStatus,
+        tipStatus,
         isForced,
       ),
     ])
@@ -788,16 +783,13 @@ function createWalletObject(
 
     const walletContext = getWalletContext()
     await state.accountManager.discoverAddresses(walletContext)
-    const syncTipStatus =
-      state.utxoManager.kind === 'current-state' ? undefined : tipStatus
-
     await Promise.all([
       syncUtxos({isForced}),
       state.transactionManager.doQuickSync(
         addressesInBlocks(),
         networkManager.legacyApiBaseUrl,
         walletContext,
-        syncTipStatus,
+        tipStatus,
       ),
     ])
   }

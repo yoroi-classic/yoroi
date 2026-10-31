@@ -276,6 +276,55 @@ describe('current-state UTxO manager', () => {
       pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),
     ).resolves.toEqual([])
   })
+
+  it('does not commit a new snapshot when the chain tip needed for expiry fails', async () => {
+    const accountStorage = rootStorage.join('current-state-tip-failure-test/')
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const input = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1receiver'),
+      amount: '1234567' as Balance.Quantity,
+      assets: [],
+    }
+    const replacement = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      txIndex: 1,
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn().mockRejectedValue(new Error('tip unavailable')),
+      getAccountUtxos: jest
+        .fn()
+        .mockResolvedValueOnce([input])
+        .mockResolvedValueOnce([input, replacement]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+    })
+    await manager.sync([])
+    await manager.savePendingOverlay({
+      txHash: replacement.txHash,
+      ttlSlot: '10',
+      spentUtxoIds: [input.utxoId],
+      createdUtxos: [replacement],
+    })
+
+    await expect(manager.sync([])).rejects.toThrow('tip unavailable')
+
+    await expect(
+      storage.getItem('current-state-cache', (value) =>
+        value == null ? [] : (JSON.parse(value) as Array<{utxoId: string}>),
+      ),
+    ).resolves.toEqual([expect.objectContaining({utxoId: input.utxoId})])
+  })
 })
 
 describe('utxo manager storage', () => {
