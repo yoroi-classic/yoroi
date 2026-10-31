@@ -119,8 +119,21 @@ function validatePinnedDependencyLock() {
     rootLockPackage.devDependencies,
   ] as Array<Record<string, string> | undefined>
   const failures: Array<string> = []
-  if (bunLockParseResult.error || !bunLockRootWorkspace) {
-    failures.push('bun.lock is invalid or missing the root workspace')
+  if (bunLockParseResult.error) {
+    const diagnostic = bunLockParseResult.error
+    const location =
+      diagnostic.file && typeof diagnostic.start === 'number'
+        ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
+        : undefined
+    const prefix = location
+      ? `${diagnostic.file?.fileName}:${location.line + 1}:${location.character + 1}: `
+      : ''
+
+    failures.push(
+      `bun.lock parse error: ${prefix}${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`,
+    )
+  } else if (!bunLockRootWorkspace) {
+    failures.push('bun.lock is missing the root workspace')
   }
   const forbiddenCslDependencies = [
     '@emurgo/cardano-serialization-lib-browser',
