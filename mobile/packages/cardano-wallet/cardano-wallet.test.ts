@@ -16,10 +16,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as accountManagerApi from './account-manager/account-manager'
 import * as readOnlyAccountManagerApi from './account-manager/read-only-account-manager'
 import * as legacyApi from './api/api'
-import {mockedTipStatusResponse} from './mocks'
 import {selectUtxoBackend} from './cardano-wallet'
 import type {CardanoWalletDependencies} from './dependencies'
 import {keyManager} from './key-manager/key-manager'
+import {mockedTipStatusResponse} from './mocks'
 import * as pendingOverlayApi from './utxoManager/pending-utxo-overlay'
 
 jest.mock('@yoroi-classic/cml-mobile-bridge', () => ({
