@@ -173,8 +173,8 @@ async function discoverUsedAddressesByStakingCredential({
   const stakingCredentialHex = deriveStakeCredentialHex(knownBaseAddress)
 
   // Step 3: Query transaction history for both addresses
-  // This history query is served by the legacy API. A CWB/Koios tip can be
-  // ahead of the legacy index and cause the entire request to fail with 412.
+  // Both the tip and history query use the legacy API. A CWB tip can be ahead
+  // of the legacy index and cause the history request to fail with 412.
   const {bestBlock} = await legacyApi.getTipStatus(baseApiUrl)
   if (!bestBlock.hash) {
     throw new Error('Failed to get tip status')
