@@ -66,6 +66,16 @@ mainnetIntegrationIt(
       (referenceOutput.referenceScript?.size ?? 0) * 2,
     )
 
+    const addressOutputs = await api.getAddressUtxos(referenceOutput.address)
+    const addressReferenceOutput = addressOutputs.find(
+      (utxo) =>
+        utxo.txHash === referenceOutput.txHash &&
+        utxo.outputIndex === referenceOutput.outputIndex,
+    )
+    expect(addressReferenceOutput?.referenceScript).toEqual(
+      referenceOutput.referenceScript,
+    )
+
     await expect(api.getUtxosByRef([`${'f'.repeat(64)}#0`])).resolves.toEqual(
       [],
     )
