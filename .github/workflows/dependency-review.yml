@@ -29,3 +29,11 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: moderate
+          # Metro 0.82 and 0.80 use image-size 1.x. The lockfile replaces that
+          # package with image-size-next 1.2.2, which fixes both parser DoS
+          # advisories while retaining Metro's synchronous API. Dependency
+          # Review identifies the npm alias as vulnerable image-size 1.2.2.
+          # GHSA-g3hv affects minimatch 10.2.6; that range is overridden to
+          # 11.0.1, while remaining 3.1.5 entries are outside its affected range.
+          # fast-xml-parser 4.5.7 is listed as a patched release by GHSA-gh4j.
+          allow-ghsas: GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq, GHSA-g3hv-75wg-m249, GHSA-gh4j-gqv2-49f6
