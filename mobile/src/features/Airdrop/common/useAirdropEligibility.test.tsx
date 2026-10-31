@@ -10,6 +10,8 @@ const mockWallet = {
   isMainnet: true,
   receiveAddresses: jest.fn(() => ['addr1']),
 }
+const previousReferenceScriptFlag =
+  process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
 
 jest.mock('@yoroi/wallet-manager', () => ({
   useWalletManager: () => ({selected: {wallet: mockWallet}}),
@@ -38,7 +40,19 @@ jest.mock('../api/redemptionApi', () => ({
 }))
 
 describe('useAirdropEligibility', () => {
+  afterEach(() => {
+    if (previousReferenceScriptFlag == null) {
+      delete process.env
+        .EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES
+    } else {
+      process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+        previousReferenceScriptFlag
+    }
+  })
+
   it('does not query airdrop eligibility without a backend URL', () => {
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
     const queryClient = new QueryClient()
     const wrapper = ({children}: {children: React.ReactNode}) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

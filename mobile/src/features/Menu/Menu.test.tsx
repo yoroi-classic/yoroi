@@ -150,6 +150,8 @@ describe('MenuNavigator airdrop route', () => {
 
   it('omits the route when the backend URL is not configured', () => {
     mockBackendUrl = undefined
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
 
     render(<MenuNavigator />)
 
@@ -158,6 +160,8 @@ describe('MenuNavigator airdrop route', () => {
 
   it('does not render the airdrop menu entry when the backend URL is not configured', () => {
     mockBackendUrl = undefined
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
 
     render(<Menu />)
 

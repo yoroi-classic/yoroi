@@ -74,6 +74,8 @@ describe('useAirdropBanner', () => {
 
   it('removes a persisted banner when the backend endpoint is not configured', async () => {
     mockShowBanner.mockClear()
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
     const queryClient = new QueryClient()
     const wrapper = ({children}: {children: React.ReactNode}) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

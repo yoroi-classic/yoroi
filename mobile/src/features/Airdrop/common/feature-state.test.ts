@@ -19,6 +19,9 @@ describe('isMidnightAirdropAvailable', () => {
     expect(
       isMidnightAirdropAvailable(true, 'https://wallet-backend.example'),
     ).toBe(false)
+
+    process.env.EXPO_PUBLIC_CARDANO_WALLET_BACKEND_REFERENCE_SCRIPT_BYTES =
+      'true'
     expect(isMidnightAirdropAvailable(true, undefined)).toBe(false)
     expect(isMidnightAirdropAvailable(true, '  ')).toBe(false)
     expect(
