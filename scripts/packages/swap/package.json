@@ -113,7 +113,7 @@
     "@yoroi/api": "^7.0.0-beta",
     "@yoroi/common": "^7.0.0-beta",
     "@yoroi/portfolio": "^7.0.0-beta",
-    "axios": "1.10.0",
+    "axios": "1.21.0",
     "bignumber.js": "9.3.0",
     "immer": "10.1.1",
     "react": "19.0.0",
