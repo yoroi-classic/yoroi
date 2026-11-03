@@ -1,3 +1,4 @@
+import {CardanoWalletBackendNetworkMismatchError} from '@yoroi/api'
 import {Fetcher} from '@yoroi/common'
 import {Branded, Chain} from '@yoroi/types'
 
@@ -328,8 +329,12 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
       request,
     )
 
-    await expect(source.getAccountUtxos(STAKE_ADDRESS)).rejects.toThrow(
+    const result = source.getAccountUtxos(STAKE_ADDRESS)
+    await expect(result).rejects.toThrow(
       'cardano-wallet-backend network mismatch',
+    )
+    await expect(result).rejects.toBeInstanceOf(
+      CardanoWalletBackendNetworkMismatchError,
     )
     expect(request).toHaveBeenCalledTimes(1)
   })

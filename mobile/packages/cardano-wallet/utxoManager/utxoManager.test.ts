@@ -1,3 +1,4 @@
+import {CardanoWalletBackendNetworkMismatchError} from '@yoroi/api'
 import {
   CurrentStateWalletSource,
   PendingUtxoOverlay,
@@ -10,6 +11,7 @@ import {rootStorage} from '~/kernel/storage/storages'
 
 import {
   makeCurrentStateUtxoManager,
+  makeUtxoManager,
   makeUtxoManagerStorage,
   makeUtxoStorage,
 } from './utxoManager'
@@ -90,6 +92,83 @@ describe('current-state UTxO manager', () => {
       expect.objectContaining({utxo_id: replacementUtxo.utxoId}),
     ])
     expect(source.getAccountUtxos).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps only UTxOs at wallet-owned payment addresses', async () => {
+    const accountStorage = rootStorage.join('current-state-owned-address-test/')
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const owned = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1owned'),
+      amount: '5000000' as Balance.Quantity,
+      assets: [],
+    }
+    const scriptAddressUtxo = {
+      ...owned,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      receiver: Branded.asAddress('addr_test1script'),
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest.fn().mockResolvedValue([owned, scriptAddressUtxo]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+      ownedAddresses: [owned.receiver],
+    })
+
+    await manager.sync([owned.receiver])
+
+    await expect(manager.getCachedUtxos()).resolves.toEqual([
+      expect.objectContaining({utxo_id: owned.utxoId}),
+    ])
+  })
+
+  it('falls back to legacy UTxO sync only for a backend network mismatch', async () => {
+    const accountStorage = rootStorage.join(
+      'current-state-network-fallback-test/',
+    )
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const address = Branded.asAddress('addr_test1owned')
+    const legacyManager = {
+      kind: 'legacy' as const,
+      clear: jest.fn(),
+      initialUtxos: [],
+      getCachedUtxos: jest.fn().mockResolvedValue([]),
+      sync: jest.fn().mockResolvedValue(undefined),
+      initialCollateralId: '',
+      getCollateralId: jest.fn().mockResolvedValue(''),
+      setCollateralId: jest.fn().mockResolvedValue(undefined),
+    } as unknown as Awaited<ReturnType<typeof makeUtxoManager>>
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest
+        .fn()
+        .mockRejectedValue(new CardanoWalletBackendNetworkMismatchError()),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+      fallbackManager: legacyManager,
+    })
+
+    await manager.sync([address])
+
+    expect(manager.kind).toBe('legacy')
+    expect(legacyManager.sync).toHaveBeenCalledWith([address])
+    expect(source.getAccountUtxos).toHaveBeenCalledTimes(1)
   })
 
   it('serializes overlapping syncs so newer snapshots commit last', async () => {
@@ -444,6 +523,13 @@ describe('current-state UTxO manager', () => {
       txIndex: 1,
       amount: '7800000' as Balance.Quantity,
     }
+    const secondInput = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'e'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('e'.repeat(64)),
+      receiver: Branded.asAddress('addr_test1second-input'),
+      amount: '5000000' as Balance.Quantity,
+    }
     const childChange = {
       ...input,
       utxoId: Branded.asUtxoId(`${'c'.repeat(64)}:1`),
@@ -461,7 +547,7 @@ describe('current-state UTxO manager', () => {
           globalSlot: null,
         },
       }),
-      getAccountUtxos: jest.fn().mockResolvedValue([input]),
+      getAccountUtxos: jest.fn().mockResolvedValue([input, secondInput]),
     }
     const manager = await makeCurrentStateUtxoManager({
       storage,
@@ -479,7 +565,7 @@ describe('current-state UTxO manager', () => {
     await manager.savePendingOverlay({
       txHash: childChange.txHash,
       ttlSlot: '20',
-      spentUtxoIds: [parentChange.utxoId],
+      spentUtxoIds: [parentChange.utxoId, secondInput.utxoId],
       createdUtxos: [childChange],
     })
 
@@ -487,6 +573,7 @@ describe('current-state UTxO manager', () => {
 
     await expect(manager.getCachedUtxos()).resolves.toEqual([
       expect.objectContaining({utxo_id: input.utxoId}),
+      expect.objectContaining({utxo_id: secondInput.utxoId}),
     ])
     await expect(
       pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),

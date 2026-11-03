@@ -1,4 +1,7 @@
-import {SyncTipStatus} from '@yoroi/api'
+import {
+  CardanoWalletBackendNetworkMismatchError,
+  SyncTipStatus,
+} from '@yoroi/api'
 import {Fetcher, fetcher} from '@yoroi/common'
 import {
   Address,
@@ -125,7 +128,7 @@ export const createCardanoWalletBackendUtxoSource = (
       throw new Error('Invalid cardano-wallet-backend status response')
     }
     if (status.data.network !== expectedNetwork) {
-      throw new Error('cardano-wallet-backend network mismatch')
+      throw new CardanoWalletBackendNetworkMismatchError()
     }
     if (status.data.chain !== 'ok') {
       throw new Error('cardano-wallet-backend chain data is not ready')
