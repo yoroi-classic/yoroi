@@ -155,7 +155,7 @@ export async function smokeBackend({
             !/^[0-9a-f]{56}$/i.test(utxo.referenceScriptHash)))
       ) {
         throw new Error(
-          'account UTxO has an invalid transaction, index, value, or assets field',
+          'account UTxO does not match the mobile parser contract',
         )
       }
       for (const asset of utxo.assets) {
@@ -169,7 +169,7 @@ export async function smokeBackend({
           !isCanonicalQuantity(asset.quantity)
         ) {
           throw new Error(
-            'account UTxO has an invalid transaction, index, value, or assets field',
+            'account UTxO does not match the mobile parser contract',
           )
         }
       }

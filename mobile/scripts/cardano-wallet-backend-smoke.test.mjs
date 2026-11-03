@@ -166,7 +166,7 @@ test('rejects account UTxOs the wallet parser rejects', async () => {
           return response({complete: true, utxos: [utxo]})
         },
       }),
-      /account UTxO has an invalid/,
+      /account UTxO does not match the mobile parser contract/,
     )
   }
 })
