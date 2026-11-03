@@ -1,5 +1,9 @@
-import {CardanoWalletBackendNetworkMismatchError, RawUtxo} from '@yoroi/api'
-import {isString, parseSafe} from '@yoroi/common'
+import type {RawUtxo} from '@yoroi/api'
+import {
+  CardanoWalletBackendNetworkMismatchError,
+  isString,
+  parseSafe,
+} from '@yoroi/common'
 import {
   CurrentStateUtxo,
   CurrentStateWalletSource,
@@ -84,6 +88,7 @@ export const makeUtxoManager = async ({
 }
 
 const currentStateCacheKey = 'current-state-cache'
+const legacyFallbackCacheKey = 'legacy-fallback'
 
 /** Shelley UTxOs come from an authoritative backend snapshot, never legacy diffs. */
 export const makeCurrentStateUtxoManager = async ({
@@ -102,6 +107,10 @@ export const makeCurrentStateUtxoManager = async ({
   fallbackManager?: Awaited<ReturnType<typeof makeUtxoManager>>
 }) => {
   const managerStorage = makeUtxoManagerStorage(storage)
+  const legacyFallback = await storage.getItem<boolean>(
+    legacyFallbackCacheKey,
+    (data) => (parseSafe(data) === true ? true : null),
+  )
   const storedUtxos = await storage.getItem<CurrentStateUtxo[]>(
     currentStateCacheKey,
     (data) => {
@@ -117,7 +126,7 @@ export const makeCurrentStateUtxoManager = async ({
     (utxo) =>
       ownedAddressSet === undefined || ownedAddressSet.has(utxo.receiver),
   )
-  let useLegacyFallback = false
+  let useLegacyFallback = legacyFallback === true
 
   const getCachedUtxos = async () => {
     if (useLegacyFallback && fallbackManager) {
@@ -167,8 +176,9 @@ export const makeCurrentStateUtxoManager = async ({
       const spendsRetainedPendingOutput = overlay.spentUtxoIds.some((utxoId) =>
         retainedPendingOutputIds.has(utxoId),
       )
-      const spendsRemovedPendingOutput = overlay.spentUtxoIds.some((utxoId) =>
-        removedPendingOutputIds.has(utxoId),
+      const spendsRemovedPendingOutput = overlay.spentUtxoIds.some(
+        (utxoId) =>
+          removedPendingOutputIds.has(utxoId) && !currentIds.has(utxoId),
       )
       const hasUnspentInput =
         spendsRetainedPendingOutput ||
@@ -216,7 +226,9 @@ export const makeCurrentStateUtxoManager = async ({
       await pendingStore.clearPendingUtxoOverlaysForFullResync()
       await managerStorage.collateral.clear()
       authoritativeUtxos = []
+      await storage.removeItem(legacyFallbackCacheKey)
       if (useLegacyFallback && fallbackManager) await fallbackManager.clear()
+      useLegacyFallback = false
     },
     initialUtxos,
     getCachedUtxos,
@@ -240,6 +252,7 @@ export const makeCurrentStateUtxoManager = async ({
           ) {
             throw error
           }
+          await storage.setItem(legacyFallbackCacheKey, true)
           useLegacyFallback = true
           await fallbackManager.sync(addresses)
         }

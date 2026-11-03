@@ -1,8 +1,9 @@
+import type {SyncTipStatus} from '@yoroi/api'
 import {
   CardanoWalletBackendNetworkMismatchError,
-  SyncTipStatus,
-} from '@yoroi/api'
-import {Fetcher, fetcher} from '@yoroi/common'
+  Fetcher,
+  fetcher,
+} from '@yoroi/common'
 import {
   Address,
   Balance,

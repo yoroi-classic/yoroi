@@ -1,5 +1,4 @@
-import {CardanoWalletBackendNetworkMismatchError} from '@yoroi/api'
-import {Fetcher} from '@yoroi/common'
+import {CardanoWalletBackendNetworkMismatchError, Fetcher} from '@yoroi/common'
 import {Branded, Chain} from '@yoroi/types'
 
 import {createCardanoWalletBackendUtxoSource} from './current-state-utxo-source'
