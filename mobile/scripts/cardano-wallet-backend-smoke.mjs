@@ -1,5 +1,7 @@
 const deviceUrlEnvironmentVariable = 'EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL'
 const smokeUrlEnvironmentVariable = 'CARDANO_WALLET_BACKEND_SMOKE_URL'
+const stakeAddressEnvironmentVariable =
+  'CARDANO_WALLET_BACKEND_SMOKE_STAKE_ADDRESS'
 
 const loopbackHostnames = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -44,6 +46,7 @@ function assertRecord(value, name) {
 export async function smokeBackend({
   deviceUrl,
   smokeUrl = deviceUrl,
+  stakeAddress = process.env[stakeAddressEnvironmentVariable],
   request = fetch,
 }) {
   const parsedDeviceUrl = parseBackendUrl(deviceUrl)
@@ -106,7 +109,42 @@ export async function smokeBackend({
     }
   }
 
-  return {
+  let completeUtxoCount
+  if (stakeAddress) {
+    const accountUtxos = await readJson(
+      await request(
+        endpoint(
+          parsedSmokeUrl,
+          `/v1/account/${encodeURIComponent(stakeAddress)}/utxos/complete`,
+        ),
+      ),
+      'complete account UTxOs',
+    )
+    assertRecord(accountUtxos, 'complete account UTxOs')
+    if (accountUtxos.complete !== true || !Array.isArray(accountUtxos.utxos)) {
+      throw new Error(
+        'complete account UTxOs must prove complete=true and include an array',
+      )
+    }
+    for (const utxo of accountUtxos.utxos) {
+      assertRecord(utxo, 'account UTxO')
+      if (
+        typeof utxo.txHash !== 'string' ||
+        !/^[0-9a-f]{64}$/i.test(utxo.txHash) ||
+        !Number.isInteger(utxo.outputIndex) ||
+        typeof utxo.value !== 'string' ||
+        !/^\d+$/.test(utxo.value) ||
+        !Array.isArray(utxo.assets)
+      ) {
+        throw new Error(
+          'account UTxO has an invalid transaction, index, value, or assets field',
+        )
+      }
+    }
+    completeUtxoCount = accountUtxos.utxos.length
+  }
+
+  const result = {
     deviceUrl: parsedDeviceUrl.toString().replace(/\/$/, ''),
     smokeUrl: parsedSmokeUrl.toString().replace(/\/$/, ''),
     tip: {
@@ -117,6 +155,10 @@ export async function smokeBackend({
     },
     protocolParamsEpoch: protocolParams.epoch,
   }
+  if (completeUtxoCount !== undefined) {
+    result.completeUtxoCount = completeUtxoCount
+  }
+  return result
 }
 
 async function main() {

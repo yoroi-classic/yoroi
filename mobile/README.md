@@ -419,7 +419,9 @@ EXPO_PUBLIC_USE_TESTNET=true|false
 # API keys
 EXPO_PUBLIC_UNSTOPPABLE_API_KEY=your_api_key
 
-# Optional cardano-wallet-backend /v1 URL
+# Optional cardano-wallet-backend /v1 URL. Configured Shelley wallets use its
+# completeness-checked current-state UTxO endpoint; Byron and wallets without
+# a stake credential continue to use the legacy UTxO path.
 EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL=http://device-reachable-host:port
 
 # Enable the Midnight airdrop only when this CWB deployment returns reference-script bytes

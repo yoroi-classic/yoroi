@@ -122,7 +122,7 @@ export type UtxoBackendSelection =
   | {kind: 'current-state'; baseUrl: string}
   | {
       kind: 'legacy'
-      reason: 'not-configured' | 'not-enabled' | 'unsupported-wallet'
+      reason: 'not-configured' | 'unsupported-wallet'
     }
 
 export const historyTipStatusForUtxoBackend = (
@@ -133,12 +133,10 @@ export const historyTipStatusForUtxoBackend = (
 
 export const selectUtxoBackend = ({
   backendUrl,
-  enabled,
   implementation,
   rewardAddressHex,
 }: {
   backendUrl?: string
-  enabled?: boolean
   implementation: Wallet.Implementation
   rewardAddressHex: string
 }): UtxoBackendSelection => {
@@ -147,7 +145,6 @@ export const selectUtxoBackend = ({
     return {kind: 'legacy', reason: 'unsupported-wallet'}
   }
   if (!normalizedUrl) return {kind: 'legacy', reason: 'not-configured'}
-  if (enabled !== true) return {kind: 'legacy', reason: 'not-enabled'}
   return {kind: 'current-state', baseUrl: normalizedUrl}
 }
 
@@ -414,7 +411,6 @@ export const makeCardanoWallet = (
     const utxoStorage = accountStorage.join('utxos/')
     const utxoBackend = selectUtxoBackend({
       backendUrl: cardanoWalletBackendUrl,
-      enabled: dependencies.currentStateUtxoEnabled,
       implementation,
       rewardAddressHex: finalRewardAddressHex,
     })

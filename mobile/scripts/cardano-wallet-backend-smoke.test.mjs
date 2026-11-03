@@ -85,6 +85,58 @@ test('allows a separate host-loopback smoke URL', async () => {
   ])
 })
 
+test('checks the complete account UTxO contract when a stake address is supplied', async () => {
+  const requests = []
+  const result = await smokeBackend({
+    deviceUrl: 'http://192.168.4.211:3010',
+    smokeUrl: 'http://127.0.0.1:3010',
+    stakeAddress: 'stake_test1fixture',
+    async request(url) {
+      requests.push(url)
+      if (url.endsWith('/health')) return response({status: 'ok'})
+      if (url.endsWith('/v1/chain/tip')) return response(validTip)
+      if (url.endsWith('/v1/chain/protocol-params')) {
+        return response(validProtocolParams)
+      }
+      return response({
+        complete: true,
+        utxos: [
+          {
+            txHash: 'b'.repeat(64),
+            outputIndex: 2,
+            value: '9007199254740993',
+            assets: [],
+          },
+        ],
+      })
+    },
+  })
+
+  assert.equal(result.completeUtxoCount, 1)
+  assert.equal(
+    requests.at(-1),
+    'http://127.0.0.1:3010/v1/account/stake_test1fixture/utxos/complete',
+  )
+})
+
+test('rejects incomplete account UTxO responses', async () => {
+  await assert.rejects(
+    smokeBackend({
+      deviceUrl: 'http://192.168.4.211:3010',
+      stakeAddress: 'stake_test1fixture',
+      async request(url) {
+        if (url.endsWith('/health')) return response({status: 'ok'})
+        if (url.endsWith('/v1/chain/tip')) return response(validTip)
+        if (url.endsWith('/v1/chain/protocol-params')) {
+          return response(validProtocolParams)
+        }
+        return response({utxos: []})
+      },
+    }),
+    /complete=true and include an array/,
+  )
+})
+
 test('rejects a malformed backend contract', async () => {
   await assert.rejects(
     smokeBackend({

@@ -161,10 +161,9 @@ describe('CardanoWallet', () => {
     expect(wallet.usesCurrentStateUtxos).toBe(false)
   })
 
-  it('builds a Shelley wallet with the current-state manager when enabled', async () => {
+  it('builds a configured Shelley wallet with the current-state manager', async () => {
     mockCardanoWalletDependencies.cardanoWalletBackendUrl =
       'https://wallet-backend.example.com'
-    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
     mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
       createPersistentPendingUtxoOverlayStore
 
@@ -183,7 +182,6 @@ describe('CardanoWallet', () => {
       expect(wallet.usesCurrentStateUtxos).toBe(true)
     } finally {
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }
   })
@@ -191,7 +189,6 @@ describe('CardanoWallet', () => {
   it('updates in-memory UTxOs immediately after saving a pending overlay', async () => {
     mockCardanoWalletDependencies.cardanoWalletBackendUrl =
       'https://wallet-backend.example.com'
-    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
     let pendingOverlays: PendingUtxoOverlay[] = []
     let failOverlayRemoval = false
     const overlayRemovalAttempts: PendingUtxoOverlay['txHash'][] = []
@@ -308,7 +305,6 @@ describe('CardanoWallet', () => {
       submitSpy.mockRestore()
       txStatusSpy.mockRestore()
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }
   })
@@ -319,7 +315,6 @@ describe('CardanoWallet', () => {
       'readOnlyAccountManagerMaker',
     )
     mockCardanoWalletDependencies.cardanoWalletBackendUrl = '   '
-    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
 
     try {
       const ShelleyWalletPreprod = getWalletFactory({
@@ -338,7 +333,6 @@ describe('CardanoWallet', () => {
     } finally {
       readOnlyAccountManagerSpy.mockRestore()
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }
   })
@@ -419,7 +413,6 @@ describe('CardanoWallet', () => {
         .mockResolvedValue({isLast: true, transactions: []})
       mockCardanoWalletDependencies.cardanoWalletBackendUrl =
         'https://wallet-backend.example.com'
-      mockCardanoWalletDependencies.currentStateUtxoEnabled = true
       mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
         createPersistentPendingUtxoOverlayStore
 
@@ -450,7 +443,6 @@ describe('CardanoWallet', () => {
         getTipStatusSpy.mockRestore()
         fetchHistorySpy.mockRestore()
         delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-        delete mockCardanoWalletDependencies.currentStateUtxoEnabled
         delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
       }
     },
@@ -462,7 +454,6 @@ describe('selectUtxoBackend', () => {
     expect(
       selectUtxoBackend({
         backendUrl: ' https://wallet-backend.example.com/// ',
-        enabled: true,
         implementation: 'cardano-cip1852',
         rewardAddressHex: 'e0c11ef0',
       }),
@@ -501,21 +492,23 @@ describe('selectUtxoBackend', () => {
     expect(
       selectUtxoBackend({
         backendUrl: '   ',
-        enabled: true,
         implementation: 'cardano-cip1852',
         rewardAddressHex: 'e0c11ef0',
       }),
     ).toEqual({kind: 'legacy', reason: 'not-configured'})
   })
 
-  it('does not enable the current-state source until backend completeness is verified', () => {
+  it('selects current-state reads for configured Shelley wallets without a second feature flag', () => {
     expect(
       selectUtxoBackend({
         backendUrl: 'https://wallet-backend.example.com',
         implementation: 'cardano-cip1852',
         rewardAddressHex: 'e0c11ef0',
       }),
-    ).toEqual({kind: 'legacy', reason: 'not-enabled'})
+    ).toEqual({
+      kind: 'current-state',
+      baseUrl: 'https://wallet-backend.example.com',
+    })
   })
 })
 
