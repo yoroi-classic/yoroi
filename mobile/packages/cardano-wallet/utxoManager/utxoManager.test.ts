@@ -148,9 +148,10 @@ describe('current-state UTxO manager', () => {
       amount: '5000000' as Balance.Quantity,
       assets: [],
     }
+    const legacyClear = jest.fn()
     const legacyManager = {
       kind: 'legacy' as const,
-      clear: jest.fn(),
+      clear: legacyClear,
       initialUtxos: [legacyUtxo],
       getCachedUtxos: jest.fn().mockResolvedValue([legacyUtxo]),
       sync: jest.fn().mockResolvedValue(undefined),
@@ -188,6 +189,31 @@ describe('current-state UTxO manager', () => {
     expect(restored.kind).toBe('legacy')
     expect(restored.initialUtxos).toEqual([legacyUtxo])
     expect(source.getAccountUtxos).toHaveBeenCalledTimes(1)
+
+    legacyClear.mockRejectedValueOnce(new Error('legacy clear failed'))
+    await expect(manager.clear()).rejects.toThrow('legacy clear failed')
+    expect(manager.kind).toBe('legacy')
+
+    const restoredAfterFailedClear = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore: createPersistentPendingUtxoOverlayStore(accountStorage),
+      stakeAddress,
+      fallbackManager: legacyManager,
+    })
+    expect(restoredAfterFailedClear.kind).toBe('legacy')
+
+    await manager.clear()
+    expect(manager.kind).toBe('current-state')
+
+    const restoredAfterSuccessfulClear = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore: createPersistentPendingUtxoOverlayStore(accountStorage),
+      stakeAddress,
+      fallbackManager: legacyManager,
+    })
+    expect(restoredAfterSuccessfulClear.kind).toBe('current-state')
   })
 
   it('does not fall back for backend errors other than a network mismatch', async () => {

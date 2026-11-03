@@ -226,8 +226,8 @@ export const makeCurrentStateUtxoManager = async ({
       await pendingStore.clearPendingUtxoOverlaysForFullResync()
       await managerStorage.collateral.clear()
       authoritativeUtxos = []
-      await storage.removeItem(legacyFallbackCacheKey)
       if (useLegacyFallback && fallbackManager) await fallbackManager.clear()
+      await storage.removeItem(legacyFallbackCacheKey)
       useLegacyFallback = false
     },
     initialUtxos,
