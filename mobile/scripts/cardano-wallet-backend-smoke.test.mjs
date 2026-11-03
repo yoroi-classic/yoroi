@@ -104,8 +104,15 @@ test('checks the complete account UTxO contract when a stake address is supplied
           {
             txHash: 'b'.repeat(64),
             outputIndex: 2,
+            address: 'addr_test1fixture',
             value: '9007199254740993',
-            assets: [],
+            assets: [
+              {
+                policyId: 'c'.repeat(56),
+                assetName: '00ff',
+                quantity: '1',
+              },
+            ],
           },
         ],
       })
@@ -117,6 +124,51 @@ test('checks the complete account UTxO contract when a stake address is supplied
     requests.at(-1),
     'http://127.0.0.1:3010/v1/account/stake_test1fixture/utxos/complete',
   )
+})
+
+test('rejects account UTxOs the wallet parser rejects', async () => {
+  const validUtxo = {
+    txHash: 'b'.repeat(64),
+    outputIndex: 2,
+    address: 'addr_test1fixture',
+    value: '1',
+    assets: [
+      {
+        policyId: 'c'.repeat(56),
+        assetName: '00ff',
+        quantity: '1',
+      },
+    ],
+  }
+  const invalidUtxos = [
+    {...validUtxo, outputIndex: -1},
+    {...validUtxo, value: '01'},
+    {...validUtxo, address: ''},
+    {
+      ...validUtxo,
+      assets: [{...validUtxo.assets[0], policyId: 'c'.repeat(55)}],
+    },
+    {...validUtxo, assets: [{...validUtxo.assets[0], assetName: '0'}]},
+    {...validUtxo, assets: [{...validUtxo.assets[0], quantity: '01'}]},
+  ]
+
+  for (const utxo of invalidUtxos) {
+    await assert.rejects(
+      smokeBackend({
+        deviceUrl: 'http://192.168.4.211:3010',
+        stakeAddress: 'stake_test1fixture',
+        async request(url) {
+          if (url.endsWith('/health')) return response({status: 'ok'})
+          if (url.endsWith('/v1/chain/tip')) return response(validTip)
+          if (url.endsWith('/v1/chain/protocol-params')) {
+            return response(validProtocolParams)
+          }
+          return response({complete: true, utxos: [utxo]})
+        },
+      }),
+      /account UTxO has an invalid/,
+    )
+  }
 })
 
 test('rejects incomplete account UTxO responses', async () => {

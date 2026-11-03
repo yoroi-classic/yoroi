@@ -43,6 +43,14 @@ function assertRecord(value, name) {
   }
 }
 
+function isCanonicalQuantity(value) {
+  return typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value)
+}
+
+function isHex(value) {
+  return typeof value === 'string' && /^[0-9a-fA-F]*$/.test(value)
+}
+
 export async function smokeBackend({
   deviceUrl,
   smokeUrl = deviceUrl,
@@ -132,13 +140,38 @@ export async function smokeBackend({
         typeof utxo.txHash !== 'string' ||
         !/^[0-9a-f]{64}$/i.test(utxo.txHash) ||
         !Number.isInteger(utxo.outputIndex) ||
-        typeof utxo.value !== 'string' ||
-        !/^\d+$/.test(utxo.value) ||
-        !Array.isArray(utxo.assets)
+        utxo.outputIndex < 0 ||
+        typeof utxo.address !== 'string' ||
+        utxo.address.length === 0 ||
+        !isCanonicalQuantity(utxo.value) ||
+        !Array.isArray(utxo.assets) ||
+        (utxo.datumHash !== undefined &&
+          (typeof utxo.datumHash !== 'string' ||
+            !/^[0-9a-f]{64}$/i.test(utxo.datumHash))) ||
+        (utxo.inlineDatum !== undefined &&
+          (!isHex(utxo.inlineDatum) || utxo.inlineDatum.length % 2 !== 0)) ||
+        (utxo.referenceScriptHash !== undefined &&
+          (typeof utxo.referenceScriptHash !== 'string' ||
+            !/^[0-9a-f]{56}$/i.test(utxo.referenceScriptHash)))
       ) {
         throw new Error(
           'account UTxO has an invalid transaction, index, value, or assets field',
         )
+      }
+      for (const asset of utxo.assets) {
+        assertRecord(asset, 'account UTxO asset')
+        if (
+          typeof asset.policyId !== 'string' ||
+          !/^[0-9a-f]{56}$/i.test(asset.policyId) ||
+          !isHex(asset.assetName) ||
+          asset.assetName.length > 64 ||
+          asset.assetName.length % 2 !== 0 ||
+          !isCanonicalQuantity(asset.quantity)
+        ) {
+          throw new Error(
+            'account UTxO has an invalid transaction, index, value, or assets field',
+          )
+        }
       }
     }
     completeUtxoCount = accountUtxos.utxos.length
