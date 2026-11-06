@@ -85,6 +85,110 @@ test('allows a separate host-loopback smoke URL', async () => {
   ])
 })
 
+test('checks the complete account UTxO contract when a stake address is supplied', async () => {
+  const requests = []
+  const result = await smokeBackend({
+    deviceUrl: 'http://192.168.4.211:3010',
+    smokeUrl: 'http://127.0.0.1:3010',
+    stakeAddress: 'stake_test1fixture',
+    async request(url) {
+      requests.push(url)
+      if (url.endsWith('/health')) return response({status: 'ok'})
+      if (url.endsWith('/v1/chain/tip')) return response(validTip)
+      if (url.endsWith('/v1/chain/protocol-params')) {
+        return response(validProtocolParams)
+      }
+      return response({
+        complete: true,
+        utxos: [
+          {
+            txHash: 'b'.repeat(64),
+            outputIndex: 2,
+            address: 'addr_test1fixture',
+            value: '9007199254740993',
+            assets: [
+              {
+                policyId: 'c'.repeat(56),
+                assetName: '00ff',
+                quantity: '1',
+              },
+            ],
+          },
+        ],
+      })
+    },
+  })
+
+  assert.equal(result.completeUtxoCount, 1)
+  assert.equal(
+    requests.at(-1),
+    'http://127.0.0.1:3010/v1/account/stake_test1fixture/utxos/complete',
+  )
+})
+
+test('rejects account UTxOs the wallet parser rejects', async () => {
+  const validUtxo = {
+    txHash: 'b'.repeat(64),
+    outputIndex: 2,
+    address: 'addr_test1fixture',
+    value: '1',
+    assets: [
+      {
+        policyId: 'c'.repeat(56),
+        assetName: '00ff',
+        quantity: '1',
+      },
+    ],
+  }
+  const invalidUtxos = [
+    {...validUtxo, outputIndex: -1},
+    {...validUtxo, value: '01'},
+    {...validUtxo, address: ''},
+    {
+      ...validUtxo,
+      assets: [{...validUtxo.assets[0], policyId: 'c'.repeat(55)}],
+    },
+    {...validUtxo, assets: [{...validUtxo.assets[0], assetName: '0'}]},
+    {...validUtxo, assets: [{...validUtxo.assets[0], quantity: '01'}]},
+  ]
+
+  for (const utxo of invalidUtxos) {
+    await assert.rejects(
+      smokeBackend({
+        deviceUrl: 'http://192.168.4.211:3010',
+        stakeAddress: 'stake_test1fixture',
+        async request(url) {
+          if (url.endsWith('/health')) return response({status: 'ok'})
+          if (url.endsWith('/v1/chain/tip')) return response(validTip)
+          if (url.endsWith('/v1/chain/protocol-params')) {
+            return response(validProtocolParams)
+          }
+          return response({complete: true, utxos: [utxo]})
+        },
+      }),
+      /account UTxO does not match the mobile parser contract/,
+    )
+  }
+})
+
+test('rejects incomplete account UTxO responses', async () => {
+  await assert.rejects(
+    smokeBackend({
+      deviceUrl: 'http://192.168.4.211:3010',
+      stakeAddress: 'stake_test1fixture',
+      async request(url) {
+        if (url.endsWith('/health')) return response({status: 'ok'})
+        if (url.endsWith('/v1/chain/tip')) return response(validTip)
+        if (url.endsWith('/v1/chain/protocol-params')) {
+          return response(validProtocolParams)
+        }
+        return response({utxos: []})
+      },
+    }),
+    /complete=true and include an array/,
+  )
+})
+
 test('rejects a malformed backend contract', async () => {
   await assert.rejects(
     smokeBackend({

@@ -1,4 +1,5 @@
 import {buildNetworkManagers} from '@yoroi/blockchains'
+import {CardanoWalletBackendNetworkMismatchError} from '@yoroi/common'
 import {createTokenManagerMock} from '@yoroi/portfolio'
 import {
   PendingUtxoOverlay,
@@ -161,10 +162,9 @@ describe('CardanoWallet', () => {
     expect(wallet.usesCurrentStateUtxos).toBe(false)
   })
 
-  it('builds a Shelley wallet with the current-state manager when enabled', async () => {
+  it('builds a configured Shelley wallet with the current-state manager', async () => {
     mockCardanoWalletDependencies.cardanoWalletBackendUrl =
       'https://wallet-backend.example.com'
-    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
     mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
       createPersistentPendingUtxoOverlayStore
 
@@ -183,7 +183,72 @@ describe('CardanoWallet', () => {
       expect(wallet.usesCurrentStateUtxos).toBe(true)
     } finally {
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
+      delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
+    }
+  })
+
+  it('uses legacy wallet sync after the UTxO manager switches to fallback', async () => {
+    const legacyUtxo = {
+      kind: 'legacy' as const,
+      sync: jest.fn().mockResolvedValue(undefined),
+      getCachedUtxos: jest.fn().mockResolvedValue([]),
+      getCollateralId: jest.fn().mockResolvedValue(''),
+    }
+    const source = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest
+        .fn()
+        .mockRejectedValue(new CardanoWalletBackendNetworkMismatchError()),
+    }
+    const makeLegacyManagerSpy = jest
+      .spyOn(utxoManagerApi, 'makeUtxoManager')
+      .mockResolvedValue(legacyUtxo as never)
+    const makeCurrentStateManager = utxoManagerApi.makeCurrentStateUtxoManager
+    const makeCurrentStateManagerSpy = jest
+      .spyOn(utxoManagerApi, 'makeCurrentStateUtxoManager')
+      .mockImplementation((options) =>
+        makeCurrentStateManager({...options, source} as never),
+      )
+    const filterUsedAddressesSpy = jest
+      .spyOn(legacyApi, 'filterUsedAddresses')
+      .mockResolvedValue([])
+    const getTipStatusSpy = jest
+      .spyOn(legacyApi, 'getTipStatus')
+      .mockResolvedValue(mockedTipStatusResponse)
+    const fetchHistorySpy = jest
+      .spyOn(legacyApi, 'fetchNewTxHistory')
+      .mockResolvedValue({isLast: true, transactions: []})
+    mockCardanoWalletDependencies.cardanoWalletBackendUrl =
+      'https://wallet-backend.example.com'
+    mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
+      createPersistentPendingUtxoOverlayStore
+
+    try {
+      const ShelleyWalletPreprod = getWalletFactory({
+        implementation: 'cardano-cip1852',
+        network: Chain.Network.Preprod,
+      })
+      const wallet = await ShelleyWalletPreprod.build({
+        id: 'current-state-network-fallback-wallet',
+        accountPubKeyHex:
+          '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+        accountVisual: 0,
+      })
+
+      await wallet.sync({})
+
+      expect(wallet.usesCurrentStateUtxos).toBe(false)
+      expect(legacyUtxo.sync).toHaveBeenCalledWith(
+        expect.arrayContaining(['addr1fixture']),
+      )
+      expect(source.getAccountUtxos).toHaveBeenCalledTimes(1)
+    } finally {
+      makeLegacyManagerSpy.mockRestore()
+      makeCurrentStateManagerSpy.mockRestore()
+      filterUsedAddressesSpy.mockRestore()
+      getTipStatusSpy.mockRestore()
+      fetchHistorySpy.mockRestore()
+      delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }
   })
@@ -191,7 +256,6 @@ describe('CardanoWallet', () => {
   it('updates in-memory UTxOs immediately after saving a pending overlay', async () => {
     mockCardanoWalletDependencies.cardanoWalletBackendUrl =
       'https://wallet-backend.example.com'
-    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
     let pendingOverlays: PendingUtxoOverlay[] = []
     let failOverlayRemoval = false
     const overlayRemovalAttempts: PendingUtxoOverlay['txHash'][] = []
@@ -308,7 +372,6 @@ describe('CardanoWallet', () => {
       submitSpy.mockRestore()
       txStatusSpy.mockRestore()
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }
   })
@@ -319,7 +382,6 @@ describe('CardanoWallet', () => {
       'readOnlyAccountManagerMaker',
     )
     mockCardanoWalletDependencies.cardanoWalletBackendUrl = '   '
-    mockCardanoWalletDependencies.currentStateUtxoEnabled = true
 
     try {
       const ShelleyWalletPreprod = getWalletFactory({
@@ -338,7 +400,6 @@ describe('CardanoWallet', () => {
     } finally {
       readOnlyAccountManagerSpy.mockRestore()
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-      delete mockCardanoWalletDependencies.currentStateUtxoEnabled
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }
   })
@@ -419,7 +480,6 @@ describe('CardanoWallet', () => {
         .mockResolvedValue({isLast: true, transactions: []})
       mockCardanoWalletDependencies.cardanoWalletBackendUrl =
         'https://wallet-backend.example.com'
-      mockCardanoWalletDependencies.currentStateUtxoEnabled = true
       mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
         createPersistentPendingUtxoOverlayStore
 
@@ -450,7 +510,6 @@ describe('CardanoWallet', () => {
         getTipStatusSpy.mockRestore()
         fetchHistorySpy.mockRestore()
         delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
-        delete mockCardanoWalletDependencies.currentStateUtxoEnabled
         delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
       }
     },
@@ -462,7 +521,6 @@ describe('selectUtxoBackend', () => {
     expect(
       selectUtxoBackend({
         backendUrl: ' https://wallet-backend.example.com/// ',
-        enabled: true,
         implementation: 'cardano-cip1852',
         rewardAddressHex: 'e0c11ef0',
       }),
@@ -501,21 +559,23 @@ describe('selectUtxoBackend', () => {
     expect(
       selectUtxoBackend({
         backendUrl: '   ',
-        enabled: true,
         implementation: 'cardano-cip1852',
         rewardAddressHex: 'e0c11ef0',
       }),
     ).toEqual({kind: 'legacy', reason: 'not-configured'})
   })
 
-  it('does not enable the current-state source until backend completeness is verified', () => {
+  it('selects current-state reads for configured Shelley wallets without a second feature flag', () => {
     expect(
       selectUtxoBackend({
         backendUrl: 'https://wallet-backend.example.com',
         implementation: 'cardano-cip1852',
         rewardAddressHex: 'e0c11ef0',
       }),
-    ).toEqual({kind: 'legacy', reason: 'not-enabled'})
+    ).toEqual({
+      kind: 'current-state',
+      baseUrl: 'https://wallet-backend.example.com',
+    })
   })
 })
 

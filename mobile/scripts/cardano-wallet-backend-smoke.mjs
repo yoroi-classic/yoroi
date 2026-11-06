@@ -1,5 +1,7 @@
 const deviceUrlEnvironmentVariable = 'EXPO_PUBLIC_CARDANO_WALLET_BACKEND_URL'
 const smokeUrlEnvironmentVariable = 'CARDANO_WALLET_BACKEND_SMOKE_URL'
+const stakeAddressEnvironmentVariable =
+  'CARDANO_WALLET_BACKEND_SMOKE_STAKE_ADDRESS'
 
 const loopbackHostnames = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -41,9 +43,18 @@ function assertRecord(value, name) {
   }
 }
 
+function isCanonicalQuantity(value) {
+  return typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value)
+}
+
+function isHex(value) {
+  return typeof value === 'string' && /^[0-9a-fA-F]*$/.test(value)
+}
+
 export async function smokeBackend({
   deviceUrl,
   smokeUrl = deviceUrl,
+  stakeAddress = process.env[stakeAddressEnvironmentVariable],
   request = fetch,
 }) {
   const parsedDeviceUrl = parseBackendUrl(deviceUrl)
@@ -106,7 +117,67 @@ export async function smokeBackend({
     }
   }
 
-  return {
+  let completeUtxoCount
+  if (stakeAddress) {
+    const accountUtxos = await readJson(
+      await request(
+        endpoint(
+          parsedSmokeUrl,
+          `/v1/account/${encodeURIComponent(stakeAddress)}/utxos/complete`,
+        ),
+      ),
+      'complete account UTxOs',
+    )
+    assertRecord(accountUtxos, 'complete account UTxOs')
+    if (accountUtxos.complete !== true || !Array.isArray(accountUtxos.utxos)) {
+      throw new Error(
+        'complete account UTxOs must prove complete=true and include an array',
+      )
+    }
+    for (const utxo of accountUtxos.utxos) {
+      assertRecord(utxo, 'account UTxO')
+      if (
+        typeof utxo.txHash !== 'string' ||
+        !/^[0-9a-f]{64}$/i.test(utxo.txHash) ||
+        !Number.isInteger(utxo.outputIndex) ||
+        utxo.outputIndex < 0 ||
+        typeof utxo.address !== 'string' ||
+        utxo.address.length === 0 ||
+        !isCanonicalQuantity(utxo.value) ||
+        !Array.isArray(utxo.assets) ||
+        (utxo.datumHash !== undefined &&
+          (typeof utxo.datumHash !== 'string' ||
+            !/^[0-9a-f]{64}$/i.test(utxo.datumHash))) ||
+        (utxo.inlineDatum !== undefined &&
+          (!isHex(utxo.inlineDatum) || utxo.inlineDatum.length % 2 !== 0)) ||
+        (utxo.referenceScriptHash !== undefined &&
+          (typeof utxo.referenceScriptHash !== 'string' ||
+            !/^[0-9a-f]{56}$/i.test(utxo.referenceScriptHash)))
+      ) {
+        throw new Error(
+          'account UTxO does not match the mobile parser contract',
+        )
+      }
+      for (const asset of utxo.assets) {
+        assertRecord(asset, 'account UTxO asset')
+        if (
+          typeof asset.policyId !== 'string' ||
+          !/^[0-9a-f]{56}$/i.test(asset.policyId) ||
+          !isHex(asset.assetName) ||
+          asset.assetName.length > 64 ||
+          asset.assetName.length % 2 !== 0 ||
+          !isCanonicalQuantity(asset.quantity)
+        ) {
+          throw new Error(
+            'account UTxO does not match the mobile parser contract',
+          )
+        }
+      }
+    }
+    completeUtxoCount = accountUtxos.utxos.length
+  }
+
+  const result = {
     deviceUrl: parsedDeviceUrl.toString().replace(/\/$/, ''),
     smokeUrl: parsedSmokeUrl.toString().replace(/\/$/, ''),
     tip: {
@@ -117,6 +188,10 @@ export async function smokeBackend({
     },
     protocolParamsEpoch: protocolParams.epoch,
   }
+  if (completeUtxoCount !== undefined) {
+    result.completeUtxoCount = completeUtxoCount
+  }
+  return result
 }
 
 async function main() {
