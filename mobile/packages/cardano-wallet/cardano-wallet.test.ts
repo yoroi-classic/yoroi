@@ -1,4 +1,5 @@
 import {buildNetworkManagers} from '@yoroi/blockchains'
+import {CardanoWalletBackendNetworkMismatchError} from '@yoroi/common'
 import {createTokenManagerMock} from '@yoroi/portfolio'
 import {
   PendingUtxoOverlay,
@@ -193,29 +194,21 @@ describe('CardanoWallet', () => {
       getCachedUtxos: jest.fn().mockResolvedValue([]),
       getCollateralId: jest.fn().mockResolvedValue(''),
     }
-    let usingLegacyManager = false
-    const currentStateManager = {
-      get kind() {
-        return usingLegacyManager
-          ? ('legacy' as const)
-          : ('current-state' as const)
-      },
-      clear: jest.fn(),
-      getCollateralId: jest.fn().mockResolvedValue(''),
-      sync: jest.fn(async (addresses: Array<string>) => {
-        usingLegacyManager = true
-        await legacyUtxo.sync(addresses)
-      }),
-      getCachedUtxos: jest.fn().mockResolvedValue([]),
-      initialUtxos: [],
-      initialCollateralId: '',
+    const source = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest
+        .fn()
+        .mockRejectedValue(new CardanoWalletBackendNetworkMismatchError()),
     }
     const makeLegacyManagerSpy = jest
       .spyOn(utxoManagerApi, 'makeUtxoManager')
       .mockResolvedValue(legacyUtxo as never)
+    const makeCurrentStateManager = utxoManagerApi.makeCurrentStateUtxoManager
     const makeCurrentStateManagerSpy = jest
       .spyOn(utxoManagerApi, 'makeCurrentStateUtxoManager')
-      .mockResolvedValue(currentStateManager as never)
+      .mockImplementation((options) =>
+        makeCurrentStateManager({...options, source} as never),
+      )
     const filterUsedAddressesSpy = jest
       .spyOn(legacyApi, 'filterUsedAddresses')
       .mockResolvedValue([])
@@ -248,7 +241,7 @@ describe('CardanoWallet', () => {
       expect(legacyUtxo.sync).toHaveBeenCalledWith(
         expect.arrayContaining(['addr1fixture']),
       )
-      expect(currentStateManager.sync).toHaveBeenCalled()
+      expect(source.getAccountUtxos).toHaveBeenCalledTimes(1)
     } finally {
       makeLegacyManagerSpy.mockRestore()
       makeCurrentStateManagerSpy.mockRestore()
