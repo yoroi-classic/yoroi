@@ -242,7 +242,7 @@ describe('CardanoWallet', () => {
         accountVisual: 0,
       })
 
-      await wallet.sync()
+      await wallet.sync({})
 
       expect(wallet.usesCurrentStateUtxos).toBe(false)
       expect(legacyUtxo.sync).toHaveBeenCalledWith(
