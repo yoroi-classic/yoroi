@@ -97,6 +97,7 @@ export const makeCurrentStateUtxoManager = async ({
   pendingStore,
   stakeAddress,
   ownedAddresses: initialOwnedAddresses,
+  manualAddresses = [],
   fallbackManager,
 }: {
   storage: App.Storage
@@ -104,6 +105,7 @@ export const makeCurrentStateUtxoManager = async ({
   pendingStore: PersistentPendingUtxoOverlayStore
   stakeAddress: StakingAddress
   ownedAddresses?: ReadonlyArray<string>
+  manualAddresses?: ReadonlyArray<string>
   fallbackManager?: Awaited<ReturnType<typeof makeUtxoManager>>
 }) => {
   const managerStorage = makeUtxoManagerStorage(storage)
@@ -146,7 +148,22 @@ export const makeCurrentStateUtxoManager = async ({
   const syncCurrentState = async (addresses: Array<string>) => {
     if (addresses.length > 0) ownedAddressSet = new Set(addresses)
     const nextUtxos = await source.getAccountUtxos(stakeAddress)
-    const ownedUtxos = nextUtxos.filter(
+    let manualAddressUtxos: ReadonlyArray<CurrentStateUtxo> = []
+    if (manualAddresses.length > 0) {
+      if (source.getUtxosByAddresses === undefined) {
+        throw new Error(
+          'Current-state UTxO source does not support address reads',
+        )
+      }
+      manualAddressUtxos = await source.getUtxosByAddresses(manualAddresses)
+    }
+    const allUtxos = new Map(
+      nextUtxos.map((utxo) => [utxo.utxoId, utxo] as const),
+    )
+    for (const utxo of manualAddressUtxos) {
+      if (!allUtxos.has(utxo.utxoId)) allUtxos.set(utxo.utxoId, utxo)
+    }
+    const ownedUtxos = [...allUtxos.values()].filter(
       (utxo) =>
         ownedAddressSet === undefined || ownedAddressSet.has(utxo.receiver),
     )

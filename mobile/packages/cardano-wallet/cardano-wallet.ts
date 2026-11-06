@@ -439,6 +439,7 @@ export const makeCardanoWallet = (
           ...accountManager.getAddressesInBlocks(finalRewardAddressHex).flat(),
           ...manualAddressCache.keys(),
         ],
+        manualAddresses: [...manualAddressCache.keys()],
         fallbackManager,
         pendingStore:
           dependencies.makePendingUtxoOverlayStore?.(accountStorage) ??

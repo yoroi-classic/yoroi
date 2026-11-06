@@ -50,6 +50,9 @@ export type CurrentStateUtxoSource = {
 
 export type CurrentStateWalletSource = CurrentStateUtxoSource & {
   getChainTip(): Promise<SyncTipStatus>
+  getUtxosByAddresses?(
+    addresses: ReadonlyArray<string>,
+  ): Promise<ReadonlyArray<CurrentStateUtxo>>
 }
 
 const hex = z.string().regex(/^[0-9a-fA-F]*$/)
@@ -76,6 +79,11 @@ const accountUtxoSchema = z.object({
   inlineDatum: inlineDatum.optional(),
   referenceScriptHash: referenceScriptHash.optional(),
 })
+const addressUtxosSchema = z.array(
+  accountUtxoSchema.extend({
+    blockHeight: z.number().int().nonnegative(),
+  }),
+)
 
 const completeAccountUtxosSchema = z.object({
   complete: z.literal(true),
@@ -96,6 +104,55 @@ const chainTipSchema = z.object({
 })
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '')
+
+const mapCurrentStateUtxos = (
+  utxos: ReadonlyArray<z.infer<typeof accountUtxoSchema>>,
+  context: 'account' | 'address',
+): CurrentStateUtxo[] => {
+  const seenUtxos = new Set<string>()
+  for (const utxo of utxos) {
+    const utxoId = `${utxo.txHash.toLowerCase()}:${utxo.outputIndex}`
+    if (seenUtxos.has(utxoId)) {
+      throw new Error(`Duplicate cardano-wallet-backend ${context} UTxO`)
+    }
+    seenUtxos.add(utxoId)
+
+    const seenAssets = new Set<string>()
+    for (const asset of utxo.assets) {
+      const assetId = `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`
+      if (seenAssets.has(assetId)) {
+        throw new Error(`Duplicate asset in cardano-wallet-backend ${context} UTxO`)
+      }
+      seenAssets.add(assetId)
+    }
+  }
+
+  return utxos.map((utxo) => ({
+    utxoId: Branded.asUtxoIdFromParts(
+      Branded.asTransactionHash(utxo.txHash.toLowerCase()),
+      utxo.outputIndex,
+    ),
+    txHash: Branded.asTransactionHash(utxo.txHash.toLowerCase()),
+    txIndex: utxo.outputIndex,
+    receiver: Branded.asAddress(utxo.address),
+    amount: Branded.asBalanceQuantity(utxo.value),
+    assets: utxo.assets.map((asset) => ({
+      assetId: Branded.asTokenId(
+        `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`,
+      ),
+      policyId: Branded.asPolicyId(asset.policyId.toLowerCase()),
+      name: Branded.asAssetName(asset.assetName.toLowerCase()),
+      amount: Branded.asBalanceQuantity(asset.quantity),
+    })),
+    ...(utxo.datumHash === undefined ? {} : {datumHash: utxo.datumHash}),
+    ...(utxo.inlineDatum === undefined
+      ? {}
+      : {inlineDatum: utxo.inlineDatum}),
+    ...(utxo.referenceScriptHash === undefined
+      ? {}
+      : {referenceScriptHash: utxo.referenceScriptHash}),
+  }))
+}
 
 /**
  * Creates the Shelley current-state driver for cardano-wallet-backend.
@@ -183,59 +240,67 @@ export const createCardanoWalletBackendUtxoSource = (
           'Invalid or incomplete cardano-wallet-backend account UTxO response',
         )
       }
-
-      const expectedAddressPrefix =
-        expectedNetwork === 'mainnet' ? 'addr1' : 'addr_test1'
-      const seenUtxos = new Set<string>()
       for (const utxo of parsed.data.utxos) {
-        if (!utxo.address.startsWith(expectedAddressPrefix)) {
+        if (
+          !utxo.address.startsWith(
+            expectedNetwork === 'mainnet' ? 'addr1' : 'addr_test1',
+          )
+        ) {
           throw new Error(
             'cardano-wallet-backend account UTxO network mismatch',
           )
         }
-        const utxoId = `${utxo.txHash.toLowerCase()}:${utxo.outputIndex}`
-        if (seenUtxos.has(utxoId)) {
-          throw new Error('Duplicate cardano-wallet-backend account UTxO')
-        }
-        seenUtxos.add(utxoId)
-
-        const seenAssets = new Set<string>()
-        for (const asset of utxo.assets) {
-          const assetId = `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`
-          if (seenAssets.has(assetId)) {
-            throw new Error(
-              'Duplicate asset in cardano-wallet-backend account UTxO',
-            )
-          }
-          seenAssets.add(assetId)
-        }
       }
 
-      return parsed.data.utxos.map((utxo) => ({
-        utxoId: Branded.asUtxoIdFromParts(
-          Branded.asTransactionHash(utxo.txHash.toLowerCase()),
-          utxo.outputIndex,
-        ),
-        txHash: Branded.asTransactionHash(utxo.txHash.toLowerCase()),
-        txIndex: utxo.outputIndex,
-        receiver: Branded.asAddress(utxo.address),
-        amount: Branded.asBalanceQuantity(utxo.value),
-        assets: utxo.assets.map((asset) => ({
-          assetId: Branded.asTokenId(
-            `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`,
-          ),
-          policyId: Branded.asPolicyId(asset.policyId.toLowerCase()),
-          name: Branded.asAssetName(asset.assetName.toLowerCase()),
-          amount: Branded.asBalanceQuantity(asset.quantity),
-        })),
-        ...(utxo.datumHash === undefined ? {} : {datumHash: utxo.datumHash}),
-        ...(utxo.inlineDatum === undefined
-          ? {}
-          : {inlineDatum: utxo.inlineDatum}),
-        ...(utxo.referenceScriptHash === undefined
-          ? {}
-          : {referenceScriptHash: utxo.referenceScriptHash}),
-      }))
+      return mapCurrentStateUtxos(parsed.data.utxos, 'account')
+    },
+    async getUtxosByAddresses(addresses) {
+      const uniqueAddresses = [...new Set(addresses)]
+      if (uniqueAddresses.length === 0) return []
+
+      const expectedAddressPrefix =
+        expectedNetwork === 'mainnet' ? 'addr1' : 'addr_test1'
+      if (
+        uniqueAddresses.some((address) => !address.startsWith(expectedAddressPrefix))
+      ) {
+        throw new CardanoWalletBackendNetworkMismatchError()
+      }
+
+      await assertBackendReady()
+      const result: CurrentStateUtxo[] = []
+      for (let start = 0; start < uniqueAddresses.length; start += 1000) {
+        const batch = uniqueAddresses.slice(start, start + 1000)
+        const response = await request<unknown>({
+          url: `${normalizedBaseUrl}/v1/addresses/utxos`,
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({addresses: batch}),
+        })
+        const parsed = addressUtxosSchema.safeParse(response)
+        if (!parsed.success) {
+          throw new Error(
+            'Invalid cardano-wallet-backend address UTxO response',
+          )
+        }
+        const requestedAddresses = new Set(batch)
+        for (const utxo of parsed.data) {
+          if (!utxo.address.startsWith(expectedAddressPrefix)) {
+            throw new Error(
+              'cardano-wallet-backend address UTxO network mismatch',
+            )
+          }
+          if (!requestedAddresses.has(utxo.address)) {
+            throw new Error(
+              'cardano-wallet-backend returned an unrequested address UTxO',
+            )
+          }
+        }
+        result.push(...mapCurrentStateUtxos(parsed.data, 'address'))
+      }
+      return result
     },
   }
 }

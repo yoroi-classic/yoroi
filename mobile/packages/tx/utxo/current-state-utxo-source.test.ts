@@ -115,6 +115,32 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     })
   })
 
+  it('loads UTxOs for explicitly added addresses', async () => {
+    const request = jest.fn(async (options: {url: string}) =>
+      options.url.endsWith('/v1/status')
+        ? PREPROD_STATUS
+        : [{...validAccountUtxo(), address: 'addr_test1manual', blockHeight: 42}],
+    ) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    await expect(source.getUtxosByAddresses?.(['addr_test1manual'])).resolves.toEqual([
+      expect.objectContaining({
+        receiver: 'addr_test1manual',
+        amount: '9007199254740993000000',
+      }),
+    ])
+    expect(request).toHaveBeenNthCalledWith(2, {
+      url: 'https://wallet.example/v1/addresses/utxos',
+      method: 'POST',
+      headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+      body: JSON.stringify({addresses: ['addr_test1manual']}),
+    })
+  })
+
   it('rejects UTxOs that duplicate after hexadecimal normalization', async () => {
     const request = preprodRequest([
       validAccountUtxo(),

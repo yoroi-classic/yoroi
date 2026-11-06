@@ -132,6 +132,84 @@ describe('current-state UTxO manager', () => {
     ])
   })
 
+  it('includes UTxOs from manually added addresses outside the stake account', async () => {
+    const accountStorage = rootStorage.join('current-state-manual-address-test/')
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const accountUtxo = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1owned'),
+      amount: '5000000' as Balance.Quantity,
+      assets: [],
+    }
+    const manualUtxo = {
+      ...accountUtxo,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      receiver: Branded.asAddress('addr_test1manual'),
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest.fn().mockResolvedValue([accountUtxo]),
+      getUtxosByAddresses: jest.fn().mockResolvedValue([manualUtxo]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+      ownedAddresses: [accountUtxo.receiver, manualUtxo.receiver],
+      manualAddresses: [manualUtxo.receiver],
+    })
+
+    await manager.sync([accountUtxo.receiver, manualUtxo.receiver])
+
+    await expect(manager.getCachedUtxos()).resolves.toEqual([
+      expect.objectContaining({utxo_id: accountUtxo.utxoId}),
+      expect.objectContaining({utxo_id: manualUtxo.utxoId}),
+    ])
+    expect(source.getUtxosByAddresses).toHaveBeenCalledWith([
+      manualUtxo.receiver,
+    ])
+  })
+
+  it('refreshes owned addresses when the account discovers a new address', async () => {
+    const accountStorage = rootStorage.join('current-state-address-refresh-test/')
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const firstAddress = Branded.asAddress('addr_test1first')
+    const newlyDiscoveredAddress = Branded.asAddress('addr_test1new')
+    const newAddressUtxo = {
+      utxoId: Branded.asUtxoId(`${'c'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('c'.repeat(64)),
+      txIndex: 0,
+      receiver: newlyDiscoveredAddress,
+      amount: '5000000' as Balance.Quantity,
+      assets: [],
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest.fn().mockResolvedValue([newAddressUtxo]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+      ownedAddresses: [firstAddress],
+    })
+
+    await manager.sync([firstAddress, newlyDiscoveredAddress])
+
+    await expect(manager.getCachedUtxos()).resolves.toEqual([
+      expect.objectContaining({utxo_id: newAddressUtxo.utxoId}),
+    ])
+  })
+
   it('falls back to legacy UTxO sync only for a backend network mismatch', async () => {
     const accountStorage = rootStorage.join(
       'current-state-network-fallback-test/',
