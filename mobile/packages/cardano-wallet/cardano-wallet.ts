@@ -1191,7 +1191,7 @@ function createWalletObject(
     // Combine all addresses
     const addresses = [...chainAddresses, ...manualAddressStrings]
 
-    await state.utxoManager.sync(addresses)
+    await state.utxoManager.sync(addresses, manualAddressStrings)
     if (state.utxoManager.kind === 'legacy') {
       state.collateralId = await state.utxoManager.getCollateralId()
     }

@@ -119,7 +119,7 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     const request = jest.fn(async (options: {url: string}) =>
       options.url.endsWith('/v1/status')
         ? PREPROD_STATUS
-        : [{...validAccountUtxo(), address: 'addr_test1manual', blockHeight: 42}],
+        : [{...validAccountUtxo(), address: 'addr_test1manual'}],
     ) as unknown as jest.MockedFunction<Fetcher>
     const source = createCardanoWalletBackendUtxoSource(
       'https://wallet.example',
@@ -127,7 +127,9 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
       request,
     )
 
-    await expect(source.getUtxosByAddresses?.(['addr_test1manual'])).resolves.toEqual([
+    await expect(
+      source.getUtxosByAddresses?.(['addr_test1manual']),
+    ).resolves.toEqual([
       expect.objectContaining({
         receiver: 'addr_test1manual',
         amount: '9007199254740993000000',
@@ -136,9 +138,28 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     expect(request).toHaveBeenNthCalledWith(2, {
       url: 'https://wallet.example/v1/addresses/utxos',
       method: 'POST',
-      headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
-      body: JSON.stringify({addresses: ['addr_test1manual']}),
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      data: {addresses: ['addr_test1manual']},
     })
+  })
+
+  it('does not classify a manually added address network error as backend mismatch', async () => {
+    const request = preprodRequest([])
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    await expect(
+      source.getUtxosByAddresses?.(['addr1mainnet']),
+    ).rejects.toThrow(
+      'Manually added address does not match the selected network',
+    )
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('rejects UTxOs that duplicate after hexadecimal normalization', async () => {

@@ -81,7 +81,7 @@ const accountUtxoSchema = z.object({
 })
 const addressUtxosSchema = z.array(
   accountUtxoSchema.extend({
-    blockHeight: z.number().int().nonnegative(),
+    blockHeight: z.number().int().nonnegative().optional(),
   }),
 )
 
@@ -261,9 +261,13 @@ export const createCardanoWalletBackendUtxoSource = (
       const expectedAddressPrefix =
         expectedNetwork === 'mainnet' ? 'addr1' : 'addr_test1'
       if (
-        uniqueAddresses.some((address) => !address.startsWith(expectedAddressPrefix))
+        uniqueAddresses.some(
+          (address) => !address.startsWith(expectedAddressPrefix),
+        )
       ) {
-        throw new CardanoWalletBackendNetworkMismatchError()
+        throw new Error(
+          'Manually added address does not match the selected network',
+        )
       }
 
       await assertBackendReady()
@@ -277,7 +281,7 @@ export const createCardanoWalletBackendUtxoSource = (
             Accept: 'application/json',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({addresses: batch}),
+          data: {addresses: batch},
         })
         const parsed = addressUtxosSchema.safeParse(response)
         if (!parsed.success) {

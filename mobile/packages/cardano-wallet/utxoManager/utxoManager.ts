@@ -52,7 +52,7 @@ export const makeUtxoManager = async ({
   const initialCollateralId = await getCollateralId()
 
   // utxo state is related to the addresses used, if it changes a reset is needed
-  const sync = (addresses: Array<string>) => {
+  const sync = (addresses: Array<string>, _manualAddresses?: Array<string>) => {
     if (addresses.length === addrCounter)
       return service.syncUtxoState(
         addresses.map((addr) => Branded.asAddress(addr)),
@@ -145,17 +145,26 @@ export const makeCurrentStateUtxoManager = async ({
   const initialCollateralId = await getCollateralId()
   const initialUtxos = await getCachedUtxos()
   let syncQueue = Promise.resolve()
-  const syncCurrentState = async (addresses: Array<string>) => {
+  let currentManualAddresses = [...manualAddresses]
+  const syncCurrentState = async (
+    addresses: Array<string>,
+    latestManualAddresses?: Array<string>,
+  ) => {
     if (addresses.length > 0) ownedAddressSet = new Set(addresses)
+    if (latestManualAddresses !== undefined) {
+      currentManualAddresses = [...latestManualAddresses]
+    }
     const nextUtxos = await source.getAccountUtxos(stakeAddress)
     let manualAddressUtxos: ReadonlyArray<CurrentStateUtxo> = []
-    if (manualAddresses.length > 0) {
+    if (currentManualAddresses.length > 0) {
       if (source.getUtxosByAddresses === undefined) {
         throw new Error(
           'Current-state UTxO source does not support address reads',
         )
       }
-      manualAddressUtxos = await source.getUtxosByAddresses(manualAddresses)
+      manualAddressUtxos = await source.getUtxosByAddresses(
+        currentManualAddresses,
+      )
     }
     const allUtxos = new Map(
       nextUtxos.map((utxo) => [utxo.utxoId, utxo] as const),
@@ -254,14 +263,17 @@ export const makeCurrentStateUtxoManager = async ({
       pendingStore.savePendingUtxoOverlay(stakeAddress, overlay),
     removePendingOverlay: (txHash: PendingUtxoOverlay['txHash']) =>
       pendingStore.removePendingUtxoOverlay(stakeAddress, txHash),
-    sync: async (addresses: Array<string>) => {
+    sync: async (
+      addresses: Array<string>,
+      latestManualAddresses?: Array<string>,
+    ) => {
       const sync = syncQueue.then(async () => {
         if (useLegacyFallback && fallbackManager) {
           await fallbackManager.sync(addresses)
           return
         }
         try {
-          await syncCurrentState(addresses)
+          await syncCurrentState(addresses, latestManualAddresses)
         } catch (error) {
           if (
             !(error instanceof CardanoWalletBackendNetworkMismatchError) ||

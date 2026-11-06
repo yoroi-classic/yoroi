@@ -162,10 +162,12 @@ describe('current-state UTxO manager', () => {
       pendingStore,
       stakeAddress,
       ownedAddresses: [accountUtxo.receiver, manualUtxo.receiver],
-      manualAddresses: [manualUtxo.receiver],
     })
 
-    await manager.sync([accountUtxo.receiver, manualUtxo.receiver])
+    await manager.sync(
+      [accountUtxo.receiver, manualUtxo.receiver],
+      [manualUtxo.receiver],
+    )
 
     await expect(manager.getCachedUtxos()).resolves.toEqual([
       expect.objectContaining({utxo_id: accountUtxo.utxoId}),
