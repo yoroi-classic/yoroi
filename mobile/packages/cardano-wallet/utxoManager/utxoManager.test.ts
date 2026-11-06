@@ -739,6 +739,97 @@ describe('current-state UTxO manager', () => {
     ).resolves.toEqual([])
   })
 
+  it('drops observed-parent child chains that also spend real UTxOs', async () => {
+    const accountStorage = rootStorage.join(
+      'current-state-observed-chained-overlay-test/',
+    )
+    await accountStorage.clear()
+    const storage = accountStorage.join('utxos/')
+    const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
+    const input = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress('addr_test1input'),
+      amount: '10000000' as Balance.Quantity,
+      assets: [],
+    }
+    const parentChange = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      txIndex: 1,
+      amount: '7800000' as Balance.Quantity,
+    }
+    const secondInput = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'e'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('e'.repeat(64)),
+      receiver: Branded.asAddress('addr_test1second-input'),
+      amount: '5000000' as Balance.Quantity,
+    }
+    const childChange = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'c'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('c'.repeat(64)),
+      txIndex: 1,
+      amount: '4600000' as Balance.Quantity,
+    }
+    const thirdInput = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'f'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('f'.repeat(64)),
+      receiver: Branded.asAddress('addr_test1third-input'),
+      amount: '3000000' as Balance.Quantity,
+    }
+    const grandchildChange = {
+      ...input,
+      utxoId: Branded.asUtxoId(`${'9'.repeat(64)}:1`),
+      txHash: Branded.asTransactionHash('9'.repeat(64)),
+      txIndex: 1,
+      amount: '2400000' as Balance.Quantity,
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest.fn().mockResolvedValue([
+        secondInput,
+        thirdInput,
+      ]),
+    }
+    const manager = await makeCurrentStateUtxoManager({
+      storage,
+      source,
+      pendingStore,
+      stakeAddress,
+    })
+    await manager.sync([])
+    await manager.savePendingOverlay({
+      txHash: parentChange.txHash,
+      spentUtxoIds: [input.utxoId],
+      createdUtxos: [parentChange],
+    })
+    await manager.savePendingOverlay({
+      txHash: childChange.txHash,
+      spentUtxoIds: [parentChange.utxoId, secondInput.utxoId],
+      createdUtxos: [childChange],
+    })
+    await manager.savePendingOverlay({
+      txHash: grandchildChange.txHash,
+      spentUtxoIds: [childChange.utxoId, thirdInput.utxoId],
+      createdUtxos: [grandchildChange],
+    })
+
+    await manager.sync([])
+
+    await expect(manager.getCachedUtxos()).resolves.toEqual([
+      expect.objectContaining({utxo_id: secondInput.utxoId}),
+      expect.objectContaining({utxo_id: thirdInput.utxoId}),
+    ])
+    await expect(
+      pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress),
+    ).resolves.toEqual([])
+  })
+
   it('retains a pending child when its parent output is on chain', async () => {
     const accountStorage = rootStorage.join(
       'current-state-landed-parent-overlay-test/',
