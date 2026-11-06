@@ -201,6 +201,7 @@ describe('CardanoWallet', () => {
           : ('current-state' as const)
       },
       clear: jest.fn(),
+      getCollateralId: jest.fn().mockResolvedValue(''),
       sync: jest.fn(async (addresses: Array<string>) => {
         usingLegacyManager = true
         await legacyUtxo.sync(addresses)
@@ -245,7 +246,7 @@ describe('CardanoWallet', () => {
 
       expect(wallet.usesCurrentStateUtxos).toBe(false)
       expect(legacyUtxo.sync).toHaveBeenCalledWith(
-        expect.arrayContaining([expect.stringMatching(/^addr_test1/)]),
+        expect.arrayContaining(['addr1fixture']),
       )
       expect(currentStateManager.sync).toHaveBeenCalled()
     } finally {
