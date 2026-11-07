@@ -2,6 +2,7 @@ import {buildNetworkManagers} from '@yoroi/blockchains'
 import {CardanoWalletBackendNetworkMismatchError} from '@yoroi/common'
 import {createTokenManagerMock} from '@yoroi/portfolio'
 import {
+  CurrentStateWalletSource,
   PendingUtxoOverlay,
   PersistentPendingUtxoOverlayStore,
   createPersistentPendingUtxoOverlayStore,
@@ -24,6 +25,7 @@ import {
 import type {CardanoWalletDependencies} from './dependencies'
 import {keyManager} from './key-manager/key-manager'
 import {mockedTipStatusResponse} from './mocks'
+import {makeManualAddressStorage} from './storage/manual-address-storage'
 import * as pendingOverlayApi from './utxoManager/pending-utxo-overlay'
 import * as utxoManagerApi from './utxoManager/utxoManager'
 
@@ -83,6 +85,64 @@ const createMockStorage = (path = '/'): App.Storage => {
     clear: jest.fn().mockResolvedValue(undefined),
     removeFolder: jest.fn().mockResolvedValue(undefined),
   }
+}
+
+const makeMemoryStorage = (
+  data = new Map<string, string>(),
+  path = '/',
+): App.Storage => {
+  const absolute = (key: string) => `${path}${key}`
+  const storage = {
+    join: (folder: App.StorageFolderName) =>
+      makeMemoryStorage(data, `${path}${folder}`),
+    getItem: async <T>(
+      key: string,
+      parse?: (item: string | null) => T | null,
+    ) => {
+      const value = data.get(absolute(key)) ?? null
+      return parse ? parse(value) : value === null ? null : JSON.parse(value)
+    },
+    setItem: async <T>(
+      key: string,
+      value: T,
+      stringify: (item: T) => string = JSON.stringify,
+    ) => {
+      data.set(absolute(key), stringify(value))
+    },
+    removeItem: async (key: string) => {
+      data.delete(absolute(key))
+    },
+    getAllKeys: async () =>
+      [...data.keys()]
+        .filter((key) => key.startsWith(path))
+        .map((key) => key.slice(path.length)),
+    multiGet: async (keys: ReadonlyArray<string>) =>
+      Promise.all(
+        keys.map(
+          async (key): Promise<[string, unknown]> => [
+            key,
+            await storage.getItem(key),
+          ],
+        ),
+      ),
+    multiSet: async (tuples: ReadonlyArray<[string, unknown]>) => {
+      await Promise.all(
+        tuples.map(([key, value]) => storage.setItem(key, value)),
+      )
+    },
+    multiRemove: async (keys: ReadonlyArray<string>) => {
+      await Promise.all(keys.map((key) => storage.removeItem(key)))
+    },
+    removeFolder: async (folder: App.StorageFolderName) => {
+      const prefix = `${path}${folder}`
+      for (const key of data.keys())
+        if (key.startsWith(prefix)) data.delete(key)
+    },
+    clear: async () => {
+      for (const key of data.keys()) if (key.startsWith(path)) data.delete(key)
+    },
+  }
+  return storage as unknown as App.Storage
 }
 
 const mockCardanoWalletDependencies: CardanoWalletDependencies = {
@@ -248,6 +308,111 @@ describe('CardanoWallet', () => {
       filterUsedAddressesSpy.mockRestore()
       getTipStatusSpy.mockRestore()
       fetchHistorySpy.mockRestore()
+      delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
+      delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
+    }
+  })
+
+  it('syncs manual addresses saved before and after wallet construction', async () => {
+    const id = 'current-state-manual-address-sync-wallet'
+    const firstAddress = 'addr_test1manualbefore'
+    const secondAddress = 'addr_test1manualafter'
+    const firstUtxo = {
+      utxoId: Branded.asUtxoId(`${'a'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('a'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress(firstAddress),
+      amount: '5000000' as Balance.Quantity,
+      assets: [],
+    }
+    const secondUtxo = {
+      ...firstUtxo,
+      utxoId: Branded.asUtxoId(`${'b'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('b'.repeat(64)),
+      receiver: Branded.asAddress(secondAddress),
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest.fn().mockResolvedValue([]),
+      getUtxosByAddresses: jest.fn().mockResolvedValue([firstUtxo, secondUtxo]),
+    }
+    const makeCurrentStateManager = utxoManagerApi.makeCurrentStateUtxoManager
+    const makeCurrentStateManagerSpy = jest
+      .spyOn(utxoManagerApi, 'makeCurrentStateUtxoManager')
+      .mockImplementation((options) =>
+        makeCurrentStateManager({...options, source} as never),
+      )
+    const filterUsedAddressesSpy = jest
+      .spyOn(legacyApi, 'filterUsedAddresses')
+      .mockResolvedValue([])
+    const getTipStatusSpy = jest
+      .spyOn(legacyApi, 'getTipStatus')
+      .mockResolvedValue(mockedTipStatusResponse)
+    const fetchHistorySpy = jest
+      .spyOn(legacyApi, 'fetchNewTxHistory')
+      .mockResolvedValue({isLast: true, transactions: []})
+    const originalRootStorage = mockCardanoWalletDependencies.rootStorage
+    const rootStorage = makeMemoryStorage()
+    mockCardanoWalletDependencies.rootStorage = rootStorage
+    initializeWalletFactories(mockCardanoWalletDependencies, networkManagers)
+    mockCardanoWalletDependencies.cardanoWalletBackendUrl =
+      'https://wallet-backend.example.com'
+    mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
+      createPersistentPendingUtxoOverlayStore
+
+    try {
+      const walletStorage = rootStorage.join(
+        `legacy/${Chain.Network.Preprod}/v1/${id}/`,
+      )
+      const manualAddressStorage = makeManualAddressStorage(
+        walletStorage.join('wallet/'),
+      )
+      await manualAddressStorage.add({
+        accountIndex: 1,
+        addressIndex: 5,
+        address: firstAddress,
+        derivationPath: "m/1852'/1815'/1'/0/5",
+        reasons: ['utxo'],
+        addedAt: '2026-11-07T00:00:00.000Z',
+      })
+
+      const ShelleyWalletPreprod = getWalletFactory({
+        implementation: 'cardano-cip1852',
+        network: Chain.Network.Preprod,
+      })
+      const wallet = await ShelleyWalletPreprod.build({
+        id,
+        accountPubKeyHex:
+          '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+        accountVisual: 0,
+      })
+
+      await makeManualAddressStorage(walletStorage.join('wallet/')).add({
+        accountIndex: 2,
+        addressIndex: 6,
+        address: secondAddress,
+        derivationPath: "m/1852'/1815'/2'/0/6",
+        reasons: ['utxo'],
+        addedAt: '2026-11-07T00:00:01.000Z',
+      })
+
+      await wallet.sync({})
+
+      expect(source.getUtxosByAddresses).toHaveBeenCalledWith([
+        firstAddress,
+        secondAddress,
+      ])
+      expect(wallet.allUtxos().map((utxo) => utxo.utxo_id)).toEqual([
+        firstUtxo.utxoId,
+        secondUtxo.utxoId,
+      ])
+    } finally {
+      makeCurrentStateManagerSpy.mockRestore()
+      filterUsedAddressesSpy.mockRestore()
+      getTipStatusSpy.mockRestore()
+      fetchHistorySpy.mockRestore()
+      mockCardanoWalletDependencies.rootStorage = originalRootStorage
+      initializeWalletFactories(mockCardanoWalletDependencies, networkManagers)
       delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
       delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
     }

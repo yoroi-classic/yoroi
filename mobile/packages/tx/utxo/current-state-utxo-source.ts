@@ -121,7 +121,9 @@ const mapCurrentStateUtxos = (
     for (const asset of utxo.assets) {
       const assetId = `${asset.policyId.toLowerCase()}.${asset.assetName.toLowerCase()}`
       if (seenAssets.has(assetId)) {
-        throw new Error(`Duplicate asset in cardano-wallet-backend ${context} UTxO`)
+        throw new Error(
+          `Duplicate asset in cardano-wallet-backend ${context} UTxO`,
+        )
       }
       seenAssets.add(assetId)
     }
@@ -145,9 +147,7 @@ const mapCurrentStateUtxos = (
       amount: Branded.asBalanceQuantity(asset.quantity),
     })),
     ...(utxo.datumHash === undefined ? {} : {datumHash: utxo.datumHash}),
-    ...(utxo.inlineDatum === undefined
-      ? {}
-      : {inlineDatum: utxo.inlineDatum}),
+    ...(utxo.inlineDatum === undefined ? {} : {inlineDatum: utxo.inlineDatum}),
     ...(utxo.referenceScriptHash === undefined
       ? {}
       : {referenceScriptHash: utxo.referenceScriptHash}),
@@ -278,7 +278,7 @@ export const createCardanoWalletBackendUtxoSource = (
           url: `${normalizedBaseUrl}/v1/addresses/utxos`,
           method: 'POST',
           headers: {
-            Accept: 'application/json',
+            'Accept': 'application/json',
             'Content-Type': 'application/json',
           },
           data: {addresses: batch},

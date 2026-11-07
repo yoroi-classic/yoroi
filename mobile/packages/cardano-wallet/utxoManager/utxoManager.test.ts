@@ -133,7 +133,9 @@ describe('current-state UTxO manager', () => {
   })
 
   it('includes UTxOs from manually added addresses outside the stake account', async () => {
-    const accountStorage = rootStorage.join('current-state-manual-address-test/')
+    const accountStorage = rootStorage.join(
+      'current-state-manual-address-test/',
+    )
     await accountStorage.clear()
     const storage = accountStorage.join('utxos/')
     const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
@@ -179,7 +181,9 @@ describe('current-state UTxO manager', () => {
   })
 
   it('refreshes owned addresses when the account discovers a new address', async () => {
-    const accountStorage = rootStorage.join('current-state-address-refresh-test/')
+    const accountStorage = rootStorage.join(
+      'current-state-address-refresh-test/',
+    )
     await accountStorage.clear()
     const storage = accountStorage.join('utxos/')
     const pendingStore = createPersistentPendingUtxoOverlayStore(accountStorage)
@@ -793,10 +797,7 @@ describe('current-state UTxO manager', () => {
     }
     const source: CurrentStateWalletSource = {
       getChainTip: jest.fn(),
-      getAccountUtxos: jest.fn().mockResolvedValue([
-        secondInput,
-        thirdInput,
-      ]),
+      getAccountUtxos: jest.fn().mockResolvedValue([secondInput, thirdInput]),
     }
     const manager = await makeCurrentStateUtxoManager({
       storage,
