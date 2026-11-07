@@ -11,6 +11,7 @@ export * from './cache/is-expired'
 export * from './cache/record-with-etag'
 
 export * from './errors/errors'
+export * from './errors/cardano-wallet-backend-network-mismatch-error'
 
 export * from './fixtures/async-behavior'
 export * from './fixtures/ErrorBoundary'

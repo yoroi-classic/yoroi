@@ -1,5 +1,9 @@
-import {RawUtxo} from '@yoroi/api'
-import {isString, parseSafe} from '@yoroi/common'
+import type {RawUtxo} from '@yoroi/api'
+import {
+  CardanoWalletBackendNetworkMismatchError,
+  isString,
+  parseSafe,
+} from '@yoroi/common'
 import {
   CurrentStateUtxo,
   CurrentStateWalletSource,
@@ -48,7 +52,7 @@ export const makeUtxoManager = async ({
   const initialCollateralId = await getCollateralId()
 
   // utxo state is related to the addresses used, if it changes a reset is needed
-  const sync = (addresses: Array<string>) => {
+  const sync = (addresses: Array<string>, _manualAddresses?: Array<string>) => {
     if (addresses.length === addrCounter)
       return service.syncUtxoState(
         addresses.map((addr) => Branded.asAddress(addr)),
@@ -84,6 +88,7 @@ export const makeUtxoManager = async ({
 }
 
 const currentStateCacheKey = 'current-state-cache'
+const legacyFallbackCacheKey = 'legacy-fallback'
 
 /** Shelley UTxOs come from an authoritative backend snapshot, never legacy diffs. */
 export const makeCurrentStateUtxoManager = async ({
@@ -91,13 +96,23 @@ export const makeCurrentStateUtxoManager = async ({
   source,
   pendingStore,
   stakeAddress,
+  ownedAddresses: initialOwnedAddresses,
+  manualAddresses = [],
+  fallbackManager,
 }: {
   storage: App.Storage
   source: CurrentStateWalletSource
   pendingStore: PersistentPendingUtxoOverlayStore
   stakeAddress: StakingAddress
+  ownedAddresses?: ReadonlyArray<string>
+  manualAddresses?: ReadonlyArray<string>
+  fallbackManager?: Awaited<ReturnType<typeof makeUtxoManager>>
 }) => {
   const managerStorage = makeUtxoManagerStorage(storage)
+  const legacyFallback = await storage.getItem<boolean>(
+    legacyFallbackCacheKey,
+    (data) => (parseSafe(data) === true ? true : null),
+  )
   const storedUtxos = await storage.getItem<CurrentStateUtxo[]>(
     currentStateCacheKey,
     (data) => {
@@ -105,9 +120,20 @@ export const makeCurrentStateUtxoManager = async ({
       return Array.isArray(parsed) ? (parsed as CurrentStateUtxo[]) : null
     },
   )
-  let authoritativeUtxos: CurrentStateUtxo[] = storedUtxos ?? []
+  let ownedAddressSet =
+    initialOwnedAddresses === undefined
+      ? undefined
+      : new Set(initialOwnedAddresses)
+  let authoritativeUtxos: CurrentStateUtxo[] = (storedUtxos ?? []).filter(
+    (utxo) =>
+      ownedAddressSet === undefined || ownedAddressSet.has(utxo.receiver),
+  )
+  let useLegacyFallback = legacyFallback === true
 
   const getCachedUtxos = async () => {
+    if (useLegacyFallback && fallbackManager) {
+      return fallbackManager.getCachedUtxos()
+    }
     const pending =
       await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress)
     return applyPendingUtxoOverlays(authoritativeUtxos, pending).map(
@@ -119,14 +145,116 @@ export const makeCurrentStateUtxoManager = async ({
   const initialCollateralId = await getCollateralId()
   const initialUtxos = await getCachedUtxos()
   let syncQueue = Promise.resolve()
+  let currentManualAddresses = [...manualAddresses]
+  const syncCurrentState = async (
+    addresses: Array<string>,
+    latestManualAddresses?: Array<string>,
+  ) => {
+    if (addresses.length > 0) ownedAddressSet = new Set(addresses)
+    if (latestManualAddresses !== undefined) {
+      currentManualAddresses = [...latestManualAddresses]
+    }
+    const nextUtxos = await source.getAccountUtxos(stakeAddress)
+    let manualAddressUtxos: ReadonlyArray<CurrentStateUtxo> = []
+    if (currentManualAddresses.length > 0) {
+      if (source.getUtxosByAddresses === undefined) {
+        throw new Error(
+          'Current-state UTxO source does not support address reads',
+        )
+      }
+      manualAddressUtxos = await source.getUtxosByAddresses(
+        currentManualAddresses,
+      )
+    }
+    const allUtxos = new Map(
+      nextUtxos.map((utxo) => [utxo.utxoId, utxo] as const),
+    )
+    for (const utxo of manualAddressUtxos) {
+      if (!allUtxos.has(utxo.utxoId)) allUtxos.set(utxo.utxoId, utxo)
+    }
+    const ownedUtxos = [...allUtxos.values()].filter(
+      (utxo) =>
+        ownedAddressSet === undefined || ownedAddressSet.has(utxo.receiver),
+    )
+    const currentIds = new Set(ownedUtxos.map((utxo) => utxo.utxoId))
+    const pending =
+      await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(stakeAddress)
+    const earlierPendingOutputIds = new Set<string>()
+    const overlaysWithUnspentInputs = pending.filter((overlay) => {
+      const hasTrackedInput = overlay.spentUtxoIds.some(
+        (utxoId) =>
+          currentIds.has(utxoId) || earlierPendingOutputIds.has(utxoId),
+      )
+      for (const createdUtxo of overlay.createdUtxos) {
+        earlierPendingOutputIds.add(createdUtxo.utxoId)
+      }
+      return overlay.ttlSlot !== undefined && hasTrackedInput
+    })
+    const currentSlot =
+      overlaysWithUnspentInputs.length > 0
+        ? (await source.getChainTip()).bestBlock.slot
+        : undefined
+    await storage.setItem(currentStateCacheKey, ownedUtxos)
+    authoritativeUtxos = [...ownedUtxos]
+    const retainedPendingOutputIds = new Set<string>()
+    const removedPendingOutputIds = new Set<string>()
+    for (const overlay of pending) {
+      const spendsRetainedPendingOutput = overlay.spentUtxoIds.some((utxoId) =>
+        retainedPendingOutputIds.has(utxoId),
+      )
+      const spendsRemovedPendingOutput = overlay.spentUtxoIds.some(
+        (utxoId) =>
+          removedPendingOutputIds.has(utxoId) && !currentIds.has(utxoId),
+      )
+      const hasUnspentInput =
+        spendsRetainedPendingOutput ||
+        overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId))
+      const observed =
+        !spendsRetainedPendingOutput &&
+        !spendsRemovedPendingOutput &&
+        overlay.spentUtxoIds.length > 0 &&
+        overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
+      const expiredWithInputsRemaining =
+        overlay.ttlSlot !== undefined &&
+        overlay.spentUtxoIds.length > 0 &&
+        hasUnspentInput &&
+        currentSlot !== undefined &&
+        currentSlot !== null &&
+        BigInt(currentSlot) > BigInt(overlay.ttlSlot)
+      if (
+        spendsRemovedPendingOutput ||
+        observed ||
+        expiredWithInputsRemaining
+      ) {
+        for (const createdUtxo of overlay.createdUtxos) {
+          removedPendingOutputIds.add(createdUtxo.utxoId)
+        }
+        await pendingStore.removePendingUtxoOverlay(
+          stakeAddress,
+          overlay.txHash,
+        )
+      } else {
+        for (const createdUtxo of overlay.createdUtxos) {
+          retainedPendingOutputIds.add(createdUtxo.utxoId)
+        }
+      }
+    }
+  }
 
   return {
-    kind: 'current-state' as const,
+    get kind() {
+      return useLegacyFallback
+        ? ('legacy' as const)
+        : ('current-state' as const)
+    },
     clear: async () => {
       await storage.removeItem(currentStateCacheKey)
       await pendingStore.clearPendingUtxoOverlaysForFullResync()
       await managerStorage.collateral.clear()
       authoritativeUtxos = []
+      if (useLegacyFallback && fallbackManager) await fallbackManager.clear()
+      await storage.removeItem(legacyFallbackCacheKey)
+      useLegacyFallback = false
     },
     initialUtxos,
     getCachedUtxos,
@@ -135,71 +263,41 @@ export const makeCurrentStateUtxoManager = async ({
       pendingStore.savePendingUtxoOverlay(stakeAddress, overlay),
     removePendingOverlay: (txHash: PendingUtxoOverlay['txHash']) =>
       pendingStore.removePendingUtxoOverlay(stakeAddress, txHash),
-    sync: async (_addresses: Array<string>) => {
+    sync: async (
+      addresses: Array<string>,
+      latestManualAddresses?: Array<string>,
+    ) => {
       const sync = syncQueue.then(async () => {
-        const nextUtxos = await source.getAccountUtxos(stakeAddress)
-        const currentIds = new Set(nextUtxos.map((utxo) => utxo.utxoId))
-        const pending =
-          await pendingStore.getPendingUtxoOverlaysInSubmissionOrder(
-            stakeAddress,
-          )
-        const earlierPendingOutputIds = new Set<string>()
-        const overlaysWithUnspentInputs = pending.filter((overlay) => {
-          const hasTrackedInput = overlay.spentUtxoIds.some(
-            (utxoId) =>
-              currentIds.has(utxoId) || earlierPendingOutputIds.has(utxoId),
-          )
-          for (const createdUtxo of overlay.createdUtxos) {
-            earlierPendingOutputIds.add(createdUtxo.utxoId)
+        if (useLegacyFallback && fallbackManager) {
+          await fallbackManager.sync(addresses)
+          return
+        }
+        try {
+          await syncCurrentState(addresses, latestManualAddresses)
+        } catch (error) {
+          if (
+            !(error instanceof CardanoWalletBackendNetworkMismatchError) ||
+            !fallbackManager
+          ) {
+            throw error
           }
-          return overlay.ttlSlot !== undefined && hasTrackedInput
-        })
-        const currentSlot =
-          overlaysWithUnspentInputs.length > 0
-            ? (await source.getChainTip()).bestBlock.slot
-            : undefined
-        // Fetch all data needed to reconcile pending transactions before
-        // committing the new authoritative snapshot.
-        await storage.setItem(currentStateCacheKey, nextUtxos)
-        authoritativeUtxos = [...nextUtxos]
-        const retainedPendingOutputIds = new Set<string>()
-        for (const overlay of pending) {
-          const spendsRetainedPendingOutput = overlay.spentUtxoIds.some(
-            (utxoId) => retainedPendingOutputIds.has(utxoId),
-          )
-          const hasUnspentInput =
-            spendsRetainedPendingOutput ||
-            overlay.spentUtxoIds.some((utxoId) => currentIds.has(utxoId))
-          const observed =
-            !spendsRetainedPendingOutput &&
-            overlay.spentUtxoIds.length > 0 &&
-            overlay.spentUtxoIds.every((utxoId) => !currentIds.has(utxoId))
-          const expiredWithInputsRemaining =
-            overlay.ttlSlot !== undefined &&
-            overlay.spentUtxoIds.length > 0 &&
-            hasUnspentInput &&
-            currentSlot !== undefined &&
-            currentSlot !== null &&
-            BigInt(currentSlot) > BigInt(overlay.ttlSlot)
-          if (observed || expiredWithInputsRemaining) {
-            await pendingStore.removePendingUtxoOverlay(
-              stakeAddress,
-              overlay.txHash,
-            )
-          } else {
-            for (const createdUtxo of overlay.createdUtxos) {
-              retainedPendingOutputIds.add(createdUtxo.utxoId)
-            }
-          }
+          await storage.setItem(legacyFallbackCacheKey, true)
+          useLegacyFallback = true
+          await fallbackManager.sync(addresses)
         }
       })
       syncQueue = sync.catch(() => undefined)
       await sync
     },
     initialCollateralId,
-    getCollateralId,
+    getCollateralId: () =>
+      useLegacyFallback && fallbackManager
+        ? fallbackManager.getCollateralId()
+        : getCollateralId(),
     setCollateralId: (utxoId: RawUtxo['utxo_id']) =>
-      managerStorage.collateral.save(utxoId),
+      useLegacyFallback && fallbackManager
+        ? fallbackManager.setCollateralId(utxoId)
+        : managerStorage.collateral.save(utxoId),
   } as const
 }
 

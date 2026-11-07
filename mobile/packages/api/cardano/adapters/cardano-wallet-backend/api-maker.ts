@@ -1,4 +1,8 @@
-import {Fetcher, fetcher} from '@yoroi/common'
+import {
+  CardanoWalletBackendNetworkMismatchError,
+  Fetcher,
+  fetcher,
+} from '@yoroi/common'
 import type {Chain, TransactionCborBase64} from '@yoroi/types'
 
 import {freeze} from 'immer'
@@ -21,13 +25,7 @@ export type CardanoWalletBackendV1Api = {
 }
 
 // A distinct error lets the API manager fall back only on a confirmed network mismatch.
-// eslint-disable-next-line no-restricted-syntax -- An Error subtype distinguishes this fallback case from transport and validation failures.
-export class CardanoWalletBackendNetworkMismatchError extends Error {
-  constructor() {
-    super('cardano-wallet-backend network mismatch')
-    this.name = 'CardanoWalletBackendNetworkMismatchError'
-  }
-}
+export {CardanoWalletBackendNetworkMismatchError}
 
 const UsedAddressesSchema = z.array(z.string())
 const SubmitTransactionResponseSchema = z

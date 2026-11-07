@@ -122,7 +122,7 @@ export type UtxoBackendSelection =
   | {kind: 'current-state'; baseUrl: string}
   | {
       kind: 'legacy'
-      reason: 'not-configured' | 'not-enabled' | 'unsupported-wallet'
+      reason: 'not-configured' | 'unsupported-wallet'
     }
 
 export const historyTipStatusForUtxoBackend = (
@@ -133,12 +133,10 @@ export const historyTipStatusForUtxoBackend = (
 
 export const selectUtxoBackend = ({
   backendUrl,
-  enabled,
   implementation,
   rewardAddressHex,
 }: {
   backendUrl?: string
-  enabled?: boolean
   implementation: Wallet.Implementation
   rewardAddressHex: string
 }): UtxoBackendSelection => {
@@ -147,7 +145,6 @@ export const selectUtxoBackend = ({
     return {kind: 'legacy', reason: 'unsupported-wallet'}
   }
   if (!normalizedUrl) return {kind: 'legacy', reason: 'not-configured'}
-  if (enabled !== true) return {kind: 'legacy', reason: 'not-enabled'}
   return {kind: 'current-state', baseUrl: normalizedUrl}
 }
 
@@ -411,36 +408,56 @@ export const makeCardanoWallet = (
         : ''
     }
 
+    const manualAddressStorage = makeManualAddressStorage(
+      walletRootStorage.join('wallet/') as unknown as App.Storage,
+    )
+    const manualAddresses = await manualAddressStorage.getAll()
+    const manualAddressCache = new Map<string, ManualAddress>()
+    for (const ma of manualAddresses) {
+      manualAddressCache.set(ma.address, ma)
+    }
+
     const utxoStorage = accountStorage.join('utxos/')
     const utxoBackend = selectUtxoBackend({
       backendUrl: cardanoWalletBackendUrl,
-      enabled: dependencies.currentStateUtxoEnabled,
       implementation,
       rewardAddressHex: finalRewardAddressHex,
     })
-    const utxoManager =
-      utxoBackend.kind === 'current-state'
-        ? await makeCurrentStateUtxoManager({
-            storage: utxoStorage,
-            source: createCardanoWalletBackendUtxoSource(
-              utxoBackend.baseUrl,
-              network,
-            ),
-            pendingStore:
-              dependencies.makePendingUtxoOverlayStore?.(accountStorage) ??
-              (() => {
-                throw new Error(
-                  'Current-state UTxO backend requires a pending overlay store',
-                )
-              })(),
-            stakeAddress: Branded.asStakingAddress(
-              deriveRewardAddressDetails(finalRewardAddressHex).bech32,
-            ),
-          })
-        : await makeUtxoManager({
-            storage: utxoStorage,
-            apiUrl: legacyApiBaseUrl,
-          })
+    let utxoManager: UtxoManager
+    if (utxoBackend.kind === 'current-state') {
+      const fallbackManager = await makeUtxoManager({
+        storage: utxoStorage,
+        apiUrl: legacyApiBaseUrl,
+      })
+      utxoManager = await makeCurrentStateUtxoManager({
+        storage: utxoStorage,
+        source: createCardanoWalletBackendUtxoSource(
+          utxoBackend.baseUrl,
+          network,
+        ),
+        ownedAddresses: [
+          ...accountManager.getAddressesInBlocks(finalRewardAddressHex).flat(),
+          ...manualAddressCache.keys(),
+        ],
+        manualAddresses: [...manualAddressCache.keys()],
+        fallbackManager,
+        pendingStore:
+          dependencies.makePendingUtxoOverlayStore?.(accountStorage) ??
+          (() => {
+            throw new Error(
+              'Current-state UTxO backend requires a pending overlay store',
+            )
+          })(),
+        stakeAddress: Branded.asStakingAddress(
+          deriveRewardAddressDetails(finalRewardAddressHex).bech32,
+        ),
+      })
+    } else {
+      utxoManager = await makeUtxoManager({
+        storage: utxoStorage,
+        apiUrl: legacyApiBaseUrl,
+      })
+    }
 
     const transactionManager = await createTransactionManager(
       accountStorage.join('txs/'),
@@ -455,18 +472,6 @@ export const makeCardanoWallet = (
     // TODO: protocolParams needs update when epoch changes, this also should trigger
     // the calculation of locked deposit, since the cost can change
     const protocolParams = await networkManager.api.protocolParams()
-
-    // Load and cache manual addresses for synchronous access
-    // NOTE: Manual addresses are only discovered/verified on-demand via AdvancedAddressRetrievalScreen.
-    // This only loads addresses that were previously discovered and saved to storage.
-    const manualAddressStorage = makeManualAddressStorage(
-      walletRootStorage.join('wallet/') as unknown as App.Storage,
-    )
-    const manualAddresses = await manualAddressStorage.getAll()
-    const manualAddressCache = new Map<string, ManualAddress>()
-    for (const ma of manualAddresses) {
-      manualAddressCache.set(ma.address, ma)
-    }
 
     const state: WalletState = {
       id,
@@ -1186,7 +1191,10 @@ function createWalletObject(
     // Combine all addresses
     const addresses = [...chainAddresses, ...manualAddressStrings]
 
-    await state.utxoManager.sync(addresses)
+    await state.utxoManager.sync(addresses, manualAddressStrings)
+    if (state.utxoManager.kind === 'legacy') {
+      state.collateralId = await state.utxoManager.getCollateralId()
+    }
     const newUtxos = await state.utxoManager.getCachedUtxos()
 
     return updateWalletUtxos(newUtxos, isForced)
@@ -1403,7 +1411,9 @@ function createWalletObject(
     portfolioPrimaryTokenInfo: state.portfolioPrimaryTokenInfo,
     networkManager: networkManager,
     isMainnet: networkManager.isMainnet,
-    usesCurrentStateUtxos: state.utxoManager.kind === 'current-state',
+    get usesCurrentStateUtxos() {
+      return state.utxoManager.kind === 'current-state'
+    },
     balanceManager: state.balanceManager,
     balance$: state.balanceManager.observable$,
     accountVisual: state.accountVisual,
