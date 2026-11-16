@@ -418,6 +418,99 @@ describe('CardanoWallet', () => {
     }
   })
 
+  it('restores cached manual-address UTxOs when rebuilding the wallet', async () => {
+    const id = 'current-state-manual-address-rebuild-wallet'
+    const manualAddress = 'addr_test1manualrebuild'
+    const utxo = {
+      utxoId: Branded.asUtxoId(`${'c'.repeat(64)}:0`),
+      txHash: Branded.asTransactionHash('c'.repeat(64)),
+      txIndex: 0,
+      receiver: Branded.asAddress(manualAddress),
+      amount: '5000000' as Balance.Quantity,
+      assets: [],
+    }
+    const source: CurrentStateWalletSource = {
+      getChainTip: jest.fn(),
+      getAccountUtxos: jest.fn().mockResolvedValue([]),
+      getUtxosByAddresses: jest.fn().mockResolvedValue([utxo]),
+    }
+    const makeCurrentStateManager = utxoManagerApi.makeCurrentStateUtxoManager
+    const makeCurrentStateManagerSpy = jest
+      .spyOn(utxoManagerApi, 'makeCurrentStateUtxoManager')
+      .mockImplementation((options) =>
+        makeCurrentStateManager({...options, source} as never),
+      )
+    const filterUsedAddressesSpy = jest
+      .spyOn(legacyApi, 'filterUsedAddresses')
+      .mockResolvedValue([])
+    const getTipStatusSpy = jest
+      .spyOn(legacyApi, 'getTipStatus')
+      .mockResolvedValue(mockedTipStatusResponse)
+    const fetchHistorySpy = jest
+      .spyOn(legacyApi, 'fetchNewTxHistory')
+      .mockResolvedValue({isLast: true, transactions: []})
+    const originalRootStorage = mockCardanoWalletDependencies.rootStorage
+    const rootStorage = makeMemoryStorage()
+    mockCardanoWalletDependencies.rootStorage = rootStorage
+    initializeWalletFactories(mockCardanoWalletDependencies, networkManagers)
+    mockCardanoWalletDependencies.cardanoWalletBackendUrl =
+      'https://wallet-backend.example.com'
+    mockCardanoWalletDependencies.makePendingUtxoOverlayStore =
+      createPersistentPendingUtxoOverlayStore
+
+    try {
+      const walletStorage = rootStorage.join(
+        `legacy/${Chain.Network.Preprod}/v1/${id}/`,
+      )
+      await makeManualAddressStorage(walletStorage.join('wallet/')).add({
+        accountIndex: 1,
+        addressIndex: 5,
+        address: manualAddress,
+        derivationPath: "m/1852'/1815'/1'/0/5",
+        reasons: ['utxo'],
+        addedAt: '2026-11-07T00:00:00.000Z',
+      })
+
+      const ShelleyWalletPreprod = getWalletFactory({
+        implementation: 'cardano-cip1852',
+        network: Chain.Network.Preprod,
+      })
+      const wallet = await ShelleyWalletPreprod.build({
+        id,
+        accountPubKeyHex:
+          '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+        accountVisual: 0,
+      })
+
+      await wallet.sync({})
+      expect(wallet.allUtxos().map((cached) => cached.utxo_id)).toEqual([
+        utxo.utxoId,
+      ])
+
+      const rebuiltWallet = await ShelleyWalletPreprod.build({
+        id,
+        accountPubKeyHex:
+          '6c2311e6e7a934751c55054cb21ab844f2e55baa48fc8f298dd54430f116d1c14c5f12d15611670454e05efac74e8f5d5e887ae2c15ef3086e0691d0d8439665',
+        accountVisual: 0,
+      })
+
+      expect(rebuiltWallet.allUtxos().map((cached) => cached.utxo_id)).toEqual([
+        utxo.utxoId,
+      ])
+      expect(source.getAccountUtxos).toHaveBeenCalledTimes(1)
+      expect(source.getUtxosByAddresses).toHaveBeenCalledTimes(1)
+    } finally {
+      makeCurrentStateManagerSpy.mockRestore()
+      filterUsedAddressesSpy.mockRestore()
+      getTipStatusSpy.mockRestore()
+      fetchHistorySpy.mockRestore()
+      mockCardanoWalletDependencies.rootStorage = originalRootStorage
+      initializeWalletFactories(mockCardanoWalletDependencies, networkManagers)
+      delete mockCardanoWalletDependencies.cardanoWalletBackendUrl
+      delete mockCardanoWalletDependencies.makePendingUtxoOverlayStore
+    }
+  })
+
   it('updates in-memory UTxOs immediately after saving a pending overlay', async () => {
     mockCardanoWalletDependencies.cardanoWalletBackendUrl =
       'https://wallet-backend.example.com'

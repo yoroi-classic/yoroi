@@ -146,6 +146,48 @@ describe('cardano-wallet-backend current-state UTxO source', () => {
     })
   })
 
+  it('batches address UTxO reads at the backend limit without dropping addresses', async () => {
+    const addresses = Array.from(
+      {length: 1001},
+      (_, index) => `addr_test1manual${index}`,
+    )
+    const addressIndexes = new Map(
+      addresses.map((address, index) => [address, index]),
+    )
+    const requestedBatches: string[][] = []
+    const request = jest.fn(
+      async (options: {url: string; data?: {addresses: string[]}}) => {
+        if (options.url.endsWith('/v1/status')) return PREPROD_STATUS
+
+        const batch = options.data?.addresses ?? []
+        requestedBatches.push(batch)
+        if (batch.length > 1000) {
+          throw new Error('Address UTxO request exceeds backend limit')
+        }
+
+        return batch.map((address) => {
+          const index = addressIndexes.get(address) ?? 0
+          return {
+            ...validAccountUtxo(),
+            txHash: (index + 1).toString(16).padStart(64, '0'),
+            address,
+          }
+        })
+      },
+    ) as unknown as jest.MockedFunction<Fetcher>
+    const source = createCardanoWalletBackendUtxoSource(
+      'https://wallet.example',
+      Chain.Network.Preprod,
+      request,
+    )
+
+    const utxos = await source.getUtxosByAddresses?.(addresses)
+
+    expect(requestedBatches.map((batch) => batch.length)).toEqual([1000, 1])
+    expect(requestedBatches.flat()).toEqual(addresses)
+    expect(utxos?.map((utxo) => utxo.receiver)).toEqual(addresses)
+  })
+
   it('does not classify a manually added address network error as backend mismatch', async () => {
     const request = preprodRequest([])
     const source = createCardanoWalletBackendUtxoSource(
