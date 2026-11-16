@@ -88,6 +88,7 @@ export {API_ENDPOINTS, getBackendZeroUrl}
 // Cardano wallet API types and makers
 export {cardanoWalletApiMaker} from './cardano/api-maker'
 export {
+  CardanoWalletBackendNetworkMismatchError,
   CardanoWalletBackendV1Api,
   CardanoWalletBackendV1Config,
   canUseCardanoWalletBackendV1FilterUsed,

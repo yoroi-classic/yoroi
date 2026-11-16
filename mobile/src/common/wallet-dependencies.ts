@@ -6,10 +6,7 @@ import {buildPortfolioBalanceManager} from '~/features/Portfolio/common/helpers/
 import {toBalanceManagerSyncArgs} from '~/features/Portfolio/common/transformers/toBalanceManagerSyncArgs'
 import {createCollateralEntry} from '~/features/Settings/ui/screens/ChangeWalletSettingsScreen/ManageCollateralScreen/helpers'
 import {makeMemosManager} from '~/features/Transactions/common/memos/memosManager'
-import {
-  cardanoWalletBackendUrl,
-  currentStateUtxoEnabled,
-} from '~/kernel/constants'
+import {cardanoWalletBackendUrl} from '~/kernel/constants'
 import {makeWalletEncryptedStorage} from '~/kernel/storage/EncryptedStorage'
 import {rootStorage} from '~/kernel/storage/storages'
 
@@ -21,7 +18,6 @@ export const createCardanoWalletDependencies =
   (): CardanoWalletDependencies => {
     return {
       cardanoWalletBackendUrl,
-      currentStateUtxoEnabled,
       makePendingUtxoOverlayStore: createPersistentPendingUtxoOverlayStore,
       rootStorage,
       makeWalletEncryptedStorage:

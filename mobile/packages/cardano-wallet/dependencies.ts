@@ -18,7 +18,6 @@ import {YoroiWallet} from './types'
 export type CardanoWalletDependencies = {
   /** Enables current-state Shelley UTxO reads when the backend is configured. */
   cardanoWalletBackendUrl?: string
-  currentStateUtxoEnabled?: boolean
 
   /** Creates durable transaction overlays below the wallet/account storage. */
   makePendingUtxoOverlayStore?: (
